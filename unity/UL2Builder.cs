@@ -7,7 +7,7 @@ using UnityEngine;
 // Builds UL2Airtrike.prefab from a pristine copy of the CI-22 Cricket plus the UL2 art (UL2_parts.fbx + UL2_layout.json),
 // and the mod's own def, parameters, hangar op and weapon mounts. Run from the menu (UL2 > Rebuild) or UL2Builder.Build().
 // Every value is a literal on purpose.
-public static class UL2Builder
+public static partial class UL2Builder
 {
     const string MOD = "Assets/Blueprinter/Mods/UL2Airtrike/";
     const string ART = MOD + "Art/";
@@ -197,6 +197,16 @@ public static class UL2Builder
             Set(ap, j + "solverIterations", jointIterations);
         }
     }
+    // a lit material showing a picture (copilot MFD and gauges), slightly self lit like a screen
+    static Material PicMat(string name)
+    {
+        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(ART + name + ".png");
+        var m = LitMat(name, Color.white, 0.8f, 0f);
+        if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+        if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", tex);
+        if (m.HasProperty("_EmissionMap")) { m.SetTexture("_EmissionMap", tex); m.SetColor("_EmissionColor", new Color(0.5f, 0.5f, 0.5f)); m.EnableKeyword("_EMISSION"); }
+        EditorUtility.SetDirty(m); return m;
+    }
     static Material LitMat(string name, Color col, float smooth, float metal)
     {
         string path = ART + name + ".mat";
@@ -281,9 +291,15 @@ public static class UL2Builder
         MAT["UL2_seat"] = LitMat("UL2_seat", new Color32(70, 72, 74, 255), 0.25f, 0f);
         MAT["UL2_cockpit"] = LitMat("UL2_cockpit", new Color32(60, 62, 65, 255), 0.3f, 0f);
         MAT["UL2_screen"] = LitMat("UL2_screen", new Color32(12, 14, 16, 255), 0.85f, 0f);
+        // seat rifles in the seat 3 gunners' FDE scheme (Nick 2026-11-12 21:23)
+        MAT["UL2_fde"] = LitMat("UL2_fde", new Color32(176, 150, 110, 255), 0.28f, 0f);
+        MAT["UL2_bronze"] = LitMat("UL2_bronze", new Color32(146, 108, 80, 255), 0.58f, 0.35f);
+        MAT["UL2_black"] = LitMat("UL2_black", new Color32(34, 34, 33, 255), 0.52f, 0.4f);
+        MAT["UL2_fabric"] = LitMat("UL2_fabric", new Color32(166, 134, 94, 255), 0.03f, 0f);
         var glass = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/trainer_glass_PLACEHOLDER.mat");
         MAT["UL2_glass"] = glass != null ? glass : MAT["UL2_screen"];
         try { Mounts(); } catch (System.Exception ex) { log.AppendLine("MOUNTS ERROR " + ex); }
+        try { Seat3Mounts(); } catch (System.Exception ex) { log.AppendLine("SEAT3 MOUNTS ERROR " + ex); }
 
         root = PrefabUtility.LoadPrefabContents(SRC).transform;
         root.name = "COIN_PLACEHOLDER";
@@ -347,7 +363,7 @@ public static class UL2Builder
         PartAt("cockpit_R"); PartAt("cockpit_F"); PartAt("nose");
         PartAt("fuselage", "frame_R");
         PartAt("intake", "seat3");
-        try { Soldier(); } catch (System.Exception ex) { log.AppendLine("SOLDIER ERROR " + ex); }
+        // seat 3: the passenger now comes with the Seat 3 hardpoint options (UL2Seat3.cs); empty option = empty seat
         var cf = Need("cockpit_F");
         Visual("gear_F_visible", "gear_F", cf);
         // the Cricket cockpit, canopies and ejection seats go invisible; their components stay for the stock logic
@@ -358,15 +374,23 @@ public static class UL2Builder
             Hide(n);
         // pilot controls on the Cricket's Cockpit links: stick and throttle move with the inputs (stock Cockpit component)
         {
+            // 0.15.4: the controls sit higher in the model itself (fighter grip, throttle quadrant on a raised console)
             var js = Need("joystick"); MoveAlone(js, P("x_stick")); SetMesh(js, "x_stick"); js.GetComponent<Renderer>().enabled = true;
-            var tz = Need("throttleZero"); MoveAlone(tz, P("x_throttle"));
-            var th = Need("throttle"); MoveAlone(th, P("x_throttle")); SetMesh(th, "x_throttle"); th.GetComponent<Renderer>().enabled = true;
+            // throttle lever pivots in its quadrant: stock Cockpit throttle in rotation mode, idle 25 deg aft, full 25 deg forward
+            var tz = Need("throttleZero"); MoveAlone(tz, P("x_throttle")); tz.rotation = Quaternion.Euler(-25f, 0f, 0f);
+            var th = Need("throttle"); th.localPosition = Vector3.zero; th.localRotation = Quaternion.identity; SetMesh(th, "x_throttle"); th.GetComponent<Renderer>().enabled = true;
+            foreach (var ck in root.GetComponentsInChildren<Component>(true).Where(c => c != null && c.GetType().Name == "Cockpit"))
+            { Set(ck, "throttles.Array.data[0].rotation", true); Set(ck, "throttles.Array.data[0].motion", false); Set(ck, "throttles.Array.data[0].range", 50f); }
             // the MFDs show the targeting ball's camera, the stock way (TargetCam draws onto targetScreen's material)
             var ts = Need("targetScreen"); MoveAlone(ts, P("x_mfd1"));
             ts.GetComponent<MeshFilter>().sharedMesh = M["x_mfd1"]; var tr = ts.GetComponent<Renderer>(); tr.enabled = true;
-            var ts2 = Find(root, "targetScreen2");
-            if (ts2 == null) { ts2 = ((GameObject)Object.Instantiate(ts.gameObject, Need("cockpit_R"))).transform; ts2.name = "targetScreen2"; }
-            MoveAlone(ts2, P("x_mfd2")); ts2.GetComponent<MeshFilter>().sharedMesh = M["x_mfd2"];
+            // copilot station: static pictures, not live screens (Nick 20:53)
+            var cr = Need("cockpit_R");
+            foreach (var pic in new[] { "mfd2", "inst2" })
+            {
+                var pt = Find(cr, "UL2_" + pic) ?? New("UL2_" + pic, cr); pt.position = P("x_" + pic); pt.rotation = Quaternion.identity;
+                SetMesh(pt, "x_" + pic); pt.GetComponent<MeshRenderer>().sharedMaterial = PicMat("UL2_" + pic + "_img");
+            }
             log.AppendLine("screen material " + (tr.sharedMaterial ? tr.sharedMaterial.name : "none"));
         }
         // live gauge needles: a pivot facing the pilot (local Z = panel normal) holding the needle mesh; the plugin turns the pivot
@@ -383,10 +407,31 @@ public static class UL2Builder
             }
             log.AppendLine("gauges " + ng);
         }
+        // rudder pedals: the plugin slides UL2_pedal_L/R fore and aft on their rails with the yaw input (P220 / PB-22 way)
+        foreach (var sd in new[] { "L", "R" })
+        {
+            var pd = Find(cf, "UL2_pedal_" + sd) ?? New("UL2_pedal_" + sd, cf);
+            pd.position = P("x_pedal_" + sd); pd.rotation = Quaternion.identity; SetMesh(pd, "x_pedal_" + sd);
+        }
+        // 5-point harnesses: own objects on the exterior renderer list, so the cockpit view hides them with the pilots (stock)
+        {
+            var hs = new List<Object>();
+            foreach (var hp in new[] { new[] { "x_harness1", "cockpit_F" }, new[] { "x_harness2", "cockpit_R" } })
+            {
+                var par = Need(hp[1]); var h = Find(par, "UL2_" + hp[0].Substring(2)) ?? New("UL2_" + hp[0].Substring(2), par);
+                h.position = P(hp[0]); h.rotation = Quaternion.identity; SetMesh(h, hp[0]); hs.Add(h.GetComponent<MeshRenderer>());
+            }
+            var acx = C(root, "Aircraft"); var so = new SerializedObject(acx); var er = so.FindProperty("exteriorRenderers"); var keep = new List<Object>();
+            for (int i = 0; i < er.arraySize; i++) { var o = er.GetArrayElementAtIndex(i).objectReferenceValue; if (o != null && !hs.Contains(o)) keep.Add(o); }
+            keep.AddRange(hs); ObjArray(acx, "exteriorRenderers", keep.ToArray());
+            log.AppendLine("harness on exteriorRenderers, total " + keep.Count);
+        }
         foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == "EjectionSeat").ToList()) { NoMesh(t); var mc = t.GetComponent<Collider>(); if (mc) mc.enabled = false; }
         foreach (var c in root.GetComponentsInChildren<Component>(true).Where(c => c != null && c.GetType().Name == "Pilot")) Set(c, "ejectionSeat", false);
         // crew: the Cricket pilot and WSO (the copilot) sit at the UL-2 seats; pelvis is 0.01 below the Pilot transform
         Need("pilot").position = P("pilot") + new Vector3(0f, 0.01f, 0f);
+        // first person eye point at shoulder height (Nick 20:42): the helmet camera points drop 0.20 m
+        foreach (var hc in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == "helmetCamPoint").ToList()) hc.position -= new Vector3(0f, 0.20f, 0f);
         var wso = Need("WSO"); wso.position = P("copilot") + new Vector3(0f, 0.01f, 0f); wso.name = "copilot";
         // targeting ball behind the nose gear: the camera and the laser look from it; one laser spot, not the Cricket's two
         Need("targetCamForward").position = P("targetCam");
@@ -694,11 +739,14 @@ public static class UL2Builder
     {
         DoomName("ladder");
         // the Cricket wheels, camera ball and gun stub meshes: the UL-2 meshes carry their own
-        foreach (var n in new[] { "wheel_F", "wheel_L", "wheel_R", "targetCamForward", "gunmount_R_hp" })
+        foreach (var n in new[] { "wheel_F", "wheel_L", "wheel_R", "targetCamForward", "gunmount_R_hp", "gunmount_R" })
         { var t = Find(root, n); if (t == null) { log.AppendLine("no " + n); continue; } var mr = t.GetComponent<MeshRenderer>(); if (mr) mr.enabled = false; NoMesh(t); }
         foreach (var s in new[] { "L", "R" }) { var cols = Need("wing2_" + s).GetComponents<MeshCollider>(); for (int i = 1; i < cols.Length; i++) cols[i].enabled = false;
             var l2 = Find(Need("wing2_" + s), "wing2_" + s + "1_LOD1"); if (l2) Doom(l2); }
         foreach (var n in new[] { "gunmount_L", "pylon1_L", "pylon1_R", "pylon2_L", "pylon2_R" }) DoomName(n);
+        // visual detection (Nick 20:24): 6 km for the aircraft; the seat 3 spotter raises it to 10 km in the plugin
+        foreach (var det in root.GetComponentsInChildren<Component>(true).Where(c => c != null && c.GetType().Name == "TargetDetector"))
+        { var ds = new SerializedObject(det); var vr = ds.FindProperty("visualRange"); if (vr != null && vr.floatValue >= 1000f) { vr.floatValue = 6000f; ds.ApplyModifiedPropertiesWithoutUndo(); log.AppendLine("visual range 6000 on " + det.name); } }
         var fe = C(root, "FlareEjector");
         foreach (var s in new[] { "L", "R" })
         {
@@ -731,37 +779,35 @@ public static class UL2Builder
         // stub pylons split left/right like the Ibis side pylons (Nick 2026-11-12 16:20): a TOP station per side where the
         // racks mount flipped onto the stub, and an UNDER station per side for the gunpods and the bomb, which hang normally.
         // Top and under on the same side preclude each other (stock precludingHardpointSets, like the Ibis cargo bays).
-        foreach (var s in new[] { "L", "R" })
-        {
-            var u = root.Find("pylon_under_" + s); if (u == null) { u = new GameObject("pylon_under_" + s).transform; u.SetParent(root, false); }
-            u.position = P("hardpoint_" + s) + new Vector3(0f, -0.125f, 0f); u.rotation = Quaternion.identity;
-        }
-        while (sets.arraySize < 5) sets.InsertArrayElementAtIndex(1);
-        string[] topOpts = { "RocketPod1_single", "AGM1_single", "AAM3_single", "Rocket2_4Pod", "ECMPod1", "ATGM1_quad" };
+        while (sets.arraySize < 3) sets.InsertArrayElementAtIndex(1);
+        while (sets.arraySize > 3) sets.DeleteArrayElementAtIndex(sets.arraySize - 1);
+        // Nick 2026-11-12 20:42: under stations removed completely, Kingpin (Rocket2_4Pod) removed from the top stations
+        string[] topOpts = { "RocketPod1_single", "AGM1_single", "AAM3_single", "ECMPod1", "ATGM1_quad" };
         string[] underOpts = { "gun_12.7mm_pod", "gun_20mm_pod", "bomb_125_single" };
         var defs = new[] {
             new { name = "Left Stub (top)", hp = "pylon_fuselage_L", sym = false, symName = "Stub Pylons (top)", opts = topOpts, pre = 3 },
             new { name = "Right Stub (top)", hp = "pylon_fuselage_R", sym = true, symName = "Stub Pylons (top)", opts = topOpts, pre = 4 },
             new { name = "Left Stub (under)", hp = "pylon_under_L", sym = false, symName = "Stub Pylons (under)", opts = underOpts, pre = 1 },
             new { name = "Right Stub (under)", hp = "pylon_under_R", sym = true, symName = "Stub Pylons (under)", opts = underOpts, pre = 2 } };
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 2; i++)
         {
             var d = defs[i]; var p = sets.GetArrayElementAtIndex(i + 1);
             p.FindPropertyRelative("name").stringValue = d.name;
             p.FindPropertyRelative("SymmetryWithPrev").boolValue = d.sym;
             p.FindPropertyRelative("SymmetryName").stringValue = d.symName;
-            var pr = p.FindPropertyRelative("precludingHardpointSets"); pr.arraySize = 1; pr.GetArrayElementAtIndex(0).intValue = d.pre;
+            p.FindPropertyRelative("precludingHardpointSets").arraySize = 0;
             var php = p.FindPropertyRelative("hardpoints"); php.arraySize = 1;
             php.GetArrayElementAtIndex(0).FindPropertyRelative("transform").objectReferenceValue = root.Find(d.hp) ?? Find(root, d.hp);
             php.GetArrayElementAtIndex(0).FindPropertyRelative("part").objectReferenceValue = C(root, "AeroPart");
             var op = p.FindPropertyRelative("weaponOptions"); op.arraySize = d.opts.Length + 1; op.GetArrayElementAtIndex(0).objectReferenceValue = null;
             for (int k = 0; k < d.opts.Length; k++)
             {
-                var m = AssetDatabase.LoadMainAssetAtPath(Placeholder(d.opts[k], "WeaponMount"));
+                var m = d.opts[k] == "AGM1_single" ? Mount("UL2_AGM1_rail") : d.opts[k] == "AAM3_single" ? Mount("UL2_AAM3_rail") : AssetDatabase.LoadMainAssetAtPath(Placeholder(d.opts[k], "WeaponMount"));
                 if (m == null) log.AppendLine("MISSING mount " + d.opts[k]);
                 op.GetArrayElementAtIndex(k + 1).objectReferenceValue = m;
             }
         }
+        Seat3Hardpoint(sets);
         so.ApplyModifiedPropertiesWithoutUndo();
         log.AppendLine("hardpoint sets: " + sets.arraySize);
     }
@@ -805,13 +851,34 @@ public static class UL2Builder
             br.GetComponent<MeshFilter>().sharedMesh = M["gun_R"]; br.GetComponent<MeshRenderer>().sharedMaterials = Mats("gun_R");
             var mz = br.Find("muzzle"); mz.localPosition = new Vector3(0f, 0f, 1.58f); mz.localRotation = Quaternion.identity;
             var tu = C(tr, "Turret");
-            Set(tu, "traverseRange", 10f); Set(tu, "minElevation", -40f); Set(tu, "maxElevation", 5f);
+            Set(tu, "traverseRange", 5f); Set(tu, "minElevation", -5f); Set(tu, "maxElevation", 5f);   // Nick 20:44: 5 deg any direction
+            // the gun housing rides on the barrel so it tilts with the gun (the part keeps only its collider)
+            var hs = New("housing", br); hs.localPosition = P("gunmount_R") - P("gunPivot"); hs.localRotation = Quaternion.identity;
+            hs.gameObject.AddComponent<MeshFilter>().sharedMesh = M["gunmount_R"]; hs.gameObject.AddComponent<MeshRenderer>().sharedMaterials = Mats("gunmount_R");
             Set(tu, "traverseRate", 40f); Set(tu, "elevationRate", 35f);
             var m = SaveMount(go, "UL2_sidegun", "turret_12.7mm_door", null, "12.7mm Side Gun (600 rounds)");
             var so = new SerializedObject(m);
             so.FindProperty("GearSafety").boolValue = false; so.FindProperty("GroundSafety").boolValue = false;
             so.FindProperty("drag").floatValue = 0.05f; so.FindProperty("emptyDrag").floatValue = 0.05f;
             so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
+        }
+        finally { Object.DestroyImmediate(go); }
+        RailMount("AGM1_single", "UL2_AGM1_rail", -0.092f);
+        RailMount("AAM3_single", "UL2_AAM3_rail", -0.076f);
+    }
+    // AGM-48 / IRM-S2 straight on the beefed-up built-in pylon (Nick 2026-11-12 21:35): the stock single mount without
+    // its launch pylon, missile raised so its body sits on the pylon's rail. Same info, cost and stats as the stock mount.
+    static void RailMount(string src, string key, float y)
+    {
+        var go = CopyPrefab(src, key);
+        try
+        {
+            var py = go.transform.Find("pylon"); if (py != null) Object.DestroyImmediate(py.gameObject);
+            foreach (var mm in go.GetComponentsInChildren<MonoBehaviour>(true))
+                if (mm.GetType().Name == "MountedMissile") { var lp = mm.transform.localPosition; mm.transform.localPosition = new Vector3(lp.x, y, lp.z); }
+            var srcM = AssetDatabase.LoadMainAssetAtPath(Placeholder(src, "WeaponMount"));
+            string nm = new SerializedObject(srcM).FindProperty("mountName").stringValue;
+            SaveMount(go, key, src, null, nm);
         }
         finally { Object.DestroyImmediate(go); }
     }
@@ -854,26 +921,27 @@ public static class UL2Builder
         Part("vstab1_L", 6f, 0.6f, 0.01f, -1f); Part("vstab1_R", 4f, 0.3f, 0.01f, -1f);
         Part("rudder_L", 3f, 0.5f, 0f, -1f); Part("rudder_R", 2f, 0.2f, 0f, -1f);
         // joints: each part to its structural parent (break forces like the Cricket's light parts)
-        J("cockpit_R", "COIN_PLACEHOLDER", 15000f, "fuselage", 10000f);
-        J("cockpit_F", "COIN_PLACEHOLDER", 20000f, "cockpit_R", 10000f);
-        J("nose", "cockpit_F", 5000f);
-        J("fuselage", "COIN_PLACEHOLDER", 15000f);
-        J("intake", "fuselage", 6000f, "cockpit_R", 4000f);
-        J("mast", "fuselage", 15000f, "intake", 5000f);
-        J("rotorHead", "mast", 12000f);
-        J("engine_core", "mast", 12000f, "fuselage", 6000f);
-        J("engine_L", "engine_core", 6000f); J("engine_R", "engine_core", 6000f);
-        J("propHub", "engine_core", 10000f);
-        J("gunmount_R", "COIN_PLACEHOLDER", 10000f, "cockpit_F", 5000f);
-        J("nacelle_L", "fuselage", 10000f, "COIN_PLACEHOLDER", 6000f); J("nacelle_R", "fuselage", 10000f, "COIN_PLACEHOLDER", 6000f);
-        J("tailboom_L", "fuselage", 10000f); J("tailboom_R", "tailboom_L", 8000f);
-        J("vstab1_L", "tailboom_R", 6000f); J("vstab1_R", "vstab1_L", 3000f);
+        // joint strengths x4 (2026-11-12 playtest: tail and blade pieces broke off at spawn)
+        J("cockpit_R", "COIN_PLACEHOLDER", 60000f, "fuselage", 40000f);
+        J("cockpit_F", "COIN_PLACEHOLDER", 80000f, "cockpit_R", 40000f, "fuselage", 30000f);   // 0.15.5: every overlapping collider pair is jointed (stock joints switch their collision off), so nothing pushes apart at spawn
+        J("nose", "cockpit_F", 20000f);
+        J("fuselage", "COIN_PLACEHOLDER", 60000f);
+        J("intake", "fuselage", 24000f, "cockpit_R", 16000f, "COIN_PLACEHOLDER", 16000f);
+        J("mast", "fuselage", 60000f, "intake", 20000f);
+        J("rotorHead", "mast", 48000f);
+        J("engine_core", "mast", 48000f, "fuselage", 24000f);
+        J("engine_L", "engine_core", 24000f); J("engine_R", "engine_core", 24000f);
+        J("propHub", "engine_core", 40000f);
+        J("gunmount_R", "COIN_PLACEHOLDER", 40000f, "cockpit_F", 20000f, "cockpit_R", 20000f);
+        J("nacelle_L", "fuselage", 40000f, "COIN_PLACEHOLDER", 24000f); J("nacelle_R", "fuselage", 40000f, "COIN_PLACEHOLDER", 24000f);
+        J("tailboom_L", "fuselage", 40000f, "mast", 30000f, "engine_core", 24000f); J("tailboom_R", "tailboom_L", 32000f);
+        J("vstab1_L", "tailboom_R", 24000f); J("vstab1_R", "vstab1_L", 12000f);
         J("rudder_L", "vstab1_L", 20000f); J("rudder_R", "vstab1_R", 20000f);
         foreach (var s in new[] { "L", "R" })
         {
-            J("wing1_" + s, "rotorHead", 12000f); J("wing2_" + s, "wing1_" + s, 8000f); J("wing3_" + s, "wing2_" + s, 6000f);
+            J("wing1_" + s, "rotorHead", 48000f); J("wing2_" + s, "wing1_" + s, 32000f); J("wing3_" + s, "wing2_" + s, 24000f);
             J("aileron_" + s, "wing3_" + s, 50000f);
-            J("hstab_" + s, "tailboom_R", 6000f, "vstab1_L", 4000f); J("hstabTip_" + s, "hstab_" + s, 3000f);
+            J("hstab_" + s, "tailboom_R", 24000f, "vstab1_L", 16000f); J("hstabTip_" + s, "hstab_" + s, 12000f);
             J("elevator_" + s, "hstab_" + s, 20000f); J("elevatorTip_" + s, "hstabTip_" + s, 20000f);
         }
         log.AppendLine("aero + joints set");
@@ -906,16 +974,17 @@ public static class UL2Builder
         li.FindPropertyRelative("faction").objectReferenceValue = null;
         li.FindPropertyRelative("assetReference.m_AssetGUID").stringValue = AssetDatabase.AssetPathToGUID(LIVERY);
         li.FindPropertyRelative("assetReference.m_SubObjectName").stringValue = "";
-        // five hardpoint sets now: side gun, left/right stub top, left/right stub under
+        // six hardpoint sets now: side gun, left/right stub top, left/right stub under, seat 3 passenger
         var lo = so.FindProperty("loadouts");
         for (int i = 0; i < lo.arraySize; i++)
         {
-            var w = lo.GetArrayElementAtIndex(i).FindPropertyRelative("weapons"); w.arraySize = 5;
-            for (int k = 0; k < 5; k++) w.GetArrayElementAtIndex(k).objectReferenceValue = null;
+            var w = lo.GetArrayElementAtIndex(i).FindPropertyRelative("weapons"); w.arraySize = 4;
+            for (int k = 0; k < 4; k++) w.GetArrayElementAtIndex(k).objectReferenceValue = null;
             if (i == 0) continue;
             w.GetArrayElementAtIndex(0).objectReferenceValue = Mount("UL2_sidegun");
             var at = AssetDatabase.LoadMainAssetAtPath(Placeholder("ATGM1_quad", "WeaponMount"));
             w.GetArrayElementAtIndex(1).objectReferenceValue = at; w.GetArrayElementAtIndex(2).objectReferenceValue = at;
+            w.GetArrayElementAtIndex(3).objectReferenceValue = Mount("UL2_s3_mg");
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(par);
 
@@ -929,7 +998,7 @@ public static class UL2Builder
         so.FindProperty("length").floatValue = 6.5f;
         so.FindProperty("width").floatValue = 9.2f;
         so.FindProperty("height").floatValue = 3.3f;
-        so.FindProperty("value").floatValue = 4f;
+        so.FindProperty("value").floatValue = 0f;
         so.FindProperty("mass").floatValue = 680f;
         so.FindProperty("radarSize").floatValue = 0.3f;
         so.FindProperty("spawnOffset").vector3Value = new Vector3(0f, 1.15f, 0f);
@@ -957,12 +1026,15 @@ public static class UL2Builder
         }
         so = new SerializedObject(AssetDatabase.LoadMainAssetAtPath(op));
         so.FindProperty("aircraftJsonKey").stringValue = "UL2Airtrike";
-        var hs = so.FindProperty("hangars"); hs.arraySize = 1;
+        // medium hangars plus stock helipads (forward spawns; the player rolls off the pad to take off)
+        var hs = so.FindProperty("hangars"); hs.arraySize = 2;
         hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarUnitJsonKey").stringValue = "hangar_med";
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
+        hs.GetArrayElementAtIndex(1).FindPropertyRelative("hangarUnitJsonKey").stringValue = "Helipad";
+        hn = hs.GetArrayElementAtIndex(1).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "Helipad";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.14.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.5\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

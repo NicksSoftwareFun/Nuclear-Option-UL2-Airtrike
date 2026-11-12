@@ -9,9 +9,14 @@ R = math.radians
 MATS = {}
 SLOT_GREY = {'UL2_skin': 0.52, 'UL2_frame': 0.62, 'UL2_mech': 0.40, 'UL2_dark': 0.16, 'UL2_tyre': 0.10,
              'UL2_seat': 0.30, 'UL2_cockpit': 0.22, 'UL2_glass': None, 'UL2_screen': 0.06, 'UL2_crewref': 0.75}
+# FDE weapon scheme (same colours as the seat 3 guns, look.py): sRGB values
+SLOT_RGB = {'UL2_fde': (176, 150, 110), 'UL2_bronze': (146, 108, 80), 'UL2_black': (34, 34, 33), 'UL2_fabric': (166, 134, 94)}
 def mat(name):
     if name in MATS: return MATS[name]
     m = bpy.data.materials.new(name); m.use_nodes = True; b = m.node_tree.nodes['Principled BSDF']
+    if name in SLOT_RGB:
+        b.inputs['Base Color'].default_value = tuple((c / 255) ** 2.2 for c in SLOT_RGB[name]) + (1,); b.inputs['Roughness'].default_value = 0.6
+        MATS[name] = m; return m
     g = SLOT_GREY[name]
     if g is None:
         b.inputs['Base Color'].default_value = (0.85, 0.9, 0.95, 1); b.inputs['Roughness'].default_value = 0.02
@@ -23,6 +28,7 @@ def mat(name):
     MATS[name] = m; return m
 SKIN, FRAME, MECH, DARK, TYRE, SEAT, CPIT, GLASS, SCREEN = ('UL2_skin', 'UL2_frame', 'UL2_mech', 'UL2_dark', 'UL2_tyre',
                                                              'UL2_seat', 'UL2_cockpit', 'UL2_glass', 'UL2_screen')
+FDE_, BRONZE_, BLACK_, FABRIC_ = 'UL2_fde', 'UL2_bronze', 'UL2_black', 'UL2_fabric'
 
 # ---------------------------------------------------------------- parts
 PARTS = {}          # name -> dict(parent, pivot, objs)
@@ -204,6 +210,7 @@ def load_obj(path, name, coll_name, T=None, only=None):
     return objs
 
 # ---------------------------------------------------------------- join into game parts
+NOCOL_KEYS = ('cable', 'hinge', 'wire', 'bolt', 'strap', 'harness', 'rivet', 'antenna')
 def join_parts(collection='PARTS'):
     c = coll(collection); out = {}
     for name, P in PARTS.items():
@@ -218,6 +225,12 @@ def join_parts(collection='PARTS'):
                     try:
                         with bpy.context.temp_override(object=o, active_object=o): bpy.ops.object.modifier_apply(modifier=md.name)
                     except Exception as e: print('modapply', o.name, e)
+                # thin hardware (cables, hinge pins, bolts, straps) stays out of the part's convex collider
+                if o.type == 'MESH' and len(o.data.vertices):
+                    ext = max(max(v.co[i] for v in o.data.vertices) - min(v.co[i] for v in o.data.vertices) for i in range(3)) * max(o.scale)
+                    nc = 1 if any(k in o.name for k in NOCOL_KEYS) or ext < 0.05 else 0
+                    at = o.data.attributes.get('nocol') or o.data.attributes.new('nocol', 'INT', 'POINT')
+                    for d in at.data: d.value = nc
             bpy.ops.object.join()
         o = objs[0]; o.name = name; o.data.name = name
         for cc in list(o.users_collection): cc.objects.unlink(o)

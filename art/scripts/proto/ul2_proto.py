@@ -64,11 +64,13 @@ def extract_rifle():
 RIFLE = extract_rifle()
 
 # screen quad with 0..1 UVs (the game's camera feed is drawn on it), facing -Y in frame M
-def screen(name, w, h, M, y=0.0):
+def screen(name, w, h, M, y=0.0, rot=False):
     bm = bmesh.new(); uv = bm.loops.layers.uv.new('UVMap')
     vs = [bm.verts.new(M @ Vector(p)) for p in ((-w / 2, y, -h / 2), (w / 2, y, -h / 2), (w / 2, y, h / 2), (-w / 2, y, h / 2))]
     f = bm.faces.new(vs)
-    for lp, t in zip(f.loops, ((1, 0), (0, 0), (0, 1), (1, 1))): lp[uv].uv = t
+    # rot: the stock tac screen canvas is landscape with its side panels turned 90 deg for a portrait display:
+    # canvas left goes to the screen top, canvas top to the screen right
+    for lp, t in zip(f.loops, ((1, 0), (1, 1), (0, 1), (0, 0)) if rot else ((1, 0), (0, 0), (0, 1), (1, 1))): lp[uv].uv = t
     me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
     if me.polygons[0].normal.dot(M.to_3x3() @ Vector((0, -1, 0))) < 0: me.flip_normals()
     o = bpy.data.objects.new(name, me); me.materials.append(mat(SCREEN)); coll('WORK').objects.link(o)
@@ -77,8 +79,9 @@ def screen(name, w, h, M, y=0.0):
 # ================================================================ nose pod (cockpit_F + nose)
 POD = [  # y, half width, bottom z, top z
     # nose v3 (Nick 2026-11-12 11:19): longer and aerodynamic, top sloping down to a low tip, clear tip fairing
-    (3.05, 0.012, 0.688, 0.712), (3.043, 0.039, 0.671, 0.718), (3.03, 0.071, 0.645, 0.741), (3.004, 0.112, 0.609, 0.777), (2.965, 0.156, 0.571, 0.821), (2.92, 0.195, 0.536, 0.866), (2.868, 0.231, 0.504, 0.912), (2.803, 0.268, 0.473, 0.964), (2.725, 0.303, 0.443, 1.019), (2.647, 0.331, 0.421, 1.068), (2.562, 0.355, 0.404, 1.115), (2.478, 0.371, 0.393, 1.154), (2.4, 0.378, 0.39, 1.18), (2.20, 0.392, 0.375, 1.215),
-    (2.00, 0.398, 0.372, 1.215), (1.80, 0.394, 0.375, 1.185), (1.60, 0.380, 0.385, 1.150), (1.40, 0.370, 0.395, 1.180),
+    (3.05, 0.012, 0.688, 0.712), (3.043, 0.039, 0.671, 0.718), (3.03, 0.071, 0.645, 0.741), (3.004, 0.112, 0.609, 0.777), (2.965, 0.156, 0.571, 0.821), (2.92, 0.195, 0.536, 0.866), (2.868, 0.231, 0.504, 0.912), (2.803, 0.268, 0.473, 0.964), (2.725, 0.303, 0.443, 1.060), (2.647, 0.331, 0.421, 1.150), (2.562, 0.355, 0.404, 1.240), (2.478, 0.371, 0.393, 1.320), (2.4, 0.378, 0.39, 1.385), (2.20, 0.392, 0.375, 1.460),
+    # cowl raised 2026-11-12 20:53 (Nick: the slope up to the dashboard higher, MFD and gauges in the first person view)
+    (2.00, 0.398, 0.372, 1.410), (1.80, 0.394, 0.375, 1.280), (1.60, 0.380, 0.385, 1.150), (1.40, 0.370, 0.395, 1.180),
     # side walls carried aft past seat 2 as an open fairing round the copilot's legs, closing in a boat tail (Nick 2026-11-12 11:28)
     (1.00, 0.366, 0.405, 1.250), (0.60, 0.362, 0.415, 1.250), (0.35, 0.350, 0.430, 1.220), (0.20, 0.322, 0.452, 1.150),
     (0.08, 0.266, 0.492, 0.990), (-0.02, 0.180, 0.548, 0.925), (-0.08, 0.090, 0.610, 0.860), (-0.10, 0.025, 0.660, 0.800)]
@@ -87,18 +90,23 @@ def pod_at(y):
         if a[0] >= y >= b[0]:
             t = (a[0] - y) / (a[0] - b[0]); return [a[k] + (b[k] - a[k]) * t for k in (1, 2, 3)]
     return list((POD[0] if y > POD[0][0] else POD[-1])[1:])
-OPEN_F, OPEN_A = 2.30, 0.10      # one open cockpit for pilot and copilot; the side walls run past seat 2
-def sill(y):                     # opening edge height
-    keys = [(2.30, 1.195), (2.14, 1.085), (1.95, 1.050), (1.65, 1.030), (1.38, 1.000), (1.10, 0.970), (0.80, 0.980), (0.60, 1.020), (0.35, 1.030), (0.20, 1.000), (0.10, 0.960)]
+OPEN_F, OPEN_A = 2.22, 0.10      # one open cockpit for pilot and copilot; the side walls run past seat 2
+def sill(y):                     # opening edge height (0.15.5: the coaming runs straight into the windscreen base)
+    keys = [(2.22, 1.455), (2.18, 1.400), (2.12, 1.260), (2.05, 1.120), (1.95, 1.060), (1.65, 1.030), (1.38, 1.000), (1.10, 0.970), (0.80, 0.980), (0.60, 1.020), (0.35, 1.030), (0.20, 1.000), (0.10, 0.960)]
     for a, b in zip(keys, keys[1:]):
         if a[0] >= y >= b[0]: t = (a[0] - y) / (a[0] - b[0]); return a[1] + (b[1] - a[1]) * t
-    return 1.195 if y > 2.30 else 0.800
+    return 1.460 if y > 2.22 else 0.800
 NS = 40
+def e_top(y):                    # upper superellipse exponent: square shoulders round the instrument panel
+    if 1.70 <= y <= 2.45: return 4.0
+    if 2.45 < y < 2.70: return 4.0 + (2.1 - 4.0) * (y - 2.45) / 0.25
+    if 1.40 < y < 1.70: return 2.1 + (4.0 - 2.1) * (y - 1.40) / 0.30
+    return 2.1
 def pod_ring(y):
     hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb); pts = []
     for i in range(NS):
         a = 2 * math.pi * i / NS; c, s = math.cos(a), math.sin(a)
-        e = 2.6 if s < 0 else 2.1
+        e = 2.6 if s < 0 else e_top(y)
         x = hw * math.copysign(abs(c) ** (2 / e), c)
         z = zm + (zt - zm if s > 0 else zm - zb) * math.copysign(abs(s) ** (2 / e), s)
         pts.append(Vector((x, y, z)))
@@ -124,16 +132,16 @@ build_pod(ys, 'pod_shell')
 # rim along the cut edge
 rim = [Vector((-pod_ring_x, y, sill(y))) for y, pod_ring_x in []]
 def side_x(y, z):
-    hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb); s = min(1, (z - zm) / (zt - zm)); return hw * (1 - abs(s) ** 2.1) ** (1 / 2.1)
+    hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb); s = min(1, (z - zm) / (zt - zm)); e = e_top(y); return hw * (1 - abs(s) ** e) ** (1 / e)
+def pod_x(y, z):                 # skin half width at any height
+    hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb)
+    if z >= zm: return side_x(y, z)
+    s = min(1, (zm - z) / (zm - zb)); return hw * (1 - s ** 2.6) ** (1 / 2.6)
 edge = [Vector((side_x(y, sill(y)) - 0.004, y, sill(y))) for y in frange(OPEN_F - 0.01, OPEN_A + 0.01, 24)]
 sweep('rim_R', edge, circ(0.016, 8), DARK, side=(0, 0, 1))
 sweep('rim_L', [Vector((-p.x, p.y, p.z)) for p in edge], circ(0.016, 8), DARK, side=(0, 0, 1))
-# cowl lip in front of the opening (glare shield edge)
-hw, zb, zt = pod_at(OPEN_F)
-lip = [Vector((math.cos(a) * side_x(OPEN_F, sill(OPEN_F)) * 0.98, OPEN_F, sill(OPEN_F) + (zt - sill(OPEN_F)) * math.sin(a))) for a in frange(0, math.pi, 14)]
-sweep('cowl_lip', lip, circ(0.016, 8), DARK, side=(0, 1, 0))
 # pod floor, ring frames (internal structure), keel shoe
-box('pod_floor', (0, 1.95, 0.43), (0.56, 0.95, 0.025), CPIT)
+box('pod_floor', (0, 1.93, 0.43), (0.50, 0.90, 0.025), CPIT)
 for k, y in enumerate((2.55, 1.95, 1.45)):
     r = pod_ring(y); sec = [Vector((p.x * 0.94, y, 0.5 * (pod_at(y)[1] + pod_at(y)[2]) + (p.z - 0.5 * (pod_at(y)[1] + pod_at(y)[2])) * 0.94)) for p in r]
     sec = [p for p in sec if not (OPEN_A < y < OPEN_F and p.z > min(sill(y) - 0.03, 0.84 if y < 1.6 else 0.66))]
@@ -155,20 +163,66 @@ def windscreen(y0, top_z, rake, name):
     sweep(name + '_frame', [v.co.copy() for v in []] or [Vector(r) for r in [(rows_xyz) for rows_xyz in []]] or
           [Vector((math.cos(math.pi * i / 18) * side_x(y0, sill(y0)) * 0.99, y0, sill(y0) + (pod_at(y0)[2] - sill(y0)) * math.sin(math.pi * i / 18))) for i in range(19)],
           rect(0.03, 0.022), DARK, side=(0, 1, 0), smooth=False)
-windscreen(2.31, 1.55, 0.20, 'windscreen')
+def windscreen2(name, y0=2.315, z0=1.392, z1=1.68, hw=0.31, bow=0.07, rake=0.16):
+    bm = bmesh.new(); N = 16; rows = []
+    for j in range(5):
+        f = j / 4; row = []
+        for k in range(N + 1):
+            a = math.pi * k / N
+            row.append(bm.verts.new((math.cos(a) * hw * (1 - 0.12 * f), y0 + bow * math.sin(a) - rake * f, z0 + (z1 - z0) * f)))
+        rows.append(row)
+    for j in range(4):
+        for k in range(N): bm.faces.new((rows[j][k], rows[j][k + 1], rows[j + 1][k + 1], rows[j + 1][k]))
+    o = finish(name, bm, GLASS); sm = o.modifiers.new('thick', 'SOLIDIFY'); sm.thickness = 0.008
+    for tag, f in (('_base', 0.0), ('_top', 1.0)):
+        sweep(name + tag, [Vector((math.cos(math.pi * k / N) * hw * (1 - 0.12 * f), y0 + bow * math.sin(math.pi * k / N) - rake * f, z0 + (z1 - z0) * f)) for k in range(N + 1)],
+              rect(0.022, 0.018), DARK, side=(0, 0, 1), smooth=False)
+    for sx in (-1, 1): sweep(f'{name}_post{sx}', [Vector((sx * hw, y0, z0)), Vector((sx * hw * 0.88, y0 - rake, z1))], rect(0.022, 0.022), DARK, side=(0, 1, 0), smooth=False)
+def windscreen3(name, y_end=2.03, ph=80, n=28, rows=6):
+    """0.15.5 (Nick 21:27: sleeker, more curved, continuous): one wrap-round sheet. Its base runs along the coaming and
+    down the cockpit rims; each column is a bulged quadratic curve leaning aft, the top edge falls away to the sides."""
+    xf = side_x(OPEN_F, sill(OPEN_F - 0.001)) - 0.006
+    side = [Vector((-(side_x(y, sill(y)) - 0.006), y, sill(y) + 0.004)) for y in frange(y_end, OPEN_F - 0.004, 12)]
+    path = side + [Vector((x, OPEN_F - 0.002, sill(OPEN_F - 0.001) + 0.004)) for x in frange(side[-1].x * 0.9, -side[-1].x * 0.9, 10)] + [Vector((-p.x, p.y, p.z)) for p in reversed(side)]
+    L = [0.0]
+    for p0, p1 in zip(path, path[1:]): L.append(L[-1] + (p1 - p0).length)
+    def at(d):
+        for k in range(len(path) - 1):
+            if L[k + 1] >= d: t = (d - L[k]) / max(1e-9, L[k + 1] - L[k]); return path[k].lerp(path[k + 1], t)
+        return path[-1]
+    bm = bmesh.new(); grid = []; base_c, top_c = [], []
+    for i in range(n + 1):
+        u = 2 * i / n - 1; f = math.radians(ph * u); sf, cf = math.sin(f), math.cos(f)
+        B = at(L[-1] * i / n)
+        T = Vector((B.x * 0.82, B.y - (0.03 + 0.17 * cf * cf), max(B.z + 0.16, 1.70 - 0.42 * sf * sf)))
+        Cm = (B + T) / 2 + Vector((sf, cf, 0.35)).normalized() * 0.045
+        col = [bm.verts.new(B * (1 - t) ** 2 + Cm * 2 * t * (1 - t) + T * t * t) for t in (j / rows for j in range(rows + 1))]
+        grid.append(col); base_c.append(B); top_c.append(T)
+    for i in range(n):
+        for j in range(rows): bm.faces.new((grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]))
+    edges = [[grid[i][j].co.copy() for j in range(rows + 1)] for i in (0, n)]
+    o = finish(name, bm, GLASS); sm = o.modifiers.new('thick', 'SOLIDIFY'); sm.thickness = 0.008
+    sweep(name + '_base', base_c, rect(0.014, 0.012), DARK, side=(0, 0, 1))
+    sweep(name + '_top', top_c, rect(0.010, 0.010), DARK, side=(0, 0, 1))
+    for k, e in enumerate(edges): sweep(f'{name}_edge{k}', e, rect(0.010, 0.010), DARK, side=(1, 0, 0))
+windscreen3('windscreen')
 # HUD combiner + projector on the glare shield
-box('hud_projector', (0, 2.16, 1.225), (0.13, 0.12, 0.055), DARK, bevel=0.01)
-box('hud_glass', (0, 2.10, 1.33), (0.15, 0.008, 0.14), GLASS, rot=(R(-22), 0, 0))
-for sx in (-1, 1): box(f'hud_arm{sx}', (sx * 0.08, 2.11, 1.31), (0.01, 0.016, 0.17), DARK, rot=(R(-22), 0, 0))
+box('hud_projector', (0, 2.19, 1.452), (0.10, 0.055, 0.032), DARK, bevel=0.008)
+box('hud_glass', (0, 2.135, 1.545), (0.13, 0.008, 0.11), GLASS, rot=(R(-22), 0, 0))
+for sx in (-1, 1): pipe(f'hud_arm{sx}', [(sx * 0.07, 2.19, 1.465), (sx * 0.072, 2.165, 1.50), (sx * 0.07, 2.142, 1.545)], 0.006, DARK, 4, segs=6)
 # instrument binnacle (initial): one MFD with side buttons, analog gauges around it
-PM = Matrix.Translation((0, 2.18, 1.07)) @ Matrix.Rotation(R(-20), 4, 'X')
-box('panel', (0, 0, 0), (0.62, 0.035, 0.24), CPIT, M=PM, bevel=0.01)
-box('mfd', (0, -0.022, 0.0), (0.21, 0.02, 0.19), DARK, M=PM, bevel=0.006)
-part('x_mfd1', 'cockpit_F', tuple(PM.translation)); screen('mfd_screen', 0.15, 0.15, PM, -0.036); part('cockpit_F')
+# 0.15.5 (Nick 21:27): larger portrait MFD in the middle, smaller gauges either side, all inside the cowl skin
+PM = Matrix.Translation((0, 2.17, 1.29)) @ Matrix.Rotation(R(-20), 4, 'X')
+GAUGES = ((0.125, 0.045), (0.198, 0.045), (0.125, -0.04), (0.198, -0.04)); GR = 0.028
+box('panel', (0, 0, 0), (0.50, 0.035, 0.28), CPIT, M=PM, bevel=0.012)
+box('mfd', (0, -0.022, 0.0), (0.16, 0.02, 0.27), DARK, M=PM, bevel=0.006)
+box('panel_box', (0, 2.25, 1.27), (0.40, 0.08, 0.20), CPIT, bevel=0.01)
+box('panel_pedestal', (0, 2.30, 0.78), (0.12, 0.08, 0.70), CPIT, bevel=0.01)
+part('x_mfd1', 'cockpit_F', tuple(PM.translation)); screen('mfd_screen', 0.12, 0.24, PM, -0.036, rot=True); part('cockpit_F')
 for sx in (-1, 1):
-    for k in range(5): box(f'mfd_btn{sx}{k}', (sx * 0.093, -0.034, 0.066 - 0.033 * k), (0.018, 0.008, 0.018), MECH, M=PM)
-    for k, (gx, gz) in enumerate(((0.152, 0.05), (0.234, 0.05), (0.152, -0.055), (0.234, -0.055))):
-        revolve(f'gauge{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, 0.038), (0.012, 0.038), (0.012, 0.032), (0.006, 0.032), (0.006, 0)], DARK, 16, M=PM)
+    for k in range(6): box(f'mfd_btn{sx}{k}', (sx * 0.070, -0.034, 0.090 - 0.036 * k), (0.016, 0.008, 0.016), MECH, M=PM)
+    for k, (gx, gz) in enumerate(GAUGES):
+        revolve(f'gauge{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, GR), (0.010, GR), (0.010, GR - 0.005), (0.005, GR - 0.005), (0.005, 0)], DARK, 16, M=PM)
 # exterior detail (pass 2): raised panel seams, side seam, boarding step, antennas
 def seam_ring(y, tag, cut=True):
     pts = pod_ring(y); hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb)
@@ -190,62 +244,121 @@ for y, tag in ((2.02, 'c'), (1.55, 'd')): seam_ring(y, tag)
 for sx in (-1, 1):
     side = []
     for y in frange(2.68, 1.30, 16):
-        hw, zb, zt = pod_at(y); side.append(Vector((sx * (hw + 0.002), y, zb + 0.46 * (zt - zb) - 0.02)))
+        side.append(Vector((sx * (pod_x(y, 0.80) + 0.003), y, 0.80)))
     sweep(f'seam_side{sx}', side, rect(0.0025, 0.006), DARK, side=(sx, 0, 0), smooth=False)
 # boarding step (left) on a short strut
 box('board_step', (-0.47, 1.45, 0.47), (0.14, 0.20, 0.018), MECH, bevel=0.004)
 for k, yy in enumerate((1.38, 1.52)): tube(f'board_step_strut{k}', (-0.40, yy, 0.47), (-0.33, yy, 0.55), 0.012, FRAME, 8)
 # blade antenna under the pod and a GPS puck on the windscreen frame
-plate('ant_belly', [(0.0, 0.0), (0.10, 0.0), (0.05, -0.16), (-0.01, -0.16)], 0.012, DARK, Matrix.Translation((0, 1.62, 0.39)) @ Matrix.Rotation(R(90), 4, 'Z') @ side_at(0.0), bevel=0.003)
+plate('ant_belly', [(0.05, 0.0), (-0.05, 0.0), (-0.11, -0.15), (-0.06, -0.15)], 0.012, DARK, Matrix.Translation((0, 1.62, 0.39)) @ side_at(0.0), bevel=0.003)   # edge-on, swept back (Nick 21:41)
 # pilot controls
 part('x_stick', 'cockpit_F', (0, 1.95, 0.47))
-pipe('stick', [(0, 1.95, 0.45), (0, 1.90, 0.80), (0, 1.80, 1.12)], 0.015, DARK, 4, segs=8)
+pipe('stick', [(0, 1.95, 0.45), (0, 1.90, 0.84), (0, 1.80, 1.19)], 0.015, DARK, 4, segs=8)
 
-box('stick_grip', (0, 1.79, 1.18), (0.045, 0.05, 0.12), DARK, rot=(R(12), 0, 0), bevel=0.014)
+# fighter style grip (Nick 2026-11-12 20:57): contoured handle, hat switch, trigger in a guard, weapon release,
+# thumb castle switch, pinky lever. Frame GG: z up the grip, +y = finger side (forward)
+GG = Matrix.Translation((0, 1.80, 1.185)) @ Matrix.Rotation(R(12), 4, 'X')
+revolve('stick_collar', (0, 0, -0.005), (0, 0, 1), [(0, 0.024), (0.012, 0.024), (0.016, 0.018), (0.016, 0)], MECH, 14, M=GG)
+ball('stick_grip', (0, 0.002, 0.068), (0.022, 0.027, 0.072), DARK, M=GG, seg=16)
+ball('stick_palm', (0, -0.010, 0.060), (0.020, 0.022, 0.052), DARK, M=GG, seg=14)
+ball('stick_head', (0, 0.006, 0.142), (0.025, 0.033, 0.026), DARK, M=GG, seg=16)
+for k, z in enumerate((0.030, 0.052, 0.074)): tube(f'stick_finger{k}', (-0.017, 0.022, z), (0.017, 0.022, z), 0.006, DARK, 8, M=GG)
+box('stick_trigger', (0, 0.034, 0.112), (0.011, 0.010, 0.028), MECH, rot=(R(-15), 0, 0), M=GG, bevel=0.003)
+pipe('stick_guard', [(0, 0.024, 0.132), (0, 0.054, 0.118), (0, 0.052, 0.094), (0, 0.026, 0.090)], 0.0035, DARK, 4, segs=6, M=GG)
+revolve('stick_hat_base', (0, -0.012, 0.164), (0, -0.25, 1), [(0, 0.011), (0.006, 0.011), (0.006, 0)], MECH, 12, M=GG)
+box('stick_hat', (0, -0.012, 0.173), (0.016, 0.016, 0.006), MECH, M=GG, bevel=0.002)
+box('stick_hat_x', (0, -0.012, 0.173), (0.026, 0.006, 0.004), MECH, M=GG)
+box('stick_hat_y', (0, -0.012, 0.173), (0.006, 0.026, 0.004), MECH, M=GG)
+revolve('stick_release', (-0.012, 0.016, 0.164), (0, 0, 1), [(0, 0.008), (0.005, 0.008), (0.005, 0)], MECH, 10, M=GG)
+box('stick_castle', (-0.026, -0.006, 0.128), (0.006, 0.014, 0.014), MECH, M=GG, bevel=0.002)
+box('stick_pinky', (0, 0.030, 0.012), (0.026, 0.010, 0.016), MECH, rot=(R(10), 0, 0), M=GG, bevel=0.002)
 part('cockpit_F')
 box('stick_boot', (0, 1.95, 0.47), (0.10, 0.10, 0.05), DARK, bevel=0.015)
-box('throttle_box', (-0.31, 1.72, 1.06), (0.06, 0.22, 0.06), MECH, bevel=0.01)
-part('x_throttle', 'cockpit_F', (-0.31, 1.73, 1.08))
-tube('throttle', (-0.31, 1.73, 1.08), (-0.31, 1.77, 1.20), 0.009, MECH, 6); ball('throttle_knob', (-0.31, 1.775, 1.21), (0.022,) * 3, DARK, seg=10)
+box('lconsole_body', (-0.32, 1.82, 1.04), (0.09, 0.40, 0.22), CPIT, bevel=0.01)
+box('throttle_box', (-0.32, 1.74, 1.175), (0.07, 0.20, 0.05), MECH, bevel=0.008)
+box('throttle_slot', (-0.32, 1.74, 1.201), (0.014, 0.17, 0.004), DARK)
+for k, yy in enumerate((1.66, 1.82)): box(f'throttle_mark{k}', (-0.29, yy, 1.201), (0.012, 0.006, 0.003), MECH)
+part('x_throttle', 'cockpit_F', (-0.32, 1.74, 1.17))
+tube('throttle', (-0.32, 1.74, 1.17), (-0.32, 1.74, 1.29), 0.010, MECH, 8)
+# throttle grip (review 2): a lever head canted 15 deg inboard with a thumb ledge; mic hat on top, two small thumb
+# buttons and a cursor slider on the inboard face, speed brake slider on the front
+TM = Matrix.Translation((-0.32, 1.74, 1.285)) @ Matrix.Rotation(R(15), 4, 'Y')
+box('throttle_knob', (0, 0, 0.05), (0.04, 0.06, 0.10), DARK, M=TM, bevel=0.012)
+box('throttle_ledge', (0.026, -0.004, 0.022), (0.016, 0.05, 0.008), DARK, M=TM, bevel=0.003)
+box('throttle_mic', (0, 0.01, 0.102), (0.012, 0.012, 0.006), MECH, M=TM, bevel=0.002)
+for k, yy in enumerate((0.014, -0.012)): revolve(f'throttle_btn{k}', (0.0205, yy, 0.078), (1, 0, 0), [(0, 0.005), (0.003, 0.005), (0.003, 0)], MECH, 10, M=TM)
+box('throttle_cursor', (0.0215, 0.0, 0.050), (0.004, 0.018, 0.010), MECH, M=TM, bevel=0.0015)
+box('throttle_spdbrk', (0, 0.031, 0.065), (0.012, 0.004, 0.018), MECH, M=TM, bevel=0.0015)
+box('throttle_friction', (-0.32, 1.74, 1.205), (0.03, 0.03, 0.012), DARK)
 part('cockpit_F')
 for sx in (-1, 1):
-    box(f'pedal{sx}', (sx * 0.15, 2.42, 0.56), (0.11, 0.02, 0.15), MECH, rot=(R(-25), 0, 0), bevel=0.004)
-    tube(f'pedal_bar{sx}', (sx * 0.15, 2.46, 0.44), (sx * 0.15, 2.43, 0.55), 0.01, MECH, 6)
+    # pedals 0.08 further aft so the stock pilot's boots reach them
+    box(f'pedal_rest{sx}', (sx * 0.15, 2.32, 0.452), (0.15, 0.30, 0.02), CPIT, bevel=0.004)
+    for k in (-1, 1): box(f'pedal_rail{sx}{k}', (sx * 0.15 + k * 0.03, 2.32, 0.468), (0.012, 0.28, 0.012), MECH)
+    for k in (-1, 1): box(f'pedal_stop{sx}{k}', (sx * 0.15, 2.32 + k * 0.135, 0.47), (0.08, 0.012, 0.02), DARK)
+    part('x_pedal_' + ('L' if sx < 0 else 'R'), 'cockpit_F', (sx * 0.15, 2.34, 0.48))
+    box(f'pedal{sx}', (sx * 0.15, 2.34, 0.56), (0.11, 0.02, 0.15), MECH, rot=(R(-25), 0, 0), bevel=0.004)
+    box(f'pedal_carriage{sx}', (sx * 0.15, 2.36, 0.478), (0.085, 0.10, 0.03), DARK, bevel=0.004)
+    tube(f'pedal_bar{sx}', (sx * 0.15, 2.38, 0.49), (sx * 0.15, 2.35, 0.55), 0.01, MECH, 6)
+    box(f'pedal_strap{sx}', (sx * 0.15, 2.325, 0.60), (0.115, 0.03, 0.02), DARK, rot=(R(-25), 0, 0))
+    box(f'pedal_heel{sx}', (sx * 0.15, 2.295, 0.505), (0.10, 0.03, 0.02), DARK, rot=(R(-25), 0, 0))
+    part('cockpit_F')
 # ---- cockpit detail pass: gauge needles and bezels, standby compass, side consoles, harness
 for sx in (-1, 1):
-    for k, (gx, gz) in enumerate(((0.152, 0.05), (0.234, 0.05), (0.152, -0.055), (0.234, -0.055))):
+    for k, (gx, gz) in enumerate(GAUGES):
         # live needle: its own pseudo-part pivoted on the gauge centre, modelled pointing up; the plugin turns it
         gid = ('asi', 'alt', 'vsi', 'rotor')[k] if sx < 0 else ('rpm', 'fuel', 'oil', 'volt')[k]
         NM = PM @ Matrix.Translation((sx * gx, -0.027, gz))
         part(f'x_g_{gid}', 'cockpit_F', tuple(NM.translation))
-        box(f'gauge_needle{sx}{k}', (0, 0, 0.012), (0.004, 0.002, 0.026), MECH, M=NM)
+        box(f'gauge_needle{sx}{k}', (0, 0, 0.009), (0.0035, 0.002, 0.019), MECH, M=NM)
         part('cockpit_F')
-        revolve(f'gauge_bezel{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, 0.041), (0.014, 0.041), (0.014, 0.038)], MECH, 16, M=PM, cap=False)
-box('panel_lamp_bezel', (0, -0.02, 0.112), (0.19, 0.012, 0.024), MECH, M=PM, bevel=0.003)
-for k in range(5): box(f'panel_lamp{k}', (-0.072 + 0.036 * k, -0.027, 0.112), (0.03, 0.004, 0.016), DARK, M=PM)
-box('panel_masterarm', (0.17, -0.022, 0.108), (0.05, 0.012, 0.03), MECH, M=PM, bevel=0.003)
-box('panel_masterarm_guard', (0.17, -0.032, 0.108), (0.04, 0.006, 0.022), DARK, M=PM)
+        revolve(f'gauge_bezel{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, GR + 0.003), (0.012, GR + 0.003), (0.012, GR)], MECH, 16, M=PM, cap=False)
+box('panel_lamp_bezel', (-0.16, -0.02, 0.105), (0.12, 0.012, 0.024), MECH, M=PM, bevel=0.003)
+for k in range(3): box(f'panel_lamp{k}', (-0.196 + 0.036 * k, -0.027, 0.105), (0.03, 0.004, 0.016), DARK, M=PM)
+box('panel_masterarm', (0.16, -0.022, 0.105), (0.05, 0.012, 0.03), MECH, M=PM, bevel=0.003)
+box('panel_masterarm_guard', (0.16, -0.032, 0.105), (0.04, 0.006, 0.022), DARK, M=PM)
 # standby compass on a stalk above the binnacle
-tube('compass_stalk', (0.22, 2.19, 1.19), (0.22, 2.18, 1.25), 0.008, DARK, 6)
-box('compass', (0.22, 2.18, 1.27), (0.06, 0.05, 0.045), DARK, bevel=0.012)
+tube('compass_stalk', (0.15, 2.185, 1.41), (0.15, 2.175, 1.445), 0.010, DARK, 6)
+box('compass', (0.15, 2.17, 1.462), (0.055, 0.045, 0.036), DARK, bevel=0.010)
 # left console beside the throttle: fuel / mags / lights switch strip; right console: radio head
-box('lconsole', (-0.26, 1.88, 1.03), (0.07, 0.20, 0.04), CPIT, bevel=0.006)
-for k in range(5):
-    tube(f'lconsole_sw{k}', (-0.26, 1.81 + 0.035 * k, 1.05), (-0.26, 1.82 + 0.035 * k, 1.075), 0.0035, MECH, 5)
-box('fuel_selector', (-0.26, 1.97, 1.055), (0.03, 0.03, 0.012), DARK, bevel=0.004)
-box('rconsole', (0.28, 1.82, 1.03), (0.08, 0.26, 0.04), CPIT, bevel=0.006)
-box('radio_head', (0.28, 1.80, 1.06), (0.06, 0.12, 0.022), DARK, bevel=0.004)
-for k in range(2): revolve(f'radio_knob{k}', (0.28, 1.76 + 0.08 * k, 1.07), (0, 0, 1), [(0, 0.012), (0.014, 0.012), (0.016, 0)], MECH, 10)
-for k in range(3): tube(f'rconsole_sw{k}', (0.28, 1.90 + 0.025 * k, 1.05), (0.28, 1.91 + 0.025 * k, 1.075), 0.0035, MECH, 5)
-# pedal toe straps
-for sx in (-1, 1): box(f'pedal_strap{sx}', (sx * 0.15, 2.405, 0.60), (0.115, 0.03, 0.02), DARK, rot=(R(-25), 0, 0))
+box('lconsole', (-0.32, 1.93, 1.155), (0.08, 0.16, 0.012), DARK, bevel=0.003)
+for k in range(4):
+    tube(f'lconsole_sw{k}', (-0.32, 1.87 + 0.03 * k, 1.16), (-0.32, 1.875 + 0.03 * k, 1.19), 0.0035, MECH, 5)
+box('fuel_selector', (-0.32, 1.99, 1.17), (0.03, 0.03, 0.012), MECH, bevel=0.004)
+box('rconsole', (0.32, 1.82, 1.04), (0.09, 0.40, 0.22), CPIT, bevel=0.01)
+box('radio_head', (0.32, 1.78, 1.165), (0.07, 0.14, 0.03), DARK, bevel=0.004)
+for k in range(2): revolve(f'radio_knob{k}', (0.32, 1.74 + 0.08 * k, 1.18), (0, 0, 1), [(0, 0.012), (0.014, 0.012), (0.016, 0)], MECH, 10)
+for k in range(3): tube(f'rconsole_sw{k}', (0.32, 1.90 + 0.03 * k, 1.15), (0.32, 1.905 + 0.03 * k, 1.18), 0.0035, MECH, 5)
 # pilot seat on the pod floor / keel
 def rifle_on_seat(tag, P, side=-1):
-    # service rifle clamped vertically to the outboard side of the seat back, muzzle up
+    # service rifle clamped vertically to the outboard side of the seat back, muzzle up. Stock Ibis rifle shape, painted
+    # in the seat 3 guns' FDE scheme (Nick 2026-11-12 21:23) with a few small additions: sling, muzzle device, optic on a
+    # rail along the carry handle, magazine base plate
     a = R(LEAN_PIL); M = Matrix.Translation(P + Vector((side * 0.29, -0.13, -0.16))) @ Matrix.Rotation(a, 4, 'X')
     for o in RIFLE:
-        part_obj = o.copy(); part_obj.data = o.data.copy(); part_obj.data.transform(M); coll('WORK').objects.link(part_obj)
+        part_obj = o.copy(); me = o.data.copy(); part_obj.data = me
+        me.materials.clear()
+        for mn in (FDE_, BRONZE_, BLACK_): me.materials.append(mat(mn))
+        for f in me.polygons:
+            c = f.center
+            if c.z > 0.716 or c.z < 0.04: k = 2                                   # muzzle / buttpad
+            elif c.y > 0.03 and 0.20 < c.z < 0.315: k = 2                         # magazine
+            elif c.y > 0.064 and 0.36 < c.z < 0.66: k = 1                         # carry handle
+            elif abs(c.x) < 0.0075 and -0.022 < c.y < 0.021 and 0.41 < c.z < 0.51: k = 2   # trigger
+            else: k = 0
+            f.material_index = k
+        me.transform(M); coll('WORK').objects.link(part_obj)
         part_obj.name = f'{tag}_rifle'; PARTS[CUR[0]]['objs'].append(part_obj)
+    def L(*v): return M @ Vector(v)
+    revolve(f'{tag}_rifle_muzzle', L(0, -0.049, 0.784), M.to_3x3() @ Vector((0, 0, 1)), [(0, 0.013), (0.035, 0.013), (0.035, 0.0)], BLACK_, 10)
+    box(f'{tag}_rifle_rail', (0, 0.112, 0.50), (0.022, 0.008, 0.20), BLACK_, M=M)
+    for k in range(9): box(f'{tag}_rifle_rail_rib{k}', (0, 0.117, 0.42 + 0.02 * k), (0.024, 0.004, 0.008), BLACK_, M=M)
+    box(f'{tag}_rifle_optic', (0, 0.135, 0.50), (0.026, 0.034, 0.055), BLACK_, M=M, bevel=0.005)
+    box(f'{tag}_rifle_optic_hood', (0, 0.135, 0.535), (0.03, 0.038, 0.012), FDE_, M=M, bevel=0.003)
+    box(f'{tag}_rifle_magplate', (0, 0.166, 0.258), (0.03, 0.008, 0.10), FDE_, M=M)
+    sw = [(0, -0.135, 0.06), (0, -0.165, 0.20), (0, -0.175, 0.40), (0, -0.165, 0.58), (0, -0.135, 0.68)]
+    sweep(f'{tag}_rifle_sling', crom([L(*v) for v in sw], 4), rect(0.025, 0.004), FABRIC_, side=tuple(M.to_3x3() @ Vector((1, 0, 0))), smooth=False)
+    for k, z in enumerate((0.06, 0.68)): box(f'{tag}_rifle_swivel{k}', (0, -0.13, z), (0.03, 0.012, 0.012), BLACK_, M=M)
     for dz in (0.10, 0.45): box(f'{tag}_rifle_clamp{dz}', P + Vector((side * 0.26, -0.13 - dz * math.sin(a), -0.16 + dz * math.cos(a))), (0.07, 0.05, 0.03), DARK, rot=(a, 0, 0))
 P1_SEAT = True
 # five-point harness on the stock pilot figure (Nick 2026-11-12 11:19): shoulder straps from the seat back over the
@@ -298,15 +411,29 @@ def lapbelt(tag, P):
 bucket('seat1', Q1, lean=LEAN_PIL)
 for sx in (-1, 1): box(f'seat1_base{sx}', (sx * 0.15, Q1.y + 0.05, (Q1.z - 0.17 + 0.44) / 2), (0.05, 0.36, Q1.z - 0.17 - 0.44), FRAME)
 rifle_on_seat('seat1', Q1)
-harness5('seat1', P1)
+_c = CUR[0]; part('x_harness1', 'cockpit_F', tuple(P1)); harness5('seat1', P1); part(_c)
 # targeting pod: small stabilised ball behind the nose gear (lases a single target)
-TP = Vector((0, 1.45, 0.30))   # moved aft from 1.80 to clear the nose wheel (Nick 2026-11-12)
-revolve('tpod_mount', (0, TP.y, 0.445), (0, 0, -1), [(0, 0.075), (0.03, 0.07), (0.06, 0.055), (0.06, 0)], MECH, 18)
-revolve('tpod_yoke_ring', (0, TP.y, 0.387), (0, 0, -1), [(0, 0.10), (0.025, 0.10), (0.025, 0.0)], DARK, 22)
-ball('tpod_ball', TP, (0.115, 0.115, 0.115), MECH, seg=20)
-revolve('tpod_window', TP + Vector((0, 0.088, -0.02)), (0, 1, -0.2), [(0, 0.062), (0.03, 0.062), (0.03, 0.0)], DARK, 16)
-revolve('tpod_lens', TP + Vector((0, 0.119, -0.026)), (0, 1, -0.2), [(0, 0.05), (0.002, 0)], SCREEN, 16)
-revolve('tpod_laser', TP + Vector((0.07, 0.072, 0.03)), (0, 1, -0.2), [(0, 0.022), (0.03, 0.022), (0.03, 0.0)], DARK, 10)
+TP = Vector((0, 1.05, 0.27))   # 0.15.5: aft to mid belly (Nick 21:30); detail pass after the Cricket's turret ball
+TR = 0.13
+revolve('tpod_flange', (0, TP.y, pod_at(TP.y)[1] + 0.02), (0, 0, -1), [(0, 0.13), (0.012, 0.13), (0.02, 0.115), (0.02, 0)], MECH, 24)
+for k in range(8):
+    a = 2 * math.pi * (k + 0.5) / 8; revolve(f'tpod_bolt{k}', (0.118 * math.cos(a), TP.y + 0.118 * math.sin(a), pod_at(TP.y)[1] + 0.002), (0, 0, -1), [(0, 0.006), (0.006, 0.006), (0.006, 0)], DARK, 6)
+revolve('tpod_az', (0, TP.y, pod_at(TP.y)[1]), (0, 0, -1), [(0, 0.105), (0.05, 0.105), (0.058, 0.098), (0.058, 0)], DARK, 24)
+revolve('tpod_az_seam', (0, TP.y, pod_at(TP.y)[1] - 0.03), (0, 0, -1), [(0, 0.107), (0.006, 0.107), (0.006, 0)], MECH, 24)
+for sx in (-1, 1):   # yoke cheeks holding the elevation axis
+    plate(f'tpod_cheek{sx}', [(-0.075, 0.0), (0.075, 0.0), (0.06, -0.125), (0.0, -0.165), (-0.06, -0.125)], 0.022, MECH, Matrix.Translation((0, TP.y, pod_at(TP.y)[1] - 0.05)) @ side_at(sx * (TR + 0.018)), bevel=0.006)
+    revolve(f'tpod_trunnion{sx}', (sx * (TR + 0.03), TP.y, TP.z), (sx, 0, 0), [(0, 0.04), (0.012, 0.04), (0.018, 0.03), (0.018, 0)], DARK, 16)
+ball('tpod_ball', TP, (TR, TR, TR), MECH, seg=24)
+revolve('tpod_seam', TP, (1, 0, 0), [(-0.004, TR + 0.002), (0.004, TR + 0.002)], DARK, 28, cap=False)
+# sensor face: a flat window panel turned 20 deg down, big EO lens, IR lens, laser and rangefinder ports
+WD = Vector((0, math.cos(R(20)), -math.sin(R(20))))
+WC = TP + WD * (TR - 0.022)
+revolve('tpod_window', WC, WD, [(0, 0.098), (0.026, 0.098), (0.030, 0.090), (0.030, 0)], DARK, 24)
+revolve('tpod_eo', WC + WD * 0.031 + Vector((-0.032, 0, 0.012)), WD, [(0, 0.044), (0.004, 0.044), (0.006, 0.0)], SCREEN, 20)
+revolve('tpod_eo_ring', WC + WD * 0.029 + Vector((-0.032, 0, 0.012)), WD, [(0, 0.050), (0.006, 0.050), (0.006, 0.044)], MECH, 20, cap=False)
+revolve('tpod_ir', WC + WD * 0.031 + Vector((0.045, 0, 0.022)), WD, [(0, 0.028), (0.004, 0.028), (0.006, 0.0)], SCREEN, 16)
+revolve('tpod_laser', WC + WD * 0.031 + Vector((0.040, 0.012, -0.035)), WD, [(0, 0.015), (0.006, 0.015), (0.006, 0.0)], SCREEN, 12)
+revolve('tpod_lrf', WC + WD * 0.031 + Vector((-0.005, 0.014, -0.058)), WD, [(0, 0.010), (0.004, 0.010), (0.004, 0.0)], SCREEN, 10)
 part('gear_F', 'cockpit_F', (0, 2.16, 0.50))
 NY, NR = 2.10, 0.24
 tube('nose_steer', (0, 2.16, 0.72), (0, 2.16, 0.51), 0.034, MECH, 14)
@@ -366,14 +493,19 @@ for sx in (-1, 1):
     wing(f'stub{sx}', [((sx * 0.08, 0.36 + DYP, KZ - 0.02), (0, -0.40, 0), (0, 0, 1)), ((sx * (HPX + 0.05), 0.32 + DYP, KZ - 0.02), (0, -0.32, 0), (0, 0, 1))], SKIN, t=0.16)
     tube(f'stub_strut{sx}', (sx * 0.29, 0.46 + DYP, RAIL_Z), (sx * (HPX - 0.18), 0.20 + DYP, KZ - 0.01), 0.014, FRAME, 8)
     tube(f'stub_strut_b{sx}', (sx * 0.29, 0.02 + DYP, RAIL_Z), (sx * (HPX - 0.22), 0.16 + DYP, KZ - 0.01), 0.014, FRAME, 8)
-    plate(f'pylon{sx}', [(0.12, 0), (-0.26, 0), (-0.20, 0.10), (0.06, 0.10)], 0.055, SKIN, Matrix.Translation((0, 0.20 + DYP, KZ - 0.02)) @ side_at(sx * HPX), bevel=0.008)
-    for k in (-1, 1): tube(f'sway{sx}{k}', (sx * HPX - 0.05, 0.20 + DYP + 0.06 * k, KZ + 0.075), (sx * HPX + 0.05, 0.20 + DYP + 0.06 * k, KZ + 0.075), 0.008, MECH, 6)
+    # beefed-up built-in pylon (Nick 2026-11-12 21:35): taller and longer with a launch rail on top, so the AGM-48 and
+    # IRM-S2 sit straight on it (custom mounts without the stock launch pylon); hardpoint at the rail top, z PYT
+    plate(f'pylon{sx}', [(0.30, 0), (-0.50, 0), (-0.40, 0.14), (0.20, 0.14)], 0.085, SKIN, Matrix.Translation((0, 0.20 + DYP, KZ - 0.02)) @ side_at(sx * HPX), bevel=0.012)
+    box(f'pylon_rail{sx}', (sx * HPX, 0.15 + DYP, KZ + 0.13), (0.045, 0.62, 0.02), MECH, bevel=0.005)
+    for yk in (0.40, 0.00, -0.30): box(f'pylon_lug{sx}{yk}', (sx * HPX, 0.20 + DYP + yk * 0.8 - 0.05, KZ + 0.12), (0.06, 0.03, 0.012), DARK)
+    box(f'pylon_panel{sx}', (sx * (HPX + 0.043), 0.12 + DYP, KZ + 0.05), (0.004, 0.22, 0.07), MECH, bevel=0.002)
+    for k in (-1, 1): tube(f'sway{sx}{k}', (sx * HPX - 0.06, 0.20 + DYP + 0.20 * k - 0.05, KZ + 0.10), (sx * HPX + 0.06, 0.20 + DYP + 0.20 * k - 0.05, KZ + 0.10), 0.009, MECH, 6)
 
 # ---- gunner seat (cockpit_R)
 part('cockpit_R', 'UL2Airtrike', (0, P2.y, RAIL_Z))
 bucket('seat2', Q2, lean=LEAN_PIL)
 rifle_on_seat('seat2', Q2)
-harness5('seat2', P2)
+_c = CUR[0]; part('x_harness2', 'cockpit_R', tuple(P2)); harness5('seat2', P2); part(_c)
 for sx in (-1, 1):
     tube(f'seat2_leg_f{sx}', (sx * 0.17, Q2.y + 0.22, Q2.z - 0.17), (sx * 0.29, Q2.y + 0.30, RAIL_Z + 0.02), 0.016, FRAME, 8)
     tube(f'seat2_leg_r{sx}', (sx * 0.17, Q2.y - 0.12, Q2.z - 0.18), (sx * 0.29, Q2.y - 0.22, RAIL_Z + 0.02), 0.016, FRAME, 8)
@@ -386,6 +518,8 @@ tube('mfd2_post', (0.08, 0.98, 0.80), (0, 0.98, 1.24), 0.017, FRAME, 8)
 GM = Matrix.Translation((0, 0.99, 1.33)) @ Matrix.Rotation(R(-12), 4, 'X')
 box('mfd2', (0, 0, 0), (0.25, 0.04, 0.20), DARK, M=GM, bevel=0.008)
 part('x_mfd2', 'cockpit_R', tuple(GM.translation)); screen('mfd2_screen', 0.18, 0.15, GM, -0.024); part('cockpit_R')
+box('inst2', (0, 0, -0.145), (0.25, 0.04, 0.08), DARK, M=GM, bevel=0.006)
+part('x_inst2', 'cockpit_R', tuple(GM @ Vector((0, 0, -0.145)))); screen('inst2_screen', 0.22, 0.055, GM @ Matrix.Translation((0, 0, -0.145)), -0.024); part('cockpit_R')
 for sx in (-1, 1):
     for k in range(4): box(f'mfd2_btn{sx}{k}', (sx * 0.108, -0.022, 0.055 - 0.037 * k), (0.016, 0.008, 0.016), MECH, M=GM)
     pipe(f'grip2_arm{sx}', [(sx * 0.05, 0.97, 1.20), (sx * 0.15, 0.84, 1.36), (sx * 0.20, 0.72, 1.45)], 0.014, FRAME, 4, segs=8)
@@ -393,8 +527,8 @@ for sx in (-1, 1):
     box(f'grip2_trigger{sx}', (sx * 0.20, 0.68, 1.52), (0.02, 0.025, 0.035), MECH)
 box('grip2_bar', (0, 0.70, 1.45), (0.40, 0.025, 0.025), FRAME)
 # gunner detail: arming box on the grip bar, intercom box and cord on the MFD post
-box('grip2_armbox', (0, 0.70, 1.475), (0.10, 0.04, 0.03), DARK, bevel=0.004)
-for k in range(3): tube(f'grip2_sw{k}', (-0.03 + 0.03 * k, 0.70, 1.49), (-0.03 + 0.03 * k, 0.705, 1.51), 0.003, MECH, 5)
+box('grip2_armbox', (0, 0.70, 1.435), (0.10, 0.04, 0.03), DARK, bevel=0.004)
+for k in range(3): tube(f'grip2_sw{k}', (-0.03 + 0.03 * k, 0.70, 1.45), (-0.03 + 0.03 * k, 0.705, 1.47), 0.003, MECH, 5)
 box('ics_box', (0.04, 0.97, 1.05), (0.05, 0.035, 0.07), DARK, bevel=0.004)
 revolve('ics_knob', (0.04, 0.95, 1.07), (0, -1, 0), [(0, 0.01), (0.01, 0.01), (0.012, 0)], MECH, 8)
 # ammo box at the gunner's feet (right), feeds the side gun
