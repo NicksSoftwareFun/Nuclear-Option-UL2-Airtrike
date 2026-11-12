@@ -416,6 +416,18 @@ public static class UL2Builder
             DoomName("wingtip_" + s); DoomName("flap_" + s);
             var hb = Find(root, "HeatBlur_" + s); if (hb) hb.position = P("exhaust") + new Vector3(sx * 0.15f, 0f, 0f);
         }
+        // spinning copy of the blades (turned in game by the plugin); the lifting blade parts keep colliders but hide their mesh
+        var spin = Find(Need("rotorHead"), "rotorSpin") ?? New("rotorSpin", Need("rotorHead"));
+        spin.position = P("rotorCentre"); spin.rotation = Quaternion.identity;
+        foreach (var s in new[] { "L", "R" })
+        {
+            string[] seg = { "root", "mid", "tip" };
+            for (int k = 0; k < 3; k++)
+            {
+                Visual("spin_" + s + "_" + seg[k], "blade_" + s + "_" + seg[k], spin);
+                var mr = Need("wing" + (k + 1) + "_" + s).GetComponent<MeshRenderer>(); if (mr) mr.enabled = false;
+            }
+        }
     }
 
     // ------------------------------------------------------------------ engine core + left/right, prop
@@ -750,7 +762,7 @@ public static class UL2Builder
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.3.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.4.0\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
