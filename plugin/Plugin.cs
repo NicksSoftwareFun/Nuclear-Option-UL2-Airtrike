@@ -12,7 +12,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.5")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.6")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -32,6 +32,9 @@ namespace UL2Airtrike
                 // where it shows over the UL-2's own seats (Nick 2026-11-12 21:46), so hide it on UL-2 cockpits
                 var bail = AccessTools.Method(AccessTools.TypeByName("EjectionSeat"), "BailOut");
                 if (bail != null) h.Patch(bail, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostBailOut)));
+                // prop RPM loop below full throttle (Nick 22:09): log what the strike detector touches
+                var trig = AccessTools.Method(AccessTools.TypeByName("PropStrikeDetector"), "OnTriggerStay");
+                if (trig != null) h.Patch(trig, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreStrike)));
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
         }
@@ -51,6 +54,18 @@ namespace UL2Airtrike
                 Log.LogInfo("UL-2 bail-out: parked ejection seat hidden");
             }
             catch (Exception e) { Log.LogError("UL-2 bail-out: " + e); }
+        }
+        internal static readonly System.Collections.Generic.HashSet<int> OurDetectors = new System.Collections.Generic.HashSet<int>();
+        static float strikeLogT;
+        static void PreStrike(Component __instance, Collider other)
+        {
+            try
+            {
+                if (__instance == null || other == null || !OurDetectors.Contains(__instance.GetInstanceID())) return;
+                if (Time.time - strikeLogT < 0.5f) return; strikeLogT = Time.time;
+                Log.LogInfo("UL-2 prop strike detector touched " + other.name + " (" + other.transform.root.name + ", layer " + other.gameObject.layer + ", trigger " + other.isTrigger + ")");
+            }
+            catch { }
         }
         static void PostStart(Component __instance)
         {
@@ -124,6 +139,8 @@ namespace UL2Airtrike
                     tilt.localRotation = Quaternion.Euler(tiltX, 0f, tiltZ);
                 }
                 if ((scanT -= dt) <= 0f) { scanT = 1f; ScanKits(); }
+                PropWatch(dt);
+                Harnesses();
                 Gauges(spd, dt);
                 Soldier();
                 for (int i = blades.Count - 1; i >= 0; i--)
@@ -148,12 +165,36 @@ namespace UL2Airtrike
                 if (fThr == null) { var t = ci.GetType(); fThr = AccessTools.Field(t, "throttle"); fPitch = AccessTools.Field(t, "pitch"); fRoll = AccessTools.Field(t, "roll"); fAxis = AccessTools.Field(t, "customAxis1"); fYaw = AccessTools.Field(t, "yaw"); Plugin.Log.LogInfo("UL-2 inputs " + t.Name + " throttle " + (fThr != null) + " customAxis1 " + (fAxis != null)); }
                 thr = Mathf.Clamp01(fThr != null ? (float)fThr.GetValue(ci) : 0f);
                 pitchIn = fPitch != null ? (float)fPitch.GetValue(ci) : 0f; rollIn = fRoll != null ? (float)fRoll.GetValue(ci) : 0f;
-                axis = Mathf.Clamp01(fAxis != null ? (float)fAxis.GetValue(ci) : 0f);
+                // the axis reads 0..~0.45 on Nick's binding (log 21:53): 0.4 and up counts as full
+                axis = Mathf.Clamp01((fAxis != null ? (float)fAxis.GetValue(ci) : 0f) / 0.4f);
                 yawIn = fYaw != null ? Mathf.Clamp((float)fYaw.GetValue(ci), -1f, 1f) : 0f; if (float.IsNaN(yawIn)) yawIn = 0f;
             }
             catch (Exception e) { if (!inErr) { inErr = true; Plugin.Log.LogWarning("UL-2 inputs: " + e.Message); } }
         }
         bool inErr;
+        // diagnostics for the prop RPM loop (Nick 22:09): log the prop state when its RPM falls away
+        Component prop; static FieldInfo fpRpm, fpPitch, fpAoA, fpPow, fpAng; float propPeak, propLogT;
+        void PropWatch(float dt)
+        {
+            try
+            {
+                if (prop == null) { var tp = AccessTools.TypeByName("ConstantSpeedProp"); if (tp == null) return; foreach (var c in partList) { if (c == null) continue; var pc = c.GetComponentInChildren(tp, true); if (pc != null) { prop = pc; break; } } if (prop == null) return;
+                    var td = AccessTools.TypeByName("PropStrikeDetector"); if (td != null) foreach (var d in prop.transform.root.GetComponentsInChildren(td, true)) Plugin.OurDetectors.Add(d.GetInstanceID());
+                    foreach (var c in partList) if (c != null && td != null) foreach (var d in c.GetComponentsInChildren(td, true)) Plugin.OurDetectors.Add(d.GetInstanceID());
+                    Plugin.Log.LogInfo("UL-2 prop watch on " + prop.name + ", " + Plugin.OurDetectors.Count + " strike detector(s)");
+                    fpRpm = AccessTools.Field(tp, "RPM"); fpPitch = AccessTools.Field(tp, "PropPitch"); fpAoA = AccessTools.Field(tp, "averageAoA"); fpPow = AccessTools.Field(tp, "powerAvailable"); fpAng = AccessTools.Field(tp, "angularVelocity"); }
+                float r = (float)fpRpm.GetValue(prop);
+                propPeak = Mathf.Max(r, propPeak - 400f * dt);
+                propLogT -= dt;
+                if (propPeak > 600f && r < propPeak * 0.6f && propLogT <= 0f)
+                {
+                    propLogT = 0.3f;
+                    Plugin.Log.LogInfo($"UL-2 prop rpm drop {r:0} (peak {propPeak:0}) pitch {(float)fpPitch.GetValue(prop):0.0} aoa {(float)fpAoA.GetValue(prop):0.0} power {(float)fpPow.GetValue(prop):0} thr {thr:0.00} engine {er:0.00} speed {(fSpeed != null ? (float)fSpeed.GetValue(unit) : 0f):0}");
+                }
+            }
+            catch (Exception e) { if (!propErr) { propErr = true; Plugin.Log.LogWarning("UL-2 prop watch: " + e.Message); } }
+        }
+        bool propErr;
         // extra rotor lift the fixed lifting surfaces can't give: a spun-up rotor on the takeoff roll, and the jump
         void FixedUpdate()
         {
@@ -187,11 +228,40 @@ namespace UL2Airtrike
         }
         void ScanKits()
         {
+            bool kit = false;
             foreach (var c in partList)
             {
                 if (c == null) continue;
                 foreach (var t in c.GetComponentsInChildren<Transform>(true))
-                    if (t.name.StartsWith("UL2_s3kit_") && t.GetComponent<Seat3Pose>() == null) t.gameObject.AddComponent<Seat3Pose>();
+                {
+                    if (t.name.StartsWith("UL2_s3kit_")) { if (t.GetComponent<Seat3Pose>() == null) t.gameObject.AddComponent<Seat3Pose>(); if (t.gameObject.activeInHierarchy) kit = true; }
+                    else if (t.name.StartsWith("UL2_harness") && t.name.Length == 12) { int k = t.name[11] - '1'; if (k >= 0 && k < 3) harness[k] = t.gameObject; }
+                }
+            }
+            seat3Kit = kit;
+        }
+        // harnesses go with their occupant (Nick 21:58): pilot / copilot harness hides once that crewman has ejected,
+        // the seat 3 lap belt shows only while a seat 3 kit (with its soldier) is loaded
+        readonly GameObject[] harness = new GameObject[3]; bool seat3Kit; static FieldInfo fPilots, fEjected;
+        void Harnesses()
+        {
+            if (fPilots == null) fPilots = AccessTools.Field(AccessTools.TypeByName("Aircraft"), "pilots");
+            var pl = fPilots?.GetValue(unit) as Array;
+            for (int k = 0; k < 3; k++)
+            {
+                var h = harness[k]; if (h == null) continue;
+                bool show;
+                if (k == 2) show = seat3Kit;
+                else
+                {
+                    show = true;
+                    if (pl != null && k < pl.Length && pl.GetValue(k) is object p && p != null)
+                    {
+                        if (fEjected == null) fEjected = AccessTools.Field(p.GetType(), "ejected");
+                        if (fEjected != null && (bool)fEjected.GetValue(p)) show = false;
+                    }
+                }
+                if (h.activeSelf != show) h.SetActive(show);
             }
         }
         // right rudder pushes the right pedal forward and the left one back, 6 cm each way (P220 numbers)
@@ -217,6 +287,12 @@ namespace UL2Airtrike
             Needle("asi", -135f + 270f * Mathf.Clamp01(spd * 1.94384f / 120f), dt);          // 0-120 kt
             Needle("alt", alt % 1000f / 1000f * 360f, dt);                                  // one turn per 1000 ft
             Needle("vsi", -90f + 135f * Mathf.Clamp(vs / 10f, -1f, 1f), dt);                // +-10 m/s, zero at 9 o'clock
+            // six-pack (Nick 22:04, Trident style): attitude horizon bar, turn coordinator, heading
+            var e = transform.eulerAngles;
+            Needle("adi", Wrap(e.z), dt);                                                   // horizon rolls against the bank
+            float yr = 0f; try { var rb0 = pRb?.GetValue(unit) as Rigidbody; if (rb0 != null) yr = rb0.angularVelocity.y * Mathf.Rad2Deg; } catch { }
+            Needle("turn", Mathf.Clamp(yr / 3f * 20f, -35f, 35f), dt);                        // standard rate (3 deg/s) on the marks
+            Needle("hdg", e.y, dt);
             Needle("rotor", -135f + 270f * Mathf.Clamp01(rpm / 450f), dt);                   // rotor rpm, 0-450
             Needle("rpm", -135f + 270f * er, dt);
             Needle("fuel", -120f + 240f * fuel, dt);
@@ -238,10 +314,11 @@ namespace UL2Airtrike
         {
             Transform t; if (!gauges.TryGetValue(id, out t) || t == null) return;
             float a; shown.TryGetValue(id, out a);
-            a = Mathf.Lerp(a, deg, 1f - Mathf.Exp(-dt * 6f)); shown[id] = a;
+            a = Mathf.LerpAngle(a, deg, 1f - Mathf.Exp(-dt * 6f)); shown[id] = a;
             t.localRotation = rest[id] * Quaternion.Euler(0f, 0f, a);      // pivot Z faces the pilot: positive turns clockwise as seen from the seat
         }
 
+        static float Wrap(float a) { a %= 360f; if (a > 180f) a -= 360f; if (a < -180f) a += 360f; return a; }
         bool Detached(Component part) { try { return mDetached != null && (bool)mDetached.Invoke(part, null); } catch { return false; } }
 
         void Setup()
@@ -385,7 +462,7 @@ namespace UL2Airtrike
                         }
                 }
                 float t = Time.unscaledTime + t0;
-                if (!active) { tA = side * (kind == "spot" ? 75f + 20f * Mathf.Sin(t * 0.21f) : 52f); tE = kind == "spot" ? -12f + 6f * Mathf.Sin(t * 0.17f + 1.3f) : -40f; }   // idle: low ready on his side (Nick 20:42); spotter scans
+                if (!active) { tA = side * (kind == "spot" ? 75f + 20f * Mathf.Sin(t * 0.21f) : 52f); tE = kind == "spot" ? -12f + 6f * Mathf.Sin(t * 0.17f + 1.3f) : -12f; }   // idle: sitting up, weapon slightly low on his side (Nick 21:53: -40 read as slouched); spotter scans
                 tA = Mathf.Clamp(tA, -T.ar, T.ar);
                 if (tA > T.afr) side = 1f; else if (tA < -T.afl) side = -1f;
                 vA = Mathf.MoveTowards(vA, tA, 150f * dt);

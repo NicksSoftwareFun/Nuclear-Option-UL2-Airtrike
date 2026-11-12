@@ -292,7 +292,7 @@ public static partial class UL2Builder
         MAT["UL2_cockpit"] = LitMat("UL2_cockpit", new Color32(60, 62, 65, 255), 0.3f, 0f);
         MAT["UL2_screen"] = LitMat("UL2_screen", new Color32(12, 14, 16, 255), 0.85f, 0f);
         // seat rifles in the seat 3 gunners' FDE scheme (Nick 2026-11-12 21:23)
-        MAT["UL2_fde"] = LitMat("UL2_fde", new Color32(176, 150, 110, 255), 0.28f, 0f);
+        MAT["UL2_fde"] = LitMat("UL2_fde", new Color32(128, 92, 64, 255), 0.30f, 0f);   // darker brown like the handle (Nick 21:58)
         MAT["UL2_bronze"] = LitMat("UL2_bronze", new Color32(146, 108, 80, 255), 0.58f, 0.35f);
         MAT["UL2_black"] = LitMat("UL2_black", new Color32(34, 34, 33, 255), 0.52f, 0.4f);
         MAT["UL2_fabric"] = LitMat("UL2_fabric", new Color32(166, 134, 94, 255), 0.03f, 0f);
@@ -397,8 +397,13 @@ public static partial class UL2Builder
         {
             var nrm = new Vector3(0f, Mathf.Sin(20f * Mathf.Deg2Rad), -Mathf.Cos(20f * Mathf.Deg2Rad));   // Blender panel tilt -20 deg about X
             int ng = 0;
-            foreach (var id in new[] { "asi", "alt", "vsi", "rotor", "rpm", "fuel", "oil", "volt" })
+            foreach (var id in new[] { "asi", "adi", "alt", "turn", "hdg", "vsi" })   // Trident-style six-pack (Nick 22:04)
             {
+                if (L.ContainsKey("x_gf_" + id))
+                {   // printed dial face behind the needle
+                    var gf = Find(cf, "UL2_gface_" + id) ?? New("UL2_gface_" + id, cf); gf.position = P("x_gf_" + id); gf.rotation = Quaternion.identity;
+                    SetMesh(gf, "x_gf_" + id); gf.GetComponent<MeshRenderer>().sharedMaterial = PicMat("UL2_gf_" + id + "_img");
+                }
                 if (!L.ContainsKey("x_g_" + id)) continue;
                 var pv = Find(cf, "UL2_gauge_" + id) ?? New("UL2_gauge_" + id, cf);
                 pv.position = P("x_g_" + id); pv.rotation = Quaternion.LookRotation(nrm, Vector3.up);
@@ -416,7 +421,7 @@ public static partial class UL2Builder
         // 5-point harnesses: own objects on the exterior renderer list, so the cockpit view hides them with the pilots (stock)
         {
             var hs = new List<Object>();
-            foreach (var hp in new[] { new[] { "x_harness1", "cockpit_F" }, new[] { "x_harness2", "cockpit_R" } })
+            foreach (var hp in new[] { new[] { "x_harness1", "cockpit_F" }, new[] { "x_harness2", "cockpit_R" }, new[] { "x_harness3", "intake" } })
             {
                 var par = Need(hp[1]); var h = Find(par, "UL2_" + hp[0].Substring(2)) ?? New("UL2_" + hp[0].Substring(2), par);
                 h.position = P(hp[0]); h.rotation = Quaternion.identity; SetMesh(h, hp[0]); hs.Add(h.GetComponent<MeshRenderer>());
@@ -503,7 +508,9 @@ public static partial class UL2Builder
         foreach (Transform b in hv) { if (!b.name.StartsWith("blade")) continue; b.position = P("propCentre"); NoMesh(b);
             var lt = b.childCount > 0 ? b.GetChild(0) : null; if (lt) lt.position = P("propCentre") + (lt.position - P("propCentre")).normalized * 0.6f; }
         var pd = Find(ph, "propDisc"); if (pd) { pd.position = P("propCentre"); pd.localScale = Vector3.one * 0.68f; }
-        var pdc = Find(ph, "propDiscCollider"); if (pdc) { pdc.position = P("propCentre"); pdc.localScale = Vector3.one * 0.68f; }
+        // 0.15.6: the strike-detector disc must not touch engine_core (a separate rigidbody): a touch at <60 rpm (spawn) seizes the
+        // prop and sets hubFriction 100000, which then stops it dead whenever the governor cuts power below full throttle (Nick 22:09)
+        var pdc = Find(ph, "propDiscCollider"); if (pdc) { pdc.position = P("propCentre") + new Vector3(0f, 0f, -0.08f); pdc.localScale = new Vector3(0.68f, 0.68f, 0.15f); }
         Lod(ph, "propHub_colmesh");
         var csp = C(ph, "ConstantSpeedProp");
         // Rotax 915-class pusher: literal power and blade size
@@ -873,9 +880,12 @@ public static partial class UL2Builder
         var go = CopyPrefab(src, key);
         try
         {
+            // the missile can sit under the stock pylon object: lift every missile out to the mount root first
+            // (0.15.5 destroyed the pylon with the missile inside it, so nothing spawned - Nick 22:02)
+            var ms = go.GetComponentsInChildren<MonoBehaviour>(true).Where(mm => mm.GetType().Name == "MountedMissile").Select(mm => mm.transform).Distinct().ToList();
+            foreach (var mt in ms) { mt.SetParent(go.transform, true); var lp = mt.localPosition; mt.localPosition = new Vector3(lp.x, y, lp.z); }
             var py = go.transform.Find("pylon"); if (py != null) Object.DestroyImmediate(py.gameObject);
-            foreach (var mm in go.GetComponentsInChildren<MonoBehaviour>(true))
-                if (mm.GetType().Name == "MountedMissile") { var lp = mm.transform.localPosition; mm.transform.localPosition = new Vector3(lp.x, y, lp.z); }
+            log.AppendLine(key + ": " + ms.Count + " missile(s) kept");
             var srcM = AssetDatabase.LoadMainAssetAtPath(Placeholder(src, "WeaponMount"));
             string nm = new SerializedObject(srcM).FindProperty("mountName").stringValue;
             SaveMount(go, key, src, null, nm);
@@ -1034,7 +1044,7 @@ public static partial class UL2Builder
         hn = hs.GetArrayElementAtIndex(1).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "Helipad";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.5\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.6\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

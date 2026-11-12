@@ -76,6 +76,21 @@ def screen(name, w, h, M, y=0.0, rot=False):
     o = bpy.data.objects.new(name, me); me.materials.append(mat(SCREEN)); coll('WORK').objects.link(o)
     PARTS[CUR[0]]['objs'].append(o); return o
 
+# round dial face: a fan disc facing -Y in frame M, UV = the face picture (mirrored like screen(), see copilot images)
+def disc_face(name, M, r, n=24):
+    bm = bmesh.new(); uv = bm.loops.layers.uv.new('UVMap')
+    c = bm.verts.new(M @ Vector((0, 0, 0))); ring = [bm.verts.new(M @ Vector((r * math.cos(2 * math.pi * k / n), 0, r * math.sin(2 * math.pi * k / n)))) for k in range(n)]
+    for k in range(n):
+        f = bm.faces.new((c, ring[k], ring[(k + 1) % n]))
+        for lp in f.loops:
+            if lp.vert is c: lp[uv].uv = (0.5, 0.5)
+            else:
+                j = ring.index(lp.vert); a = 2 * math.pi * j / n; lp[uv].uv = (0.5 - 0.5 * math.cos(a), 0.5 + 0.5 * math.sin(a))
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    if me.polygons[0].normal.dot(M.to_3x3() @ Vector((0, -1, 0))) < 0: me.flip_normals()
+    o = bpy.data.objects.new(name, me); me.materials.append(mat(SCREEN)); coll('WORK').objects.link(o)
+    PARTS[CUR[0]]['objs'].append(o); return o
+
 # ================================================================ nose pod (cockpit_F + nose)
 POD = [  # y, half width, bottom z, top z
     # nose v3 (Nick 2026-11-12 11:19): longer and aerodynamic, top sloping down to a low tip, clear tip fairing
@@ -212,15 +227,17 @@ box('hud_glass', (0, 2.135, 1.545), (0.13, 0.008, 0.11), GLASS, rot=(R(-22), 0, 
 for sx in (-1, 1): pipe(f'hud_arm{sx}', [(sx * 0.07, 2.19, 1.465), (sx * 0.072, 2.165, 1.50), (sx * 0.07, 2.142, 1.545)], 0.006, DARK, 4, segs=6)
 # instrument binnacle (initial): one MFD with side buttons, analog gauges around it
 # 0.15.5 (Nick 21:27): larger portrait MFD in the middle, smaller gauges either side, all inside the cowl skin
-PM = Matrix.Translation((0, 2.17, 1.29)) @ Matrix.Rotation(R(-20), 4, 'X')
-GAUGES = ((0.125, 0.045), (0.198, 0.045), (0.125, -0.04), (0.198, -0.04)); GR = 0.028
-box('panel', (0, 0, 0), (0.50, 0.035, 0.28), CPIT, M=PM, bevel=0.012)
-box('mfd', (0, -0.022, 0.0), (0.16, 0.02, 0.27), DARK, M=PM, bevel=0.006)
+# Nick 22:04: MFD as big as the red box (most of the panel), a Trident-style six-pack: three gauges stacked each side
+PM = Matrix.Translation((0, 2.17, 1.28)) @ Matrix.Rotation(R(-20), 4, 'X')
+GAUGES = ((0.175, 0.09), (0.175, 0.0), (0.175, -0.09)); GR = 0.036
+GIDS = {-1: ('asi', 'adi', 'alt'), 1: ('turn', 'hdg', 'vsi')}
+box('panel', (0, 0, 0), (0.50, 0.035, 0.30), CPIT, M=PM, bevel=0.012)
+box('mfd', (0, -0.022, 0.0), (0.22, 0.02, 0.29), DARK, M=PM, bevel=0.006)
 box('panel_box', (0, 2.25, 1.27), (0.40, 0.08, 0.20), CPIT, bevel=0.01)
 box('panel_pedestal', (0, 2.30, 0.78), (0.12, 0.08, 0.70), CPIT, bevel=0.01)
-part('x_mfd1', 'cockpit_F', tuple(PM.translation)); screen('mfd_screen', 0.12, 0.24, PM, -0.036, rot=True); part('cockpit_F')
+part('x_mfd1', 'cockpit_F', tuple(PM.translation)); screen('mfd_screen', 0.135, 0.27, PM, -0.036, rot=True); part('cockpit_F')
 for sx in (-1, 1):
-    for k in range(6): box(f'mfd_btn{sx}{k}', (sx * 0.070, -0.034, 0.090 - 0.036 * k), (0.016, 0.008, 0.016), MECH, M=PM)
+    for k in range(6): box(f'mfd_btn{sx}{k}', (sx * 0.093, -0.034, 0.105 - 0.042 * k), (0.018, 0.008, 0.018), MECH, M=PM)
     for k, (gx, gz) in enumerate(GAUGES):
         revolve(f'gauge{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, GR), (0.010, GR), (0.010, GR - 0.005), (0.005, GR - 0.005), (0.005, 0)], DARK, 16, M=PM)
 # exterior detail (pass 2): raised panel seams, side seam, boarding step, antennas
@@ -245,7 +262,7 @@ for sx in (-1, 1):
     side = []
     for y in frange(2.68, 1.30, 16):
         side.append(Vector((sx * (pod_x(y, 0.80) + 0.003), y, 0.80)))
-    sweep(f'seam_side{sx}', side, rect(0.0025, 0.006), DARK, side=(sx, 0, 0), smooth=False)
+    pass   # side seam removed: it read as a clipping strip in game (Nick 21:59)
 # boarding step (left) on a short strut
 box('board_step', (-0.47, 1.45, 0.47), (0.14, 0.20, 0.018), MECH, bevel=0.004)
 for k, yy in enumerate((1.38, 1.52)): tube(f'board_step_strut{k}', (-0.40, yy, 0.47), (-0.33, yy, 0.55), 0.012, FRAME, 8)
@@ -307,16 +324,23 @@ for sx in (-1, 1):
 for sx in (-1, 1):
     for k, (gx, gz) in enumerate(GAUGES):
         # live needle: its own pseudo-part pivoted on the gauge centre, modelled pointing up; the plugin turns it
-        gid = ('asi', 'alt', 'vsi', 'rotor')[k] if sx < 0 else ('rpm', 'fuel', 'oil', 'volt')[k]
+        gid = GIDS[sx][k]
         NM = PM @ Matrix.Translation((sx * gx, -0.027, gz))
         part(f'x_g_{gid}', 'cockpit_F', tuple(NM.translation))
-        box(f'gauge_needle{sx}{k}', (0, 0, 0.009), (0.0035, 0.002, 0.019), MECH, M=NM)
+        if gid == 'adi': box(f'gauge_needle{sx}{k}', (0, 0, 0), (0.044, 0.002, 0.003), MECH, M=NM)          # horizon bar
+        elif gid == 'turn':                                                                                  # little aircraft
+            box(f'gauge_needle{sx}{k}', (0, 0, 0), (0.044, 0.002, 0.0035), MECH, M=NM)
+            box(f'gauge_needle_t{sx}{k}', (0, 0, 0.004), (0.004, 0.002, 0.009), MECH, M=NM)
+        else: box(f'gauge_needle{sx}{k}', (0, 0, 0.011), (0.0035, 0.002, 0.024), MECH, M=NM)
+        part('cockpit_F')
+        # printed dial face (Trident style): its own disc with a picture, just behind the needle
+        part(f'x_gf_{gid}', 'cockpit_F', tuple((PM @ Matrix.Translation((sx * gx, -0.0235, gz))).translation))
+        disc_face(f'gface_{gid}', PM @ Matrix.Translation((sx * gx, -0.0235, gz)), GR - 0.0055)
         part('cockpit_F')
         revolve(f'gauge_bezel{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, GR + 0.003), (0.012, GR + 0.003), (0.012, GR)], MECH, 16, M=PM, cap=False)
-box('panel_lamp_bezel', (-0.16, -0.02, 0.105), (0.12, 0.012, 0.024), MECH, M=PM, bevel=0.003)
-for k in range(3): box(f'panel_lamp{k}', (-0.196 + 0.036 * k, -0.027, 0.105), (0.03, 0.004, 0.016), DARK, M=PM)
-box('panel_masterarm', (0.16, -0.022, 0.105), (0.05, 0.012, 0.03), MECH, M=PM, bevel=0.003)
-box('panel_masterarm_guard', (0.16, -0.032, 0.105), (0.04, 0.006, 0.022), DARK, M=PM)
+# master arm moved to the right console (the panel face is MFD and six-pack now)
+box('panel_masterarm', (0.32, 1.96, 1.16), (0.05, 0.03, 0.012), MECH, bevel=0.003)
+box('panel_masterarm_guard', (0.32, 1.96, 1.172), (0.04, 0.022, 0.006), DARK)
 # standby compass on a stalk above the binnacle
 tube('compass_stalk', (0.15, 2.185, 1.41), (0.15, 2.175, 1.445), 0.010, DARK, 6)
 box('compass', (0.15, 2.17, 1.462), (0.055, 0.045, 0.036), DARK, bevel=0.010)
@@ -420,20 +444,46 @@ for k in range(8):
     a = 2 * math.pi * (k + 0.5) / 8; revolve(f'tpod_bolt{k}', (0.118 * math.cos(a), TP.y + 0.118 * math.sin(a), pod_at(TP.y)[1] + 0.002), (0, 0, -1), [(0, 0.006), (0.006, 0.006), (0.006, 0)], DARK, 6)
 revolve('tpod_az', (0, TP.y, pod_at(TP.y)[1]), (0, 0, -1), [(0, 0.105), (0.05, 0.105), (0.058, 0.098), (0.058, 0)], DARK, 24)
 revolve('tpod_az_seam', (0, TP.y, pod_at(TP.y)[1] - 0.03), (0, 0, -1), [(0, 0.107), (0.006, 0.107), (0.006, 0)], MECH, 24)
-for sx in (-1, 1):   # yoke cheeks holding the elevation axis
-    plate(f'tpod_cheek{sx}', [(-0.075, 0.0), (0.075, 0.0), (0.06, -0.125), (0.0, -0.165), (-0.06, -0.125)], 0.022, MECH, Matrix.Translation((0, TP.y, pod_at(TP.y)[1] - 0.05)) @ side_at(sx * (TR + 0.018)), bevel=0.006)
-    revolve(f'tpod_trunnion{sx}', (sx * (TR + 0.03), TP.y, TP.z), (sx, 0, 0), [(0, 0.04), (0.012, 0.04), (0.018, 0.03), (0.018, 0)], DARK, 16)
-ball('tpod_ball', TP, (TR, TR, TR), MECH, seg=24)
-revolve('tpod_seam', TP, (1, 0, 0), [(-0.004, TR + 0.002), (0.004, TR + 0.002)], DARK, 28, cap=False)
-# sensor face: a flat window panel turned 20 deg down, big EO lens, IR lens, laser and rangefinder ports
-WD = Vector((0, math.cos(R(20)), -math.sin(R(20))))
-WC = TP + WD * (TR - 0.022)
-revolve('tpod_window', WC, WD, [(0, 0.098), (0.026, 0.098), (0.030, 0.090), (0.030, 0)], DARK, 24)
-revolve('tpod_eo', WC + WD * 0.031 + Vector((-0.032, 0, 0.012)), WD, [(0, 0.044), (0.004, 0.044), (0.006, 0.0)], SCREEN, 20)
-revolve('tpod_eo_ring', WC + WD * 0.029 + Vector((-0.032, 0, 0.012)), WD, [(0, 0.050), (0.006, 0.050), (0.006, 0.044)], MECH, 20, cap=False)
-revolve('tpod_ir', WC + WD * 0.031 + Vector((0.045, 0, 0.022)), WD, [(0, 0.028), (0.004, 0.028), (0.006, 0.0)], SCREEN, 16)
-revolve('tpod_laser', WC + WD * 0.031 + Vector((0.040, 0.012, -0.035)), WD, [(0, 0.015), (0.006, 0.015), (0.006, 0.0)], SCREEN, 12)
-revolve('tpod_lrf', WC + WD * 0.031 + Vector((-0.005, 0.014, -0.058)), WD, [(0, 0.010), (0.004, 0.010), (0.004, 0.0)], SCREEN, 10)
+# 0.15.6 rework (Nick 22:08, after an MTS-type ball): one side arm (elbow) holds the ball; the sensors are flat windows cut
+# into the sphere itself, flush with it, not parts stuck on the front
+plate('tpod_arm', [(-0.07, 0.0), (0.07, 0.0), (0.05, -0.11), (0.0, -0.15), (-0.05, -0.11)], 0.032, MECH, Matrix.Translation((0, TP.y, pod_at(TP.y)[1] - 0.05)) @ side_at(TR + 0.022), bevel=0.008)
+revolve('tpod_arm_cap', (TR + 0.04, TP.y, TP.z), (1, 0, 0), [(0, 0.045), (0.010, 0.045), (0.016, 0.034), (0.016, 0)], DARK, 20)
+revolve('tpod_pivot_cap', (-TR + 0.004, TP.y, TP.z), (-1, 0, 0), [(0, 0.035), (0.008, 0.035), (0.012, 0.026), (0.012, 0)], MECH, 16)
+WD = Vector((0, math.cos(R(20)), -math.sin(R(20))))           # sensor axis, 20 deg down
+WU = WD.cross(Vector((1, 0, 0))).normalized()                    # 'up' in the window plane
+if WU.z < 0: WU = -WU
+WX = WU.cross(WD).normalized()                                   # 'right' in the window plane (seen from the front)
+TW = R(50); DW = TR * math.cos(TW)                               # window cap half angle; plane distance from the centre
+def tball_pt(d):
+    """sphere point in direction d, flattened onto the window plane inside the cap (continuous at the cap edge)"""
+    c = d.dot(WD)
+    return TP + d * (DW / c if c > math.cos(TW) else TR)
+NU, NV = 48, 24
+dirs = [[Vector((math.sin(math.pi * j / NV) * math.cos(2 * math.pi * i / NU), math.sin(math.pi * j / NV) * math.sin(2 * math.pi * i / NU), math.cos(math.pi * j / NV))) for i in range(NU)] for j in range(NV + 1)]
+for nm, want, m in (('tpod_ball', None, MECH),):
+    bm = bmesh.new(); vmap = {}
+    def V(j, i):
+        k = (j, i % NU)
+        if k not in vmap: vmap[k] = bm.verts.new(tball_pt(dirs[j][i % NU]))
+        return vmap[k]
+    for j in range(NV):
+        for i in range(NU):
+            ds = [dirs[j][i], dirs[j][(i + 1) % NU], dirs[j + 1][(i + 1) % NU], dirs[j + 1][i]]
+            inside = all(d.dot(WD) >= math.cos(TW) - 1e-6 for d in ds)
+            vs = [V(j, i), V(j, i + 1), V(j + 1, i + 1), V(j + 1, i)]
+            if len(set(vs)) < 3: continue
+            try: bm.faces.new(list(dict.fromkeys(vs)))
+            except ValueError: pass
+    finish(nm, bm, m, smooth=True)
+# the window: one clean flat disc over the flattened cap (flush, 0.5 mm proud)
+revolve('tpod_window', TP + WD * (DW + 0.0005), WD, [(0, TR * math.sin(TW) - 0.002), (0.0003, TR * math.sin(TW) - 0.002), (0.0003, 0)], DARK, 48)
+# apertures lying flat on the window (0.8 mm proud): big EO lens, IR, spotter, laser, rangefinder and a status light
+WC = TP + WD * (DW + 0.0011)
+for nm, (u, v, r, m) in {'tpod_eo': (0.0, 0.004, 0.044, SCREEN), 'tpod_ir': (-0.060, 0.038, 0.022, SCREEN), 'tpod_spot': (-0.056, -0.046, 0.022, GLASS),
+                          'tpod_laser': (0.047, -0.050, 0.016, SCREEN), 'tpod_lrf': (0.068, -0.016, 0.011, SCREEN), 'tpod_led': (0.060, 0.034, 0.006, DARK)}.items():
+    c = WC + WX * u + WU * v
+    revolve(nm + '_ring', c, WD, [(0, r + 0.005), (0.0006, r + 0.005), (0.0006, r)], MECH, 24, cap=False)
+    revolve(nm, c, WD, [(0, r), (0.0004, r), (0.0004, 0)], m, 24)
 part('gear_F', 'cockpit_F', (0, 2.16, 0.50))
 NY, NR = 2.10, 0.24
 tube('nose_steer', (0, 2.16, 0.72), (0, 2.16, 0.51), 0.034, MECH, 14)
@@ -495,11 +545,11 @@ for sx in (-1, 1):
     tube(f'stub_strut_b{sx}', (sx * 0.29, 0.02 + DYP, RAIL_Z), (sx * (HPX - 0.22), 0.16 + DYP, KZ - 0.01), 0.014, FRAME, 8)
     # beefed-up built-in pylon (Nick 2026-11-12 21:35): taller and longer with a launch rail on top, so the AGM-48 and
     # IRM-S2 sit straight on it (custom mounts without the stock launch pylon); hardpoint at the rail top, z PYT
-    plate(f'pylon{sx}', [(0.30, 0), (-0.50, 0), (-0.40, 0.14), (0.20, 0.14)], 0.085, SKIN, Matrix.Translation((0, 0.20 + DYP, KZ - 0.02)) @ side_at(sx * HPX), bevel=0.012)
-    box(f'pylon_rail{sx}', (sx * HPX, 0.15 + DYP, KZ + 0.13), (0.045, 0.62, 0.02), MECH, bevel=0.005)
-    for yk in (0.40, 0.00, -0.30): box(f'pylon_lug{sx}{yk}', (sx * HPX, 0.20 + DYP + yk * 0.8 - 0.05, KZ + 0.12), (0.06, 0.03, 0.012), DARK)
-    box(f'pylon_panel{sx}', (sx * (HPX + 0.043), 0.12 + DYP, KZ + 0.05), (0.004, 0.22, 0.07), MECH, bevel=0.002)
-    for k in (-1, 1): tube(f'sway{sx}{k}', (sx * HPX - 0.06, 0.20 + DYP + 0.20 * k - 0.05, KZ + 0.10), (sx * HPX + 0.06, 0.20 + DYP + 0.20 * k - 0.05, KZ + 0.10), 0.009, MECH, 6)
+    # Nick 22:02: raised part 75% lower (0.14 -> 0.06 tall plate, ~27 mm showing above the stub)
+    plate(f'pylon{sx}', [(0.30, 0), (-0.50, 0), (-0.42, 0.06), (0.22, 0.06)], 0.085, SKIN, Matrix.Translation((0, 0.20 + DYP, KZ - 0.02)) @ side_at(sx * HPX), bevel=0.010)
+    box(f'pylon_rail{sx}', (sx * HPX, 0.15 + DYP, KZ + 0.05), (0.045, 0.62, 0.02), MECH, bevel=0.005)
+    for yk in (0.40, 0.00, -0.30): box(f'pylon_lug{sx}{yk}', (sx * HPX, 0.20 + DYP + yk * 0.8 - 0.05, KZ + 0.04), (0.06, 0.03, 0.012), DARK)
+    for k in (-1, 1): tube(f'sway{sx}{k}', (sx * HPX - 0.055, 0.20 + DYP + 0.20 * k - 0.05, KZ + 0.035), (sx * HPX + 0.055, 0.20 + DYP + 0.20 * k - 0.05, KZ + 0.035), 0.008, MECH, 6)
 
 # ---- gunner seat (cockpit_R)
 part('cockpit_R', 'UL2Airtrike', (0, P2.y, RAIL_Z))
@@ -554,7 +604,7 @@ box('battery_tray', (-0.17, -0.45, 0.625), (0.30, 0.18, 0.012), FRAME)
 
 part('seat3', 'frame_R', (0, P3.y, P3.z - 0.15))
 bucket('seat3', Q3, width=0.54, lean=LEAN_SOL)
-lapbelt('seat3', P3)
+_c = CUR[0]; part('x_harness3', 'seat3', tuple(P3)); lapbelt('seat3', P3); part(_c)   # own object: hidden when seat 3 has no kit (Nick 21:58)
 for sx in (-1, 1): tube(f'seat3_diag{sx}', (sx * 0.29, P3.y + 0.32, RAIL_Z + 0.02), (sx * 0.17, Q3.y - 0.12, Q3.z - 0.18), 0.012, FRAME, 8)
 box('seat3_crossbar', (0, Q3.y + 0.05, Q3.z - 0.163), (0.36, 0.03, 0.03), FRAME)
 for sx in (-1, 1):

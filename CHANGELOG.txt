@@ -2,6 +2,11 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.6 test build: prop no longer stops below full throttle (strike-detector disc kept clear of the engine part,
+  strike log added); custom axis 1 scaled to the binding's range; main gear casts clear of the nacelle so the wheels roll;
+  gunner idle pose upright; darker rifle furniture; harnesses hide with their occupant / gunner kit; side seam removed;
+  AGM-48 / IRM-S2 rail mounts equip again on lower pylons; six-pack flight instruments around a larger MFD; targeting
+  ball rebuilt with flush lens windows.
 - 0.15.5 test build: fixed the engine RPM loop (prop blades struck the tail boom collider) and the tail snapping at spawn
   (overlapping colliders now jointed); colliders skip thin hardware. Cockpit rework: square-shouldered cowl, wrap-round
   windscreen, portrait MFD, smaller gauges. Mid-belly sensor turret, beefed-up stub pylons with direct AGM-48/IRM-S2

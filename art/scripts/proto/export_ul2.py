@@ -16,7 +16,7 @@ POINTS = {
     'propCentre': (0, -2.008, 1.778), 'rotorCentre': (0, -0.97, 3.19),
     'gunPivot': (0.45, 1.28, 0.82), 'targetCam': (0, 0.93, 0.39), 'landingLight': (0, 2.87, 0.80),
     'navLight_L': (-0.99, -2.91, 1.18), 'navLight_R': (0.99, -2.91, 1.18), 'strobe': (0, -2.91, 2.106),
-    'hardpoint_L': (-0.86, 0.53, 0.86), 'hardpoint_R': (0.86, 0.53, 0.86), 'exhaust': (0, -1.75, 1.41),
+    'hardpoint_L': (-0.86, 0.53, 0.78), 'hardpoint_R': (0.86, 0.53, 0.78), 'exhaust': (0, -1.75, 1.41),
 }
 ORIGIN = Vector((0, 0, 1.20))    # Unity root origin (about the CG height); spawnOffset lifts it above the ground
 root_part = [o for o in parts if o.parent is None][0]
@@ -49,7 +49,7 @@ for o in parts:
     gl = [i for i, m in enumerate(me.materials) if m and m.name == 'UL2_glass']
     st = [i for i, m in enumerate(me.materials) if m and m.name in ('UL2_mech', 'UL2_frame')]
     sk = [i for i, m in enumerate(me.materials) if m and m.name == 'UL2_skin']
-    for f in ([] if o.name.startswith(('x_mfd', 'x_inst')) else bm.faces):
+    for f in ([] if o.name.startswith(('x_mfd', 'x_inst', 'x_gf')) else bm.faces):
         if f.material_index in sk: continue                      # skin keeps its livery atlas UVs (from ul2_uv.blend)
         if f.material_index in st:
             nn = f.normal; ax = max(range(3), key=lambda i: abs(nn[i]))
@@ -70,6 +70,9 @@ for o in parts:
     hb = bmesh.new()
     nca = o.data.attributes.get('nocol')
     keep = [v.co.copy() for v in o.data.vertices if nca is None or nca.data[v.index].value == 0] or [v.co.copy() for v in o.data.vertices]
+    # main gear: the stock wheel linecast runs straight down from the bump stop (x 0.81); keep the leg hull inboard of
+    # it (the wheel has its own gear collider), or the wheel 'lands' on its own leg and never touches the ground
+    if o.name in ('gear_L', 'gear_R'): keep = [c for c in keep if abs((o.matrix_world @ c).x) < 0.62] or keep
     for c in keep: hb.verts.new(Rz @ c)
     print('hull', o.name, len(keep), 'of', len(o.data.vertices))
     dist = 0.01
