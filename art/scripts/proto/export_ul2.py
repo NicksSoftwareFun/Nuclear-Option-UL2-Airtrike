@@ -27,7 +27,7 @@ layout = []
 for o in parts:
     mw = Matrix.Translation(-ORIGIN) @ o.matrix_world
     layout.append(dict(name=o.name, coll='MODEL', kind='MESH', pos=list(mw.translation), rot=[1, 0, 0, 0],
-                       parent=o.parent.name if o.parent else '', mats=[m.name for m in o.data.materials],
+                       parent=o.parent.name if o.parent else '', mats=sorted([m.name for m in o.data.materials], key=lambda n: n != 'UL2_skin'),
                        bmin=[min(v.co[i] for v in o.data.vertices) for i in range(3)],
                        bmax=[max(v.co[i] for v in o.data.vertices) for i in range(3)]))
     layout.append(dict(name=o.name + '_colmesh', coll='COLLISION', kind='MESH', pos=list(mw.translation), rot=[1, 0, 0, 0],
@@ -48,13 +48,21 @@ for o in parts:
     uvl = bm.loops.layers.uv.active or bm.loops.layers.uv.new('UVMap')
     gl = [i for i, m in enumerate(me.materials) if m and m.name == 'UL2_glass']
     st = [i for i, m in enumerate(me.materials) if m and m.name in ('UL2_mech', 'UL2_frame')]
+    sk = [i for i, m in enumerate(me.materials) if m and m.name == 'UL2_skin']
     for f in ([] if o.name.startswith('x_mfd') else bm.faces):
+        if f.material_index in sk: continue                      # skin keeps its livery atlas UVs (from ul2_uv.blend)
         if f.material_index in st:
             nn = f.normal; ax = max(range(3), key=lambda i: abs(nn[i]))
             for lp in f.loops:
                 c = lp.vert.co; u, v = [(c.y, c.z), (c.x, c.z), (c.x, c.y)][ax]; lp[uvl].uv = (u / 2.5, v / 2.5)
         else:
             for lp in f.loops: lp[uvl].uv = (0.25, 0.5) if f.material_index in gl else (0.0, 0.0)
+    if sk and sk[0] != 0:
+        order = [sk[0]] + [i for i in range(len(me.materials)) if i != sk[0]]
+        remap = {old: new for new, old in enumerate(order)}
+        for f in bm.faces: f.material_index = remap[f.material_index]
+        mats = [me.materials[i] for i in order]; me.materials.clear()
+        for mt in mats: me.materials.append(mt)
     bm.faces.sort(key=lambda f: f.material_index)
     bm.to_mesh(me); bm.free()
     n = bpy.data.objects.new(o.name + '__x', me); exp.objects.link(n)

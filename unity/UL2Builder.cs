@@ -273,7 +273,7 @@ public static class UL2Builder
         foreach (var o in AssetDatabase.LoadAllAssetsAtPath(ART + "UL2_parts.fbx")) if (o is Mesh) M[o.name] = (Mesh)o;
         MAT = new Dictionary<string, Material>();
         // untextured grey until the texture passes (Nick)
-        MAT["UL2_skin"] = LitMat("UL2_skin", new Color32(150, 152, 155, 255), 0.45f, 0f);
+        MAT["UL2_skin"] = SkinMat();
         MAT["UL2_frame"] = LitMat("UL2_frame", new Color32(175, 177, 180, 255), 0.4f, 0.2f);
         MAT["UL2_mech"] = LitMat("UL2_mech", new Color32(110, 112, 115, 255), 0.35f, 0.4f);
         MAT["UL2_dark"] = LitMat("UL2_dark", new Color32(42, 44, 47, 255), 0.4f, 0f);
@@ -299,6 +299,7 @@ public static class UL2Builder
             Purge();
             AeroAndDamage();
             Lods();
+            SkinRegister();
             root.name = "UL2Airtrike";
             PrefabUtility.SaveAsPrefabAsset(root.gameObject, DST);
             log.AppendLine("saved " + DST);
@@ -539,6 +540,77 @@ public static class UL2Builder
         lg.SetLODs(new[] { new LOD(old[0].screenRelativeTransitionHeight, r0.ToArray()), new LOD(old[old.Length - 1].screenRelativeTransitionHeight, r1.ToArray()) });
         log.AppendLine("LOD0 " + r0.Count + " renderers, LOD1 " + r1.Count);
     }
+    // ------------------------------------------------------------------ livery (stock way: one skin texture on the AircraftSkin shader, LiveryData swaps its colour map)
+    const string SKIN = MOD + "Art/Skin/"; const string LIVERY = MOD + "Art/UL2_livery_olive.asset";
+    static Texture2D SkinTex(string name, bool srgb, bool normal, bool alpha)
+    {
+        string path = SKIN + name + ".png";
+        var ti = (TextureImporter)AssetImporter.GetAtPath(path);
+        if (ti == null) throw new System.Exception("missing " + path);
+        ti.textureType = normal ? TextureImporterType.NormalMap : TextureImporterType.Default;
+        ti.sRGBTexture = srgb; ti.alphaSource = alpha ? TextureImporterAlphaSource.FromInput : TextureImporterAlphaSource.None;
+        ti.alphaIsTransparency = false; ti.mipmapEnabled = true; ti.maxTextureSize = 2048;
+        ti.textureCompression = TextureImporterCompression.CompressedHQ; ti.wrapMode = TextureWrapMode.Clamp; ti.anisoLevel = 4;
+        ti.SaveAndReimport();
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+    }
+    static Material SkinMat()
+    {
+        var b = SkinTex("UL2_skin_b", true, false, false); var n = SkinTex("UL2_skin_n", false, true, false);
+        var m = SkinTex("UL2_skin_m", false, false, true); var ao = SkinTex("UL2_skin_ao", false, false, false);
+        var db = SkinTex("UL2_skin_dmg_b", true, false, true); var dn = SkinTex("UL2_skin_dmg_n", false, true, false);
+        string path = MOD + "Art/UL2_skin.mat";
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        var sh = AssetDatabase.LoadAssetAtPath<Shader>(PH + "Shader/Shader Graphs_AircraftSkin_PLACEHOLDER.shader");
+        if (sh == null) throw new System.Exception("AircraftSkin shader placeholder not found");
+        if (mat == null) { mat = new Material(sh); AssetDatabase.CreateAsset(mat, path); }
+        mat.shader = sh; mat.shaderKeywords = new string[0];
+        mat.SetTexture("_Basecolor", b); mat.SetTexture("_Normal", n); mat.SetTexture("_Metallic", m); mat.SetTexture("_AO", ao);
+        mat.SetTexture("_BasecolorDmg", db); mat.SetTexture("_NormalDmg", dn); mat.SetTexture("_Livery", b);
+        mat.SetFloat("_HitPoints", 100f); mat.SetFloat("_Glossiness", 0f);
+        EditorUtility.SetDirty(mat);
+        var liv = AssetDatabase.LoadMainAssetAtPath(LIVERY) as ScriptableObject;
+        if (liv == null)
+        {
+            var t = System.AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("LiveryData")).FirstOrDefault(x => x != null);
+            if (t == null) throw new System.Exception("LiveryData type not found");
+            liv = ScriptableObject.CreateInstance(t); AssetDatabase.CreateAsset(liv, LIVERY);
+        }
+        var so = new SerializedObject(liv);
+        so.FindProperty("Texture").objectReferenceValue = b; so.FindProperty("Glossiness").floatValue = 0f;
+        so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(liv);
+        log.AppendLine("skin material + livery " + AssetDatabase.AssetPathToGUID(LIVERY));
+        return mat;
+    }
+    // the game writes the livery texture only into renderers listed in a part's damageMaterial.renderers (an empty list = the
+    // part's own renderer), so every skin renderer that is not a part itself is added to its owning part (as on the P220)
+    static void SkinRegister()
+    {
+        var listed = new HashSet<Renderer>(); var parts = new List<Component>();
+        foreach (var c in root.GetComponentsInChildren<Component>(true))
+        {
+            if (c == null) continue; bool up = false;
+            for (var bt = c.GetType(); bt != null; bt = bt.BaseType) if (bt.Name == "UnitPart") { up = true; break; }
+            if (!up) continue; parts.Add(c);
+            var so = new SerializedObject(c); var p = so.FindProperty("damageMaterial.renderers"); if (p == null) continue;
+            for (int i = 0; i < p.arraySize; i++) { var r = p.GetArrayElementAtIndex(i).objectReferenceValue as Renderer; if (r != null) listed.Add(r); }
+        }
+        int added = 0;
+        foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+        {
+            var sm = r.sharedMaterials; if (sm.Length == 0 || sm[0] == null || sm[0].name != "UL2_skin" || listed.Contains(r)) continue;
+            Component owner = null;
+            for (var t = r.transform; t != null && owner == null; t = t.parent)
+                foreach (var c in parts) if (c.transform == t) { owner = c; break; }
+            if (owner == null) { log.AppendLine("skin renderer without part: " + r.name); continue; }
+            if (owner.transform == r.transform) continue;
+            var so = new SerializedObject(owner); var p = so.FindProperty("damageMaterial.renderers");
+            if (p.arraySize == 0) { var own = owner.GetComponent<Renderer>(); if (own != null) { p.arraySize = 1; p.GetArrayElementAtIndex(0).objectReferenceValue = own; listed.Add(own); } }
+            p.arraySize++; p.GetArrayElementAtIndex(p.arraySize - 1).objectReferenceValue = r; so.ApplyModifiedPropertiesWithoutUndo();
+            listed.Add(r); added++;
+        }
+        log.AppendLine("livery renderers added to parts: " + added);
+    }
     // seat 3 gunner: one soldier taken out of the Ibis 8-man troop mesh (stock soldier1 material), turned to face forward, pelvis on the seat
     static void Soldier()
     {
@@ -754,9 +826,9 @@ public static class UL2Builder
         so.FindProperty("cruiseThrottle").floatValue = 0.75f;
         var liv = so.FindProperty("liveries"); liv.arraySize = 1;
         var li = liv.GetArrayElementAtIndex(0);
-        li.FindPropertyRelative("name").stringValue = "Default";
+        li.FindPropertyRelative("name").stringValue = "Army Olive";
         li.FindPropertyRelative("faction").objectReferenceValue = null;
-        li.FindPropertyRelative("assetReference.m_AssetGUID").stringValue = "";
+        li.FindPropertyRelative("assetReference.m_AssetGUID").stringValue = AssetDatabase.AssetPathToGUID(LIVERY);
         li.FindPropertyRelative("assetReference.m_SubObjectName").stringValue = "";
         // two hardpoint sets now: side gun, stub pylons
         var lo = so.FindProperty("loadouts");
@@ -811,7 +883,7 @@ public static class UL2Builder
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.6.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.7.0\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
