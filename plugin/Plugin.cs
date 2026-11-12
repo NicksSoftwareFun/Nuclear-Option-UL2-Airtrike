@@ -12,7 +12,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.9.0")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.9.1")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -105,11 +105,10 @@ namespace UL2Airtrike
         {
             if (sSpine == null || sHead == null) return;
             float t = Time.unscaledTime * (Time.timeScale > 0f ? 1f : 0f) + t0;
-            // hands rest on the knees and the rifle stands between them, so the body turns a little and the head does the looking
-            float yaw = 9f * Mathf.Sin(t * 0.21f) + 3f * Mathf.Sin(t * 0.67f + 1.3f);
+            // the torso stays still (a spine twist shears the plate carrier); only the head turns, inside the collar
             float hyaw = 32f * Mathf.Sin(t * 0.33f + 0.6f) + 10f * Mathf.Sin(t * 1.1f);
             float hpitch = 10f + 7f * Mathf.Sin(t * 0.47f + 2.1f);                       // positive X = looking down
-            sSpine.localRotation = rSpine * Quaternion.Euler(2f + 3f * Mathf.Sin(t * 0.29f), yaw, 0f);
+            sSpine.localRotation = rSpine;
             sHead.localRotation = rHead * Quaternion.Euler(hpitch, hyaw, 0f);
         }
         void Needle(string id, float deg, float dt)
