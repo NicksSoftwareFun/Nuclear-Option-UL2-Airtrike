@@ -132,6 +132,13 @@ if HEAT:
         for vi in np.nonzero(empty & armv)[0]: W[vi, ai[int(np.argmin(D[vi, ai]))]] = 1
         for vi in np.nonzero(empty & ~armv)[0]:
             cand = [j for j in range(len(names)) if j not in ai]; W[vi, cand[int(np.argmin(D[vi, cand]))]] = 1
+    # plate carrier stays rigid (Nick 2026-11-12: it sheared when the torso twisted): the whole torso above the belt
+    # rides on the chest bone, the hips take the pelvis, and the only blend is a short band at the belt line.
+    # Torso twist is driven from the spine bone, which then carries the chest rigidly.
+    hi_, sp_, ch_ = names.index('hips'), names.index('spine'), names.index('chest')
+    tw = W[:, hi_] + W[:, sp_] + W[:, ch_]
+    sb = np.clip((P[:, 2] - 0.06) / 0.08, 0, 1); sb = sb * sb * (3 - 2 * sb)
+    W[:, hi_] = tw * (1 - sb); W[:, sp_] = 0; W[:, ch_] = tw * sb
     W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
     for i, bn in force.items(): W[isl == i] = 0; W[isl == i, names.index(bn)] = 1
     print('verts without heat weights', int(none.sum()))
