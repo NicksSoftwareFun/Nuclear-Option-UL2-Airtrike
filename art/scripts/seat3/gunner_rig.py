@@ -224,6 +224,18 @@ class Gunner:
         self._settle_elbows(TF); self.arm_len = 0.0
         return {s: ((self.ao.matrix_world @ self.pb[f'hand_{s}'].head) - self.ik[s].location).length for s in 'RL'}
 
+    def _body_bvh(self):
+        """posed body surface without the arms and hands (torso, legs, head, kit), world space, for elbow clearance"""
+        if getattr(self, '_bb_key', None) == round(self.T, 3): return self._bb
+        bpy.context.view_layer.update()
+        dg = bpy.context.evaluated_depsgraph_get(); ev = self.so.evaluated_get(dg); me = ev.to_mesh(); W = self.so.matrix_world
+        gi = {self.so.vertex_groups[f'{b}_{q}'].index for b in ('upperarm', 'forearm', 'hand') for q in 'LR' if f'{b}_{q}' in self.so.vertex_groups}
+        src = self.so.data.vertices
+        arm = [sum(g.weight for g in src[i].groups if g.group in gi) > 0.3 for i in range(len(src))]
+        polys = [list(p.vertices) for p in me.polygons if not any(arm[v] for v in p.vertices)]
+        self._bb = BVHTree.FromPolygons([W @ v.co for v in me.vertices], polys); ev.to_mesh_clear()
+        self._bb_key = round(self.T, 3); return self._bb
+
     def _settle_elbows(self, TF):
         """elbow constraint (Nick 16:51): for each arm try a set of pole targets and keep the one that reaches the hand
         target with the elbow lowest, so the elbow stays below the shoulder"""
@@ -231,17 +243,26 @@ class Gunner:
         for s, sx in (('R', 1), ('L', -1)):
             cands = [(sx * 0.45, 0.05, -0.60), (sx * 0.35, -0.25, -0.70), (sx * 0.60, 0.20, -0.40), (sx * 0.15, 0.30, -0.70),
                      (sx * 0.55, -0.10, -0.20), (sx * 0.25, 0.10, -0.90), (-sx * 0.10, 0.25, -0.70), (sx * 0.45, -0.20, -0.70),
-                     (sx * 0.45, 0.05, 0.90), (-sx * 0.30, 0.05, 0.90), (sx * 0.10, -0.40, 0.60), (-sx * 0.45, 0.05, -0.60), (sx * 0.0, -0.50, -0.30)]
+                     (sx * 0.45, 0.05, 0.90), (-sx * 0.30, 0.05, 0.90), (sx * 0.10, -0.40, 0.60), (-sx * 0.45, 0.05, -0.60), (sx * 0.0, -0.50, -0.30),
+                     (sx * 0.80, 0.00, -0.30), (sx * 0.80, -0.30, -0.40), (-sx * 0.80, 0.00, -0.30), (-sx * 0.80, -0.30, -0.40),
+                     (sx * 0.70, 0.30, -0.30), (-sx * 0.70, 0.30, -0.30), (sx * 0.80, 0.00, 0.60), (-sx * 0.80, 0.00, 0.60)]
+            body = self._body_bvh()
             best = None
             for c in cands:
                 self.pole[s].location = TF @ Vector(c); bpy.context.view_layer.update()
                 sh = self.ao.matrix_world @ self.pb[f'upperarm_{s}'].head; el = self.ao.matrix_world @ self.pb[f'forearm_{s}'].head
                 miss = ((self.ao.matrix_world @ self.pb[f'hand_{s}'].head) - self.ik[s].location).length
-                score = (el.z - sh.z) + 4.0 * miss + (0.5 if el.z > sh.z - 0.02 else 0.0)
-                if best is None or score < best[0]: best = (score, c, miss, el.z - sh.z)
+                # body clearance (Nick 17:52): the elbow must sit outside the torso. In the torso frame the chest is
+                # about +-0.19 wide and its front about 0.13 forward; inside that box the penalty grows with depth
+                loc, nrm, _i, dist = body.find_nearest(el)
+                sd = (el - loc).dot(nrm)                  # signed distance to the posed body (arms excluded), <0 = inside
+                inside = max(0.0, 0.05 - sd) if sd < 0.05 else 0.0
+                drop = sh.z - el.z
+                score = 3.0 * max(0.0, 0.06 - drop) - 0.15 * drop + 4.0 * miss + 8.0 * inside + (0.5 if inside > 0.01 else 0.0)
+                if best is None or score < best[0]: best = (score, c, miss, el.z - sh.z, inside)
             self.pole[s].location = TF @ Vector(best[1]); out[s] = best
         bpy.context.view_layer.update()
-        self.elbow_drop = {s: round(-out[s][3], 3) for s in out}
+        self.elbow_drop = {s: round(-out[s][3], 3) for s in out}; self.elbow_inside = {s: round(out[s][4], 3) for s in out}
         return out
 
     # ------------------------------------------------------------------ pose
