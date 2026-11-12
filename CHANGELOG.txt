@@ -2,6 +2,10 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.8 test build: spawns at medium hangars only (helipads off for runway testing); takeoff stability: rotor lift
+  centred just behind the centre of mass, larger fins, gentler pedal brake on the main wheels, main tyres slide before
+  they trip the narrow track, gun mount mass moved to the centreline. SUB-2000 raised out of the seat sill with cleaner
+  stock and frame; sensor housing blended into the belly with darker lens rings.
 - 0.15.7 test build: folded SUB-2000 carbines on seats 1 and 2; HUD pre-rotator gauge (rpm, idle-to-full bar, red to
   green at jump speed); rotor head pitch authority on the takeoff roll; mast, engine and tail braced to the frame, stiffer
   main gear, less nose steering lock; faired sensor turret housing with side arm; square MFD with smaller six-pack; gauges

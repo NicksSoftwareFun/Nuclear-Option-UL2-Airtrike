@@ -588,6 +588,10 @@ public static partial class UL2Builder
             // 0.15.7 (Nick 22:36: tips over while taxiing): stiffer, better damped mains and less nose steering lock
             else { Set(lg, "wheelRadius", 0.27f); Set(lg, "springRate", 80000f); Set(lg, "dampingRate", 9000f); Set(lg, "mass", 20f); }
             if (g == "F") Set(lg, "steeringLock", 30f);
+            // 0.15.8: the stock pedal brake (30% of one main wheel up to 108 km/h) yawed the narrow-track trike into a skid,
+            // and Cricket tyre grip (0.85) is above the tip ratio (half track 0.81 / CG height 1.29 = 0.63), so a skid rolled
+            // it over. Gentle pedal brake, and tyres that slide before they trip.
+            else { Set(lg, "differentialBrakeFactor", g == "L" ? -0.25f : 0.25f); Set(lg, "frictionCoef", 0.55f); }
             var bc = gt.GetComponent<BoxCollider>(); if (bc) bc.size = bc.size * 0.4f;
         }
     }
@@ -922,14 +926,15 @@ public static partial class UL2Builder
     {
         // ~680 kg empty with the gun; 60 kg fuel in the frame tank
         Part("", 120f, 0f, 0.10f, -1f);
-        Part("cockpit_F", 60f, 0.4f, 0.08f, -1f); Part("nose", 10f, 0f, 0.05f, -1f);
+        Part("cockpit_F", 75f, 0.4f, 0.08f, -1f); Part("nose", 10f, 0f, 0.05f, -1f);
         Part("cockpit_R", 40f, 0f, 0.08f, -1f);
         Part("fuselage", 60f, 0f, 0.06f, 60f);
         Part("intake", 15f, 0f, 0.05f, -1f);
         Part("mast", 40f, 0f, 0.04f, -1f); Part("rotorHead", 20f, 0f, 0.03f, -1f);
         Part("engine_core", 60f, 0f, 0.06f, -1f); Part("engine_L", 15f, 0f, 0.02f, -1f); Part("engine_R", 15f, 0f, 0.02f, -1f);
         Part("propHub", 15f, 0f, 0.02f, -1f);
-        Part("gunmount_R", 25f, 0f, 0.05f, -1f);
+        // 0.15.8: gun mount 25 -> 10 kg (it sits 0.30 m right of centre), the 15 kg moves to the centred cockpit_F
+        Part("gunmount_R", 10f, 0f, 0.05f, -1f);
         Part("nacelle_L", 20f, 0f, 0.04f, -1f); Part("nacelle_R", 20f, 0f, 0.04f, -1f);
         Part("tailboom_L", 15f, 0f, 0.02f, -1f); Part("tailboom_R", 12f, 0f, 0.02f, -1f);
         // rotor: ~31 m2 of lifting blade for the gyro's low stall (blade aero is a fixed span; the head spins only visually)
@@ -939,10 +944,13 @@ public static partial class UL2Builder
             Part("aileron_" + s, 2f, 2f, 0f, -1f);
             Part("hstab_" + s, 5f, 0.9f, 0.01f, -1f); Part("hstabTip_" + s, 3f, 0.5f, 0.01f, -1f);
             Part("elevator_" + s, 3f, 0.7f, 0f, -1f); Part("elevatorTip_" + s, 2f, 0.4f, 0f, -1f);
-            foreach (var w in new[] { "wing1_", "wing2_", "wing3_", "hstab_", "hstabTip_", "elevator_", "elevatorTip_" }) Set(AP(w + s), "centerOfLift", Vector3.zero);
-            Set(AP("aileron_" + s), "centerOfLift", Vector3.zero);
+            foreach (var w in new[] { "hstab_", "hstabTip_", "elevator_", "elevatorTip_" }) Set(AP(w + s), "centerOfLift", Vector3.zero);
+            // 0.15.8: rotor lift acts 0.40 m ahead of the blade parts (z -0.57), just behind the centre of mass (z -0.53),
+            // like a gyro's rotor thrust line through the CG; at the part origins it pitched the nose down on the takeoff roll
+            foreach (var w in new[] { "wing1_", "wing2_", "wing3_", "aileron_" }) Set(AP(w + s), "centerOfLift", new Vector3(0f, 0f, 0.40f));
         }
-        Part("vstab1_L", 6f, 0.6f, 0.01f, -1f); Part("vstab1_R", 4f, 0.3f, 0.01f, -1f);
+        // 0.15.8: bigger fin areas (Nick 22:53: unstable yaw past 60 km/h)
+        Part("vstab1_L", 6f, 1.0f, 0.01f, -1f); Part("vstab1_R", 4f, 0.5f, 0.01f, -1f);
         Part("rudder_L", 3f, 0.5f, 0f, -1f); Part("rudder_R", 2f, 0.2f, 0f, -1f);
         // joints: each part to its structural parent (break forces like the Cricket's light parts)
         // joint strengths x4 (2026-11-12 playtest: tail and blade pieces broke off at spawn)
@@ -1092,15 +1100,13 @@ public static partial class UL2Builder
         }
         so = new SerializedObject(AssetDatabase.LoadMainAssetAtPath(op));
         so.FindProperty("aircraftJsonKey").stringValue = "UL2Airtrike";
-        // medium hangars plus stock helipads (forward spawns; the player rolls off the pad to take off)
-        var hs = so.FindProperty("hangars"); hs.arraySize = 2;
+        // medium hangars only (0.15.8, Nick 22:53: helipad spawns off for now, runway starts give repeatable takeoff tests)
+        var hs = so.FindProperty("hangars"); hs.arraySize = 1;
         hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarUnitJsonKey").stringValue = "hangar_med";
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
-        hs.GetArrayElementAtIndex(1).FindPropertyRelative("hangarUnitJsonKey").stringValue = "Helipad";
-        hn = hs.GetArrayElementAtIndex(1).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "Helipad";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.7\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.8\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
