@@ -21,6 +21,7 @@ H_T = Vector((0.0, 0.02, 0.33))          # swing point for the gun's yaw relativ
 SOCKET = Vector((0.17, 0.06, 0.15)); HINGE = Vector((0.20, 0.10, 0.19))   # waist, front-right of the belt (Nick 12:38)   # harness arm root (hips frame)
 L1 = L2 = 0.26
 ARM_SCALE = (1.14, 1.06)        # upper arm, forearm length factors
+WRIST_SINK = 0.040
 GL_SHOULDER = Vector((0.150, 0.000, 0.430)); GL_CANT = 0.0   # right shoulder pocket in the torso frame   # grenadier: launcher grip in the torso frame, shouldered
 POLE_R_SPOT, POLE_L_SPOT = Vector((0.45, 0.05, -0.20)), Vector((-0.45, 0.05, -0.20))
 POLE_R, POLE_L = Vector((0.45, -0.20, -0.70)), Vector((-0.35, 0.25, -0.75))  # torso frame
@@ -59,6 +60,7 @@ class Gunner:
         for o in ul2lib.PARTS['seat3_mg']['objs'][n0:] + (list(mg.GUN_CUTTERS) if kind == 'mg' else []):
             o.parent = self.gun
         self.gun_objs = ul2lib.PARTS['seat3_mg']['objs'][n0:]
+        self._post_ik = []
         # arm IK
         self.ik = {}; self.pole = {}
         for s in 'RL':
@@ -218,11 +220,27 @@ class Gunner:
             BUTT = Vector((0, gl.BUTT_Y - 0.016, 0.030))
             GM = TF @ Matrix.Translation(GL_SHOULDER) @ _rz(rho) @ Matrix.Rotation(math.radians(E), 4, 'X') @ Matrix.Rotation(math.radians(GL_CANT), 4, 'Y') @ Matrix.Translation(-BUTT)
             import gl_model as gl
-            self._aim_head((GM.to_3x3() @ Vector((0, 1, 0))).normalized(), clamp=70)
+            bore = (GM.to_3x3() @ Vector((0, 1, 0))).normalized()
+            self._aim_head(bore, clamp=70)
+            # gaze converges on the sight line 8 m out instead of running parallel beside it (Nick 18:18: head read as skewed left)
+            eye = self._head_world() @ self.eye_h; aim = GM @ gl.SIGHT + bore * 8.0
+            self._aim_head((aim - eye).normalized(), clamp=70)
         self.gun.matrix_world = GM; self.GM = GM
         self.ik['R'].location = GM @ self.wR; self.ik['L'].location = GM @ self.wL
+        self._sink_wrists(GM)
+        self._post_ik.append(GM)
         self._settle_elbows(TF); self.arm_len = 0.0
         return {s: ((self.ao.matrix_world @ self.pb[f'hand_{s}'].head) - self.ik[s].location).length for s in 'RL'}
+
+    def _sink_wrists(self, GM):
+        """wrist sink (Nick 18:13): the sleeve ends ~3 cm short of the wrist joint (the soldier's own hands are stripped),
+        so after a first solve the wrist target is pushed past the glove cuff along the forearm until the sleeve meets it"""
+        bpy.context.view_layer.update()
+        for s in 'RL':
+            el = self.ao.matrix_world @ self.pb[f'forearm_{s}'].head; wr = self.ao.matrix_world @ self.pb[f'hand_{s}'].head
+            d = (wr - el).normalized()
+            self.ik[s].location = GM @ (self.wR if s == 'R' else self.wL) + d * WRIST_SINK
+        bpy.context.view_layer.update()
 
     def _body_bvh(self):
         """posed body surface without the arms and hands (torso, legs, head, kit), world space, for elbow clearance"""
@@ -263,12 +281,48 @@ class Gunner:
             self.pole[s].location = TF @ Vector(best[1]); out[s] = best
         bpy.context.view_layer.update()
         self.elbow_drop = {s: round(-out[s][3], 3) for s in out}; self.elbow_inside = {s: round(out[s][4], 3) for s in out}
+        if self._post_ik: self._wrist_bridge(self._post_ik.pop()); self._post_ik.clear()
         return out
+
+    def _wrist_bridge(self, GM):
+        """wrist gaiter (Nick 18:13): a tapered sleeve from inside the cut sleeve end to the glove cuff, rebuilt each pose,
+        so the glove always reads as attached to the forearm whatever the angle between the cuff and the forearm"""
+        import bmesh as _bm
+        if not hasattr(self, 'wrist_objs'):
+            mat = bpy.data.materials.new('wrist_gaiter'); mat.use_nodes = True
+            mat.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.048, 0.052, 0.034, 1); mat.node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 0.95
+            self.wrist_objs = []
+            for s in 'RL':
+                me = bpy.data.meshes.new(f'wrist_{s}'); o = bpy.data.objects.new(f'wrist_{s}', me); bpy.context.scene.collection.objects.link(o)
+                me.materials.append(mat); self.wrist_objs.append(o)
+        bpy.context.view_layer.update()
+        dg = bpy.context.evaluated_depsgraph_get(); ev = self.so.evaluated_get(dg); me = ev.to_mesh(); W = self.so.matrix_world
+        src = self.so.data.vertices
+        for o, s in zip(self.wrist_objs, 'RL'):
+            el = self.ao.matrix_world @ self.pb[f'forearm_{s}'].head; wr = self.ao.matrix_world @ self.pb[f'hand_{s}'].head
+            d = (wr - el).normalized()
+            fi = self.so.vertex_groups[f'forearm_{s}'].index
+            fv = [W @ me.vertices[i].co for i in range(len(src)) if any(g.group == fi and g.weight > 0.5 for g in src[i].groups)]
+            pm = max((v - el).dot(d) for v in fv); ring = [v for v in fv if (v - el).dot(d) > pm - 0.02]
+            se = sum(ring, Vector()) / len(ring)                                      # sleeve end centre on the posed mesh
+            a = se - d * 0.025; b = GM @ (self.wR if s == 'R' else self.wL)          # 2.5 cm inside the sleeve -> cuff end
+            ax = (b - a); L = ax.length
+            if L < 1e-4: continue
+            z = ax.normalized(); x = z.orthogonal().normalized(); y = z.cross(x)
+            bm = _bm.new(); N = 12; rings = []
+            for t, r in ((0.0, 0.030), (0.5, 0.029), (1.0, 0.027)):
+                c = a + ax * t
+                rings.append([bm.verts.new(c + (x * math.cos(2 * math.pi * k / N) + y * math.sin(2 * math.pi * k / N)) * r) for k in range(N)])
+            for r0, r1 in zip(rings, rings[1:]):
+                for k in range(N): bm.faces.new((r0[k], r0[(k + 1) % N], r1[(k + 1) % N], r1[k]))
+            bm.to_mesh(o.data); bm.free(); o.data.update()
+            for pg in o.data.polygons: pg.use_smooth = True
+        ev.to_mesh_clear()
 
     # ------------------------------------------------------------------ pose
     def pose(self, A, E, T=None, head=True):
         if T is None:
-            T = max(-50.0, min(78.0, A + 22.0)) if self.kind == 'gl' else max(-50.0, min(65.0, 20.0 + 0.5 * A))   # grenadier: bladed, left shoulder forward
+            T = max(-50.0, min(78.0, A + 22.0)) if self.kind == 'gl' else (max(-50.0, min(65.0, A)) if self.kind == 'spot' else max(-50.0, min(65.0, 20.0 + 0.5 * A)))   # spotter squares up to the target; grenadier: bladed, left shoulder forward
         self.A, self.E, self.T = A, E, T
         if self.kind != 'mg': return self._pose_kit(A, E, T)
         self.pb['spine'].rotation_euler = (0, math.radians(T) * self.tw_sign, 0)
@@ -281,6 +335,8 @@ class Gunner:
         GM = TF @ GMt @ Matrix.Translation(PIV) @ Matrix.Rotation(math.radians(E), 4, 'X') @ Matrix.Translation(-PIV)
         self.gun.matrix_world = GM; self.GM = GM
         self.ik['R'].location = GM @ self.wR; self.ik['L'].location = GM @ self.wL
+        self._sink_wrists(GM)
+        self._post_ik.append(GM)
         self.pole['R'].location = TF @ POLE_R; self.pole['L'].location = TF @ POLE_L
         self._settle_elbows(TF)
         if head:
