@@ -283,9 +283,19 @@ for sx in (-1, 1):
 for k in range(6):
     p = MAST_B + MD * (0.10 + 0.16 * k)
     box(f'mast_web{k}', p, (0.09, 0.08, 0.035), MECH)
-for sx in (-1, 1): tube(f'ctrl_rod{sx}', (sx * 0.09, -1.30, 0.80), HEAD + Vector((sx * 0.12, 0.08, -0.12)), 0.008, MECH, 6)
-pipe('prerot_shaft', [(0.10, -1.52, 1.95), (0.10, -1.38, 2.30), (0.07, -1.33, 2.85)], 0.012, DARK, 5, segs=6)
-box('mast_top', HEAD + Vector((0, 0, -0.20)), (0.14, 0.14, 0.06), MECH, bevel=0.01)
+for sx in (-1, 1): tube(f'ctrl_rod{sx}', (sx * 0.09, -1.30, 0.80), HEAD + Vector((sx * 0.15, 0.10, -0.26)), 0.008, MECH, 6)
+# gimbal head (fixed to the mast): cheek plates, roll + pitch pivots, control horns, pre-rotator pinion
+for sx in (-1, 1):
+    box(f'mast_cheek{sx}', HEAD + Vector((sx * 0.075, 0, -0.27)), (0.012, 0.15, 0.16), MECH, bevel=0.004)
+    box(f'ctrl_horn{sx}', HEAD + Vector((sx * 0.115, 0.07, -0.24)), (0.09, 0.025, 0.02), MECH, bevel=0.004)
+    ball(f'rod_end{sx}', HEAD + Vector((sx * 0.15, 0.09, -0.25)), (0.016,) * 3, DARK, seg=8)
+tube('roll_bolt', HEAD + Vector((0, -0.09, -0.22)), HEAD + Vector((0, 0.09, -0.22)), 0.014, DARK, 8)
+box('gimbal_block', HEAD + Vector((0, 0, -0.20)), (0.12, 0.10, 0.07), MECH, bevel=0.008)
+tube('pitch_bolt', HEAD + Vector((-0.09, 0, -0.19)), HEAD + Vector((0.09, 0, -0.19)), 0.013, DARK, 8)
+box('prerot_pinion', HEAD + Vector((0.12, -0.05, -0.09)), (0.07, 0.07, 0.08), MECH, bevel=0.008)
+box('rotor_brake', HEAD + Vector((-0.12, 0.04, -0.06)), (0.05, 0.06, 0.04), DARK, bevel=0.006)
+pipe('prerot_shaft', [(0.10, -1.52, 1.95), (0.10, -1.38, 2.30), (0.12, -1.32, 2.88)], 0.012, DARK, 5, segs=6)
+box('mast_top', HEAD + Vector((0, 0, -0.34)), (0.14, 0.14, 0.05), MECH, bevel=0.01)
 
 # ---- rotor head (visual hub; spins in game) and two blades split root / mid / tip
 part('rotorHead', 'mast', HEAD)
