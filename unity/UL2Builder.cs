@@ -664,7 +664,7 @@ public static class UL2Builder
             int r = G(i); var c = isum[r] / isum[r].w; var q = nv[i]; float wh = 0f, ws = 0f, wd = 0f;
             if (r != mainIsl)
             {
-                if (c.y > 0.50f) wd = 1f;                                                     // helmet, face, goggles
+                if (c.y > 0.50f && c.z > -0.15f) wd = 1f;                                     // helmet, face, goggles, headset (the radio and its antenna on the back plate stay on the spine)
                 else if (c.y < 0.05f) wh = 1f;                                                // boots and the rifle standing between the knees
                 else ws = 1f;                                                                // pouches, vest buckles
             }
@@ -672,7 +672,10 @@ public static class UL2Builder
             {
                 float s1 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.02f, 0.26f, q.y));
                 if (q.z > 0.12f && q.y < 0.22f) s1 *= Mathf.InverseLerp(0.30f, 0.12f, q.z);   // thighs and knees stay with the hips
-                float s2 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.48f, 0.60f, q.y));
+                // only the neck itself (a 7 cm radius column under the helmet) blends to the head; the plate carrier collar and the
+                // shoulders stay rigid on the spine so the vest never warps when the head turns (Nick 2026-11-12)
+                float nr = new Vector2(q.x, q.z + 0.02f).magnitude;
+                float s2 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.50f, 0.58f, q.y)) * Mathf.InverseLerp(0.085f, 0.06f, nr);
                 wd = s2; ws = s1 * (1f - s2); wh = 1f - wd - ws;
             }
             bw[i] = new BoneWeight { boneIndex0 = 0, weight0 = wh, boneIndex1 = 1, weight1 = ws, boneIndex2 = 2, weight2 = wd };
@@ -925,7 +928,7 @@ public static class UL2Builder
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.8.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.9.0\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

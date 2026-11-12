@@ -10,7 +10,7 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 # ================================================================ layout (crew pelvis points; stock pilot pose)
 P1 = Vector((0, 1.50, 1.02))     # pilot
 P2 = Vector((0, 0.35, 1.22))     # gunner
-P3 = Vector((0, -0.55, 1.42))    # passenger (seat 3 mount)
+P3 = Vector((0, -0.55, 1.30))    # passenger (seat 3 mount); lowered 0.12 (Nick 2026-11-12)
 LIFT = 0.12                      # ride height added at the end to everything but the gear
 DY_AFT, DY_GEAR = 0.30, 0.43     # aft group (mast, engine, tail) and main gear shifted forward at the end
 KZ = 0.60                        # keel top-ish
@@ -502,8 +502,8 @@ for sx, tag in ((1, 'R'), (-1, 'L')):
     tube(f'guard_arm_{tag}', (sx * (TRACK - 0.12), GEAR_Y - 0.02, WR), (sx * (TRACK - 0.12), GEAR_Y + 0.10, WR + 0.30), 0.009, MECH, 6)
 
 # ================================================================ Ka-50 style side gun mount (right) and gun
-part('gunmount_R', 'UL2Airtrike', (0.30, 1.15, 0.69))
-GX, GY, GZ = 0.45, 1.15, 0.70
+part('gunmount_R', 'UL2Airtrike', (0.30, 1.40, 0.69))
+GX, GY, GZ = 0.45, 1.40, 0.70   # moved forward 0.25 for pylon clearance (Nick 2026-11-12)
 OUTL = [(-0.30, 0.0), (-0.17, -0.23), (0.17, -0.23), (0.30, 0.0), (0.17, 0.23), (-0.17, 0.23)]
 OUT_X = 0.58
 def ring_at(x, k): return [Vector((x, GY + a * k, GZ + b * k)) for a, b in OUTL]
@@ -516,7 +516,7 @@ for i, (a, b) in enumerate(OUTL): tube(f'mount_rivet{i}', (OUT_X + 0.01, GY + a 
 for sz in (-1, 1):   # streamlined fairings fore and aft; the barrel runs out through a slot in the front one
     plate(f'sponson_nose{sz}', [(0.30, sz * 0.0), (0.17, sz * 0.23), (0.62, sz * 0.05), (0.62, sz * 0.012), (0.30, sz * 0.012)], 0.17, SKIN, Matrix.Translation((0, GY, GZ)) @ side_at(0.455), bevel=0.006)
 plate('sponson_tail', [(-0.17, -0.23), (-0.30, 0.0), (-0.17, 0.23), (-0.50, 0.03), (-0.50, -0.03)], 0.20, SKIN, Matrix.Translation((0, GY, GZ)) @ side_at(0.45), bevel=0.008)
-for k, yy in enumerate((0.92, 1.30)):
+for k, yy in enumerate((1.12, 1.52)):
     tube(f'sponson_strut{k}', (0.29, yy, RAIL_Z), (0.36, yy, GZ + 0.10), 0.015, FRAME, 8)
     tube(f'sponson_strut_lo{k}', (0.06, yy, KZ - 0.04), (0.34, yy, GZ - 0.12), 0.015, FRAME, 8)
 # trunnion ring + gun (the gun elevates in the ring)
@@ -537,8 +537,21 @@ box('gun_trunnion_block', (0.0, 0.25, 0), (0.09, 0.10, 0.09), DARK, M=GM2, bevel
 revolve('gun_barrel', (0.0, 0.29, 0), (0, 1, 0), [(0, 0.028), (0.10, 0.028), (0.12, 0.022), (0.55, 0.022), (0.57, 0.018), (1.10, 0.016), (1.12, 0.026), (1.15, 0.030), (1.27, 0.030), (1.29, 0.020), (1.29, 0)], DARK, 14, M=GM2)
 revolve('gun_recoil', (0.0, 0.36, -0.05), (0, 1, 0), [(0, 0.013), (0.34, 0.013), (0.34, 0)], MECH, 8, M=GM2)
 part('gunmount_R')
-CH = crom([(0.27, 0.82, 0.78), (0.33, 0.90, 0.84), (0.40, 0.98, 0.80), (GX, 1.05, GZ + 0.08)], 6)
+CH = crom([(0.27, 0.82, 0.78), (0.33, 0.95, 0.84), (0.40, 1.15, 0.80), (GX, GY - 0.10, GZ + 0.08)], 6)
 sweep('feed_chute', CH, rect(0.09, 0.03), MECH, side=(0, 1, 0), smooth=False)
+
+# ================================================================ Nick 2026-11-12: smaller gun housing, bigger engine and prop
+HOUSING = ('sponson', 'mount_recess', 'mount_lip', 'mount_rivet', 'sponson_nose', 'sponson_tail', 'trunnion')
+HM = Matrix.Translation((0.30, GY, GZ)) @ Matrix.Diagonal((0.95, 0.85, 0.85, 1)) @ Matrix.Translation((-0.30, -GY, -GZ))
+for o in PARTS['gunmount_R']['objs']:
+    if o.name.startswith(HOUSING): o.data.transform(HM)
+ENG_K = 1.2; ESP = Vector((0, EY, EZ - 0.29))          # grows up, out and along from the engine bed
+EM = Matrix.Translation(ESP) @ Matrix.Scale(ENG_K, 4) @ Matrix.Translation(-ESP)
+for n in ('engine_core', 'engine_L', 'engine_R', 'propHub'):
+    for o in PARTS[n]['objs']:
+        if not o.name.startswith(('eng_mount', 'engine_bed', 'bed_strut')): o.data.transform(EM)
+    PARTS[n]['pivot'] = EM @ PARTS[n]['pivot']
+PROP = EM @ PROP; PROP_R *= ENG_K
 
 # ================================================================ forward shift of the aft group, main gear; ride height
 AFT = ['mast', 'rotorHead', 'engine_core', 'engine_L', 'engine_R', 'propHub', 'tailboom_F', 'tailboom_R', 'vstab', 'vstabTip', 'rudder', 'rudderTip'] + \
