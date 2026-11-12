@@ -138,8 +138,8 @@ def pod_x(y, z):                 # skin half width at any height
     if z >= zm: return side_x(y, z)
     s = min(1, (zm - z) / (zm - zb)); return hw * (1 - s ** 2.6) ** (1 / 2.6)
 edge = [Vector((side_x(y, sill(y)) - 0.004, y, sill(y))) for y in frange(OPEN_F - 0.01, OPEN_A + 0.01, 24)]
-sweep('rim_R', edge, circ(0.016, 8), DARK, side=(0, 0, 1))
-sweep('rim_L', [Vector((-p.x, p.y, p.z)) for p in edge], circ(0.016, 8), DARK, side=(0, 0, 1))
+sweep('rim_R', edge, circ(0.011, 10), DARK, side=(0, 0, 1))
+sweep('rim_L', [Vector((-p.x, p.y, p.z)) for p in edge], circ(0.011, 10), DARK, side=(0, 0, 1))
 # pod floor, ring frames (internal structure), keel shoe
 box('pod_floor', (0, 1.93, 0.43), (0.50, 0.90, 0.025), CPIT)
 for k, y in enumerate((2.55, 1.95, 1.45)):
@@ -182,7 +182,7 @@ def windscreen3(name, y_end=2.03, ph=80, n=28, rows=6):
     """0.15.5 (Nick 21:27: sleeker, more curved, continuous): one wrap-round sheet. Its base runs along the coaming and
     down the cockpit rims; each column is a bulged quadratic curve leaning aft, the top edge falls away to the sides."""
     xf = side_x(OPEN_F, sill(OPEN_F - 0.001)) - 0.006
-    side = [Vector((-(side_x(y, sill(y)) - 0.006), y, sill(y) + 0.004)) for y in frange(y_end, OPEN_F - 0.004, 12)]
+    side = [Vector((-(side_x(y, sill(y)) - 0.004), y, sill(y) + 0.011)) for y in frange(y_end, OPEN_F - 0.004, 12)]
     path = side + [Vector((x, OPEN_F - 0.002, sill(OPEN_F - 0.001) + 0.004)) for x in frange(side[-1].x * 0.9, -side[-1].x * 0.9, 10)] + [Vector((-p.x, p.y, p.z)) for p in reversed(side)]
     L = [0.0]
     for p0, p1 in zip(path, path[1:]): L.append(L[-1] + (p1 - p0).length)
@@ -194,7 +194,7 @@ def windscreen3(name, y_end=2.03, ph=80, n=28, rows=6):
     for i in range(n + 1):
         u = 2 * i / n - 1; f = math.radians(ph * u); sf, cf = math.sin(f), math.cos(f)
         B = at(L[-1] * i / n)
-        T = Vector((B.x * 0.82, B.y - (0.03 + 0.17 * cf * cf), max(B.z + 0.16, 1.70 - 0.42 * sf * sf)))
+        za, zb_ = 1.68 - 0.42 * sf * sf, B.z + 0.15; T = Vector((B.x * 0.84, B.y - (0.04 + 0.20 * cf * cf), (za + zb_ + math.sqrt((za - zb_) ** 2 + 0.01)) / 2))   # smooth max: no shoulder kink
         Cm = (B + T) / 2 + Vector((sf, cf, 0.35)).normalized() * 0.045
         col = [bm.verts.new(B * (1 - t) ** 2 + Cm * 2 * t * (1 - t) + T * t * t) for t in (j / rows for j in range(rows + 1))]
         grid.append(col); base_c.append(B); top_c.append(T)
@@ -202,9 +202,9 @@ def windscreen3(name, y_end=2.03, ph=80, n=28, rows=6):
         for j in range(rows): bm.faces.new((grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]))
     edges = [[grid[i][j].co.copy() for j in range(rows + 1)] for i in (0, n)]
     o = finish(name, bm, GLASS); sm = o.modifiers.new('thick', 'SOLIDIFY'); sm.thickness = 0.008
-    sweep(name + '_base', base_c, rect(0.014, 0.012), DARK, side=(0, 0, 1))
-    sweep(name + '_top', top_c, rect(0.010, 0.010), DARK, side=(0, 0, 1))
-    for k, e in enumerate(edges): sweep(f'{name}_edge{k}', e, rect(0.010, 0.010), DARK, side=(1, 0, 0))
+    sweep(name + '_base', base_c, rect(0.012, 0.008), DARK, side=(0, 0, 1))
+    sweep(name + '_top', top_c, rect(0.007, 0.006), DARK, side=(0, 0, 1))
+    for k, e in enumerate(edges): sweep(f'{name}_edge{k}', e, rect(0.007, 0.006), DARK, side=(1, 0, 0))
 windscreen3('windscreen')
 # HUD combiner + projector on the glare shield
 box('hud_projector', (0, 2.19, 1.452), (0.10, 0.055, 0.032), DARK, bevel=0.008)
