@@ -640,8 +640,50 @@ public static class UL2Builder
         if (fresh) AssetDatabase.CreateAsset(me, path); else EditorUtility.SetDirty(me);
         var seat = Need("intake"); var so = Find(seat, "gunner_soldier") ?? New("gunner_soldier", seat);
         so.position = P("gunner"); so.rotation = Quaternion.identity;
-        var smf = so.GetComponent<MeshFilter>(); if (smf == null) smf = so.gameObject.AddComponent<MeshFilter>(); smf.sharedMesh = me;
-        var mr = so.GetComponent<MeshRenderer>(); if (mr == null) mr = so.gameObject.AddComponent<MeshRenderer>();
+        // three-bone rig for the seated soldier (hips, spine, head), animated from the hips up by the plugin.
+        // Weights: the helmet/head pieces follow the head, the rifle and vest pieces the spine; the main body
+        // island blends hips -> spine over the waist and spine -> head over the neck; the legs stay on the hips.
+        var hips = New("UL2_sold_hips", so); hips.localPosition = Vector3.zero;
+        var spine = New("UL2_sold_spine", hips); spine.localPosition = new Vector3(0f, 0.12f, -0.06f);
+        var head = New("UL2_sold_head", spine); head.localPosition = new Vector3(0f, 0.56f, -0.04f) - spine.localPosition;
+        int vn = nv.Count; var vp = new int[vn]; for (int i = 0; i < vn; i++) vp[i] = i;
+        System.Func<int, int> G = null; G = x => { while (vp[x] != x) { vp[x] = vp[vp[x]]; x = vp[x]; } return x; };
+        var vk = new Dictionary<Vector3Int, int>();
+        for (int i = 0; i < vn; i++) { var k = Vector3Int.RoundToInt(nv[i] * 2000f); int o; if (vk.TryGetValue(k, out o)) vp[G(i)] = G(o); else vk[k] = i; }
+        for (int t = 0; t < nt.Count; t += 3) { vp[G(nt[t])] = G(nt[t + 1]); vp[G(nt[t + 1])] = G(nt[t + 2]); }
+        var isum = new Dictionary<int, Vector4>(); var ilo = new Dictionary<int, Vector3>(); var ihi = new Dictionary<int, Vector3>();
+        for (int i = 0; i < vn; i++)
+        {
+            int r = G(i); Vector4 a4; isum.TryGetValue(r, out a4); isum[r] = a4 + new Vector4(nv[i].x, nv[i].y, nv[i].z, 1f);
+            ilo[r] = ilo.ContainsKey(r) ? Vector3.Min(ilo[r], nv[i]) : nv[i]; ihi[r] = ihi.ContainsKey(r) ? Vector3.Max(ihi[r], nv[i]) : nv[i];
+        }
+        int mainIsl = isum.OrderByDescending(x => x.Value.w).First().Key;
+        var bw = new BoneWeight[vn];
+        for (int i = 0; i < vn; i++)
+        {
+            int r = G(i); var c = isum[r] / isum[r].w; var q = nv[i]; float wh = 0f, ws = 0f, wd = 0f;
+            if (r != mainIsl)
+            {
+                if (c.y > 0.50f) wd = 1f;                                                     // helmet, face, goggles
+                else if (c.y < 0.05f) wh = 1f;                                                // boots and the rifle standing between the knees
+                else ws = 1f;                                                                // pouches, vest buckles
+            }
+            else
+            {
+                float s1 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.02f, 0.26f, q.y));
+                if (q.z > 0.12f && q.y < 0.22f) s1 *= Mathf.InverseLerp(0.30f, 0.12f, q.z);   // thighs and knees stay with the hips
+                float s2 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.48f, 0.60f, q.y));
+                wd = s2; ws = s1 * (1f - s2); wh = 1f - wd - ws;
+            }
+            bw[i] = new BoneWeight { boneIndex0 = 0, weight0 = wh, boneIndex1 = 1, weight1 = ws, boneIndex2 = 2, weight2 = wd };
+        }
+        me.boneWeights = bw;
+        var bones = new[] { hips, spine, head };
+        me.bindposes = bones.Select(bt => bt.worldToLocalMatrix * so.localToWorldMatrix).ToArray();
+        EditorUtility.SetDirty(me);
+        var mr = so.gameObject.AddComponent<SkinnedMeshRenderer>();
+        mr.sharedMesh = me; mr.bones = bones; mr.rootBone = hips; mr.updateWhenOffscreen = false;
+        mr.localBounds = new Bounds(new Vector3(0f, 0.2f, 0f), new Vector3(1.0f, 1.6f, 1.2f));
         mr.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/soldier1_PLACEHOLDER.mat");
         log.AppendLine("soldier " + nv.Count + " verts, " + nt.Count / 3 + " tris, mat " + (mr.sharedMaterial ? mr.sharedMaterial.name : "MISSING"));
     }
@@ -883,7 +925,7 @@ public static class UL2Builder
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.7.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.8.0\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

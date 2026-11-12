@@ -12,7 +12,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.7.0")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.8.0")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -51,6 +51,7 @@ namespace UL2Airtrike
         readonly Dictionary<string, Transform> gauges = new Dictionary<string, Transform>();
         readonly Dictionary<string, float> shown = new Dictionary<string, float>();
         readonly Dictionary<string, Quaternion> rest = new Dictionary<string, Quaternion>();
+        Transform sSpine, sHead; Quaternion rSpine, rHead; float t0 = UnityEngine.Random.value * 100f;
         Component engine; static MethodInfo mRpm, mFuel; static FieldInfo fAlt; float lastY, vs; bool haveY;
 
         void Update()
@@ -67,6 +68,7 @@ namespace UL2Airtrike
                 rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? 60f : 40f) * dt);
                 spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * dt, 0f);
                 Gauges(spd, dt);
+                Soldier();
                 for (int i = blades.Count - 1; i >= 0; i--)
                 {
                     var b = blades[i];
@@ -98,6 +100,18 @@ namespace UL2Airtrike
             Needle("oil", er > 0.05f ? -135f + 270f * (0.45f + 0.25f * er) : -135f, dt);
             Needle("volt", -135f + 270f * (er > 0.05f ? 0.70f : 0.60f), dt);
         }
+        // seat 3 soldier, from the hips up: a slow look-out scan to the sides and down, the head leading the body
+        void Soldier()
+        {
+            if (sSpine == null || sHead == null) return;
+            float t = Time.unscaledTime * (Time.timeScale > 0f ? 1f : 0f) + t0;
+            // hands rest on the knees and the rifle stands between them, so the body turns a little and the head does the looking
+            float yaw = 9f * Mathf.Sin(t * 0.21f) + 3f * Mathf.Sin(t * 0.67f + 1.3f);
+            float hyaw = 32f * Mathf.Sin(t * 0.33f + 0.6f) + 10f * Mathf.Sin(t * 1.1f);
+            float hpitch = 10f + 7f * Mathf.Sin(t * 0.47f + 2.1f);                       // positive X = looking down
+            sSpine.localRotation = rSpine * Quaternion.Euler(2f + 3f * Mathf.Sin(t * 0.29f), yaw, 0f);
+            sHead.localRotation = rHead * Quaternion.Euler(hpitch, hyaw, 0f);
+        }
         void Needle(string id, float deg, float dt)
         {
             Transform t; if (!gauges.TryGetValue(id, out t) || t == null) return;
@@ -126,7 +140,11 @@ namespace UL2Airtrike
             {
                 if (c == null) continue;
                 foreach (var t in c.GetComponentsInChildren<Transform>(true))
-                    if (t.name.StartsWith("UL2_gauge_")) { gauges[t.name.Substring(10)] = t; rest[t.name.Substring(10)] = t.localRotation; }
+                {
+                    if (t.name == "UL2_sold_spine") { sSpine = t; rSpine = t.localRotation; }
+                    else if (t.name == "UL2_sold_head") { sHead = t; rHead = t.localRotation; }
+                    else if (t.name.StartsWith("UL2_gauge_")) { gauges[t.name.Substring(10)] = t; rest[t.name.Substring(10)] = t.localRotation; }
+                }
                 if (engine == null && tEng != null) { var e = c.GetComponentInChildren(tEng, true); if (e != null) engine = e; }
             }
             spin = headPart.transform.Find("rotorSpin");
@@ -141,7 +159,7 @@ namespace UL2Airtrike
                 }
             }
             ready = true;
-            Plugin.Log.LogInfo("UL-2 rotor ready, " + blades.Count + " blade sections, " + gauges.Count + " gauges, engine " + (engine != null));
+            Plugin.Log.LogInfo("UL-2 rotor ready, " + blades.Count + " blade sections, " + gauges.Count + " gauges, engine " + (engine != null) + ", soldier " + (sSpine != null && sHead != null));
         }
     }
 }
