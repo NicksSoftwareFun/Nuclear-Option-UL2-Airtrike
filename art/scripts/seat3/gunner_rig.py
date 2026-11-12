@@ -322,7 +322,7 @@ class Gunner:
     # ------------------------------------------------------------------ pose
     def pose(self, A, E, T=None, head=True):
         if T is None:
-            T = max(-50.0, min(78.0, A + 22.0)) if self.kind == 'gl' else (max(-50.0, min(65.0, A)) if self.kind == 'spot' else max(-50.0, min(65.0, 20.0 + 0.5 * A)))   # spotter squares up to the target; grenadier: bladed, left shoulder forward
+            T = max(-80.0, min(88.0, A + 22.0)) if self.kind == 'gl' else (max(-50.0, min(65.0, A)) if self.kind == 'spot' else max(-50.0, min(65.0, 20.0 + 0.5 * A)))   # spotter squares up to the target; grenadier: bladed, left shoulder forward
         self.A, self.E, self.T = A, E, T
         if self.kind != 'mg': return self._pose_kit(A, E, T)
         self.pb['spine'].rotation_euler = (0, math.radians(T) * self.tw_sign, 0)

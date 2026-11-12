@@ -34,6 +34,7 @@ for sx in (-1, 1):
 bpy.data.objects['REF_soldier'].hide_render = True
 c = bpy.data.collections.get('CREWREF'); c.hide_render = False
 KIND = sys.argv[sys.argv.index('--kind') + 1] if '--kind' in sys.argv else 'mg'
+GL_KEYS = [(95, -30), (70, -5), (40, 25), (15, 52), (0, 62), (-20, 66), (-40, 58), (-60, 35), (-78, 5), (-95, -30)]   # lower and shorter over the seat 2 helmet, higher on the left crossing
 g = Gunner(Matrix.Translation((0, -0.55, 1.42)), kind=KIND)
 copilot = bpy.data.objects['REF_gunner']
 import look; look.crew(g); look.gun(g.gun_objs); look.gear(g)     # stock crew textures + MG 338 finish (Nick 15:41)
@@ -62,6 +63,8 @@ if mode == 'still':
     if ABOVE: shot(sc, cam, f'{out}/air_{tag}_side.png', (-40, -0.2, 1.55), (0, -0.2, 1.55), ortho=8.4, res=(1600, 900))
 else:
     keys = [(95, -30), (70, -5), (40, 35), (12, 68), (0, 74), (-12, 69), (-40, 35), (-70, -5), (-95, -30)]
+    if KIND == 'gl': keys = GL_KEYS        # the launcher gets its own path (Nick 18:48 review)
+    if '--keys' in sys.argv: keys = eval(sys.argv[sys.argv.index('--keys') + 1])
     N = 36; log = []
     def interp(t):
         x = t * (len(keys) - 1); i = min(int(x), len(keys) - 2); f = x - i; f = f * f * (3 - 2 * f)
@@ -70,5 +73,7 @@ else:
     for k in range(N + 1):
         A, E = interp(k / N); miss = g.pose(A, E); cl = g.clearance(copilot)
         log.append(f'{k:02d} A {A:6.1f} E {E:5.1f} T {g.T:5.1f} missR {miss["R"]:.3f} missL {miss["L"]:.3f} arm {g.arm_len:.3f} copilot {cl:.3f}')
-        shot(sc, cam, f'{out}/swap_{k:03d}.png', (3.4, 3.0, 3.1), (0, -0.25, 1.75), 40, res=(900, 640), scale=1.0)
+        if '--dry' in sys.argv: continue
+        if '--bonly' not in sys.argv: shot(sc, cam, f'{out}/swap_{k:03d}.png', (3.4, 3.0, 3.1), (0, -0.25, 1.75), 40, res=(900, 640), scale=1.0)
+        if KIND == 'gl': shot(sc, cam, f'{out}/swapB_{k:03d}.png', (-3.4, 3.0, 3.1), (0, -0.25, 1.75), 40, res=(900, 640), scale=1.0)   # mirrored view from the left front
     open(f'{out}/swap_log.txt', 'w').write('\n'.join(log)); print('\n'.join(log))
