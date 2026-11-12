@@ -358,13 +358,14 @@ for sx in (-1, 1):
     box(f'footplate2{sx}', (sx * 0.24, 1.04, 0.70), (0.14, 0.14, 0.01), MECH)
 for y in (0.75, 0.10, -0.28): box(f'cross_C{y}', (0, y, RAIL_Z), (0.58, 0.035, 0.035), FRAME)
 box('keel_joint_F', (0, 1.04, 0.565), (0.11, 0.10, 0.11), MECH, rot=(R(-11), 0, 0), bevel=0.01)
-# stub pylons (Ibis-style fuselage pylons)
+# stub pylons (Ibis-style fuselage pylons); moved forward DYP so the launchers clear the main gear (Nick 2026-11-12)
+DYP = 0.45
 for sx in (-1, 1):
-    wing(f'stub{sx}', [((sx * 0.08, 0.36, KZ - 0.02), (0, -0.40, 0), (0, 0, 1)), ((sx * 0.74, 0.32, KZ - 0.02), (0, -0.32, 0), (0, 0, 1))], SKIN, t=0.16)
-    tube(f'stub_strut{sx}', (sx * 0.29, 0.46, RAIL_Z), (sx * 0.55, 0.20, KZ - 0.01), 0.014, FRAME, 8)
-    tube(f'stub_strut_b{sx}', (sx * 0.29, 0.02, RAIL_Z), (sx * 0.50, 0.16, KZ - 0.01), 0.014, FRAME, 8)
-    plate(f'pylon{sx}', [(0.12, 0), (-0.26, 0), (-0.20, -0.11), (0.06, -0.11)], 0.055, SKIN, Matrix.Translation((0, 0.20, KZ - 0.02)) @ side_at(sx * 0.70), bevel=0.008)
-    for k in (-1, 1): tube(f'sway{sx}{k}', (sx * 0.70 - 0.05, 0.20 + 0.06 * k, KZ - 0.13), (sx * 0.70 + 0.05, 0.20 + 0.06 * k, KZ - 0.13), 0.008, MECH, 6)
+    wing(f'stub{sx}', [((sx * 0.08, 0.36 + DYP, KZ - 0.02), (0, -0.40, 0), (0, 0, 1)), ((sx * 0.74, 0.32 + DYP, KZ - 0.02), (0, -0.32, 0), (0, 0, 1))], SKIN, t=0.16)
+    tube(f'stub_strut{sx}', (sx * 0.29, 0.46 + DYP, RAIL_Z), (sx * 0.55, 0.20 + DYP, KZ - 0.01), 0.014, FRAME, 8)
+    tube(f'stub_strut_b{sx}', (sx * 0.29, 0.02 + DYP, RAIL_Z), (sx * 0.50, 0.16 + DYP, KZ - 0.01), 0.014, FRAME, 8)
+    plate(f'pylon{sx}', [(0.12, 0), (-0.26, 0), (-0.20, -0.11), (0.06, -0.11)], 0.055, SKIN, Matrix.Translation((0, 0.20 + DYP, KZ - 0.02)) @ side_at(sx * 0.70), bevel=0.008)
+    for k in (-1, 1): tube(f'sway{sx}{k}', (sx * 0.70 - 0.05, 0.20 + DYP + 0.06 * k, KZ - 0.13), (sx * 0.70 + 0.05, 0.20 + DYP + 0.06 * k, KZ - 0.13), 0.008, MECH, 6)
 
 # ---- gunner seat (cockpit_R)
 part('cockpit_R', 'UL2Airtrike', (0, P2.y, RAIL_Z))

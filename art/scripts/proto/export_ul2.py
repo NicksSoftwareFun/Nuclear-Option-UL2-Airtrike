@@ -16,7 +16,7 @@ POINTS = {
     'propCentre': (0, -2.008, 1.778), 'rotorCentre': (0, -0.97, 3.19),
     'gunPivot': (0.45, 1.28, 0.82), 'targetCam': (0, 1.33, 0.42), 'landingLight': (0, 2.80, 0.80),
     'navLight_L': (-0.99, -2.91, 1.18), 'navLight_R': (0.99, -2.91, 1.18), 'strobe': (0, -2.91, 2.106),
-    'hardpoint_L': (-0.70, 0.08, 0.52), 'hardpoint_R': (0.70, 0.08, 0.52), 'exhaust': (0, -1.75, 1.41),
+    'hardpoint_L': (-0.70, 0.53, 0.52), 'hardpoint_R': (0.70, 0.53, 0.52), 'exhaust': (0, -1.75, 1.41),
 }
 ORIGIN = Vector((0, 0, 1.20))    # Unity root origin (about the CG height); spawnOffset lifts it above the ground
 root_part = [o for o in parts if o.parent is None][0]
