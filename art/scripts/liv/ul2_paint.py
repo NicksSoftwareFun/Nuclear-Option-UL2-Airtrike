@@ -56,8 +56,8 @@ def stamp_top(sel, txt, font, centre, h, colour, up=1):
 
 n = 0
 fin = ids('vstab', 'rudder')
-for sd in (-1, 1): n += stamp(ids('vstab'), '214', FONT, (-2.875, 1.28), 0.16, sd, WHITE)         # big tail number, both sides
-for sd in (-1, 1): n += stamp(ids('vstabTip'), 'UL-2', FONT_S, (-2.93, 1.71), 0.05, sd, WHITE)
+for sd in (-1, 1): n += stamp(ids('vstab'), '214', FONT, (-2.875, 1.397), 0.21, sd, WHITE)         # big tail number, both sides
+for sd in (-1, 1): n += stamp(ids('vstabTip'), 'UL-2', FONT_S, (-2.95, 1.967), 0.066, sd, WHITE)
 for sd in (-1, 1): n += stamp(ids('cockpit_F', 'nose'), '14', FONT, (2.30, 0.95), 0.18, sd, WHITE)  # tactical number on the pod
 for sx in (-1, 1): n += stamp_top(ids('hstab_L' if sx < 0 else 'hstab_R'), 'NO STEP', FONT_S, (sx * 0.28, -2.80), 0.055, BLACK)
 for sd in (-1, 1): n += stamp(ids('cockpit_F'), 'RESCUE', FONT_S, (1.28, 0.72), 0.045, sd, np.array([210, 170, 40], np.float32) / 255)

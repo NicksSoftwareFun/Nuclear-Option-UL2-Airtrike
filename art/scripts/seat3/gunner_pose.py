@@ -51,6 +51,22 @@ bpy.context.view_layer.update()
 for s, t in (('R', tR), ('L', tL)):
     w = ao.matrix_world @ pb[f'hand_{s}'].head
     print(f'wrist {s} miss {(w - t).length:.3f} m')
+# ---- pose data for the Unity builder/plugin (Unity coords, soldier rig space: pelvis origin, z forward, y up)
+import json
+from mathutils import Matrix as Mx
+SW = Mx(((1, 0, 0), (0, 0, 1), (0, 1, 0)))
+Uv = lambda v: [round(v[0], 5), round(v[2], 5), round(v[1], 5)]
+def Uq(R3):
+    q = (SW @ R3 @ SW).to_quaternion(); return [round(q.x, 6), round(q.y, 6), round(q.z, 6), round(q.w, 6)]   # Unity order x y z w
+RI = ao.matrix_world.inverted()
+pose = {'twist': TW, 'gunOrigin': Uv(G), 'grip_R': Uv(mg.GRIP + Vector((0.006, -0.045, 0.005))), 'grip_L': Uv(mg.FORE + Vector((-0.012, -0.070, 0.0))),
+        'mount': Uv(mg.MOUNT + Vector((0, 0, -0.028))), 'hipSocket': Uv(Vector((0.22, -0.04, 0.14))), 'elbowOut': Uv(Vector((0.15, 0.02, -0.06))),
+        'pole_R': [0.7, -0.3, -0.4], 'pole_L': [-0.6, -0.4, 0.1]}
+for s_ in ('R', 'L'):
+    D = (pb[f'hand_{s_}'].matrix @ ao.data.bones[f'hand_{s_}'].matrix_local.inverted()).to_3x3()
+    pose[f'handRot_{s_}'] = Uq(D)
+    pose[f'elbow_{s_}'] = Uv(pb[f'forearm_{s_}'].head)
+json.dump(pose, open('/mnt/project-files/ul2/art/export/UL2_mg_pose.json', 'w'), indent=1)
 hip = RIG @ Vector((0.22, -0.04, 0.14)); post = gun(mg.MOUNT + Vector((0, 0, -0.028)))
 elbow = (hip + post) / 2 + (RIG.to_3x3() @ Vector((0.15, 0.02, -0.06)))
 mg.build_arm(hip, elbow, post)

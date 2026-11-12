@@ -76,18 +76,20 @@ def screen(name, w, h, M, y=0.0):
 
 # ================================================================ nose pod (cockpit_F + nose)
 POD = [  # y, half width, bottom z, top z
-    # nose made pointier and 0.20 shorter (Nick 2026-11-12 10:58)
-    (2.765, 0.012, 0.738, 0.762), (2.76, 0.037, 0.715, 0.792), (2.747, 0.076, 0.677, 0.837), (2.728, 0.115, 0.641, 0.881), (2.699, 0.162, 0.596, 0.934), (2.663, 0.208, 0.552, 0.986), (2.619, 0.253, 0.509, 1.037), (2.564, 0.298, 0.466, 1.089), (2.51, 0.334, 0.432, 1.13), (2.455, 0.362, 0.405, 1.162), (2.4, 0.378, 0.39, 1.18), (2.20, 0.392, 0.375, 1.215),
-    (2.00, 0.398, 0.372, 1.215), (1.80, 0.394, 0.375, 1.185), (1.60, 0.378, 0.385, 1.140), (1.40, 0.345, 0.405, 1.075),
-    (1.30, 0.305, 0.428, 1.025), (1.22, 0.235, 0.462, 0.950), (1.17, 0.120, 0.520, 0.850), (1.15, 0.030, 0.575, 0.745)]
+    # nose v3 (Nick 2026-11-12 11:19): longer and aerodynamic, top sloping down to a low tip, clear tip fairing
+    (3.05, 0.012, 0.688, 0.712), (3.043, 0.039, 0.671, 0.718), (3.03, 0.071, 0.645, 0.741), (3.004, 0.112, 0.609, 0.777), (2.965, 0.156, 0.571, 0.821), (2.92, 0.195, 0.536, 0.866), (2.868, 0.231, 0.504, 0.912), (2.803, 0.268, 0.473, 0.964), (2.725, 0.303, 0.443, 1.019), (2.647, 0.331, 0.421, 1.068), (2.562, 0.355, 0.404, 1.115), (2.478, 0.371, 0.393, 1.154), (2.4, 0.378, 0.39, 1.18), (2.20, 0.392, 0.375, 1.215),
+    (2.00, 0.398, 0.372, 1.215), (1.80, 0.394, 0.375, 1.185), (1.60, 0.380, 0.385, 1.150), (1.40, 0.370, 0.395, 1.180),
+    # side walls carried aft past seat 2 as an open fairing round the copilot's legs, closing in a boat tail (Nick 2026-11-12 11:28)
+    (1.00, 0.366, 0.405, 1.250), (0.60, 0.362, 0.415, 1.250), (0.35, 0.350, 0.430, 1.220), (0.20, 0.322, 0.452, 1.150),
+    (0.08, 0.266, 0.492, 0.990), (-0.02, 0.180, 0.548, 0.925), (-0.08, 0.090, 0.610, 0.860), (-0.10, 0.025, 0.660, 0.800)]
 def pod_at(y):
     for a, b in zip(POD, POD[1:]):
         if a[0] >= y >= b[0]:
             t = (a[0] - y) / (a[0] - b[0]); return [a[k] + (b[k] - a[k]) * t for k in (1, 2, 3)]
     return list((POD[0] if y > POD[0][0] else POD[-1])[1:])
-OPEN_F, OPEN_A = 2.30, 1.17      # cockpit opening y range
+OPEN_F, OPEN_A = 2.30, 0.10      # one open cockpit for pilot and copilot; the side walls run past seat 2
 def sill(y):                     # opening edge height
-    keys = [(2.30, 1.195), (2.14, 1.085), (1.95, 1.050), (1.65, 1.030), (1.38, 0.990), (1.25, 0.925), (1.17, 0.860)]
+    keys = [(2.30, 1.195), (2.14, 1.085), (1.95, 1.050), (1.65, 1.030), (1.38, 1.000), (1.10, 0.970), (0.80, 0.980), (0.60, 1.020), (0.35, 1.030), (0.20, 1.000), (0.10, 0.960)]
     for a, b in zip(keys, keys[1:]):
         if a[0] >= y >= b[0]: t = (a[0] - y) / (a[0] - b[0]); return a[1] + (b[1] - a[1]) * t
     return 1.195 if y > 2.30 else 0.800
@@ -117,7 +119,7 @@ def build_pod(ys, name, m=SKIN, cut=True, cap_front=False, cap_back=False):
 def frange(a, b, n): return [a + (b - a) * i / n for i in range(n + 1)]
 
 part('cockpit_F', 'UL2Airtrike', (0, 1.20, 0.62))
-ys = sorted(set([round(y, 4) for y in frange(2.58, 1.15, 38)] + [OPEN_F, OPEN_A]), reverse=True)
+ys = sorted(set([round(y, 4) for y in frange(2.58, -0.10, 64)] + [OPEN_F, OPEN_A]), reverse=True)
 build_pod(ys, 'pod_shell')
 # rim along the cut edge
 rim = [Vector((-pod_ring_x, y, sill(y))) for y, pod_ring_x in []]
@@ -157,7 +159,7 @@ windscreen(2.31, 1.55, 0.20, 'windscreen')
 # HUD combiner + projector on the glare shield
 box('hud_projector', (0, 2.16, 1.225), (0.13, 0.12, 0.055), DARK, bevel=0.01)
 box('hud_glass', (0, 2.10, 1.33), (0.15, 0.008, 0.14), GLASS, rot=(R(-22), 0, 0))
-for sx in (-1, 1): box(f'hud_arm{sx}', (sx * 0.08, 2.11, 1.30), (0.01, 0.016, 0.15), DARK, rot=(R(-22), 0, 0))
+for sx in (-1, 1): box(f'hud_arm{sx}', (sx * 0.08, 2.11, 1.31), (0.01, 0.016, 0.17), DARK, rot=(R(-22), 0, 0))
 # instrument binnacle (initial): one MFD with side buttons, analog gauges around it
 PM = Matrix.Translation((0, 2.18, 1.07)) @ Matrix.Rotation(R(-20), 4, 'X')
 box('panel', (0, 0, 0), (0.62, 0.035, 0.24), CPIT, M=PM, bevel=0.01)
@@ -208,7 +210,7 @@ tube('throttle', (-0.31, 1.73, 1.08), (-0.31, 1.77, 1.20), 0.009, MECH, 6); ball
 part('cockpit_F')
 for sx in (-1, 1):
     box(f'pedal{sx}', (sx * 0.15, 2.42, 0.56), (0.11, 0.02, 0.15), MECH, rot=(R(-25), 0, 0), bevel=0.004)
-    tube(f'pedal_bar{sx}', (sx * 0.15, 2.46, 0.44), (sx * 0.15, 2.43, 0.52), 0.01, MECH, 6)
+    tube(f'pedal_bar{sx}', (sx * 0.15, 2.46, 0.44), (sx * 0.15, 2.43, 0.55), 0.01, MECH, 6)
 # ---- cockpit detail pass: gauge needles and bezels, standby compass, side consoles, harness
 for sx in (-1, 1):
     for k, (gx, gz) in enumerate(((0.152, 0.05), (0.234, 0.05), (0.152, -0.055), (0.234, -0.055))):
@@ -246,14 +248,61 @@ def rifle_on_seat(tag, P, side=-1):
         part_obj.name = f'{tag}_rifle'; PARTS[CUR[0]]['objs'].append(part_obj)
     for dz in (0.10, 0.45): box(f'{tag}_rifle_clamp{dz}', P + Vector((side * 0.26, -0.13 - dz * math.sin(a), -0.16 + dz * math.cos(a))), (0.07, 0.05, 0.03), DARK, rot=(a, 0, 0))
 P1_SEAT = True
+# five-point harness on the stock pilot figure (Nick 2026-11-12 11:19): shoulder straps from the seat back over the
+# shoulders to the buckle, lap belts from the seat sides, crotch strap from the pan. Points are relative to the hip point.
+STRAP = rect(0.044, 0.006)
+import numpy as _np
+def _ref_pts(kind):
+    """crew figure vertices relative to its hip point (Blender axes)"""
+    if kind == 'pilot':
+        o = load_obj(D + 'COIN_crew.obj', 'x', 'TMP', only=['renderer_pilot'])[0]
+        V = _np.array([tuple(v.co) for v in o.data.vertices]) + _np.array((0, -3.06, 0.36)); bpy.data.objects.remove(o); return V
+    V = []
+    for ln in open(D + 'UL2_soldier_unity.obj'):
+        if ln.startswith('v '): x, y, z = map(float, ln.split()[1:4]); V.append((x, z, y))
+    return _np.array(V)
+REFV = {}
+def surf_z(kind, x, y, r=0.025, zmax=0.72):
+    V = REFV.setdefault(kind, _ref_pts(kind)); m = (abs(V[:, 0] - x) < r) & (abs(V[:, 1] - y) < r) & (V[:, 2] < zmax)
+    return float(V[m, 2].max()) if m.any() else None
+def surf_y(kind, x, z, r=0.025, ymax=0.25):
+    V = REFV.setdefault(kind, _ref_pts(kind)); m = (abs(V[:, 0] - x) < r) & (abs(V[:, 2] - z) < r) & (V[:, 1] < ymax)
+    return float(V[m, 1].max()) if m.any() else None
+G_ = 0.014   # strap stand-off from the figure surface
+def harness5(tag, P):
+    k = 'pilot'
+    for sx in (-1, 1):
+        pts = [(sx * 0.13, -0.31, 0.46)]
+        for y in (-0.24, -0.16, -0.08, -0.01): pts.append((sx * 0.15, y, (surf_z(k, sx * 0.15, y, zmax=0.60) or 0.55) + G_))
+        for x, z in ((0.14, 0.46), (0.12, 0.38), (0.095, 0.30), (0.065, 0.23), (0.04, 0.17)): pts.append((sx * x, (surf_y(k, sx * x, z) or 0.08) + G_, z))
+        pts.append((sx * 0.02, 0.0, 0.0)); pts[-1] = (sx * 0.02, pts[-2][1], 0.14)
+        sweep(f'{tag}_hn_sh{sx}', crom([P + Vector(v) for v in pts], 4), STRAP, DARK, side=(1, 0, 0), smooth=False)
+        lap = [(sx * 0.22, -0.10, -0.07), (sx * 0.22, 0.02, 0.03)]
+        for x, y in ((0.19, 0.08), (0.15, 0.11), (0.10, 0.13)): lap.append((sx * x, y, (surf_z(k, sx * x, y, zmax=0.30) or 0.10) + G_))
+        lap.append((sx * 0.03, lap[-1][1] + 0.01, 0.14))
+        sweep(f'{tag}_hn_lap{sx}', crom([P + Vector(v) for v in lap], 4), STRAP, DARK, side=(0, 0, 1), smooth=False)
+    cz = [(0, 0.12, -0.14)] + [(0, (surf_y(k, 0, z, ymax=0.30) or 0.2) + G_, z) for z in (-0.05, 0.03, 0.10)]
+    sweep(f'{tag}_hn_crotch', crom([P + Vector(v) for v in cz], 4), STRAP, DARK, side=(1, 0, 0), smooth=False)
+    by = max(cz[-1][1], (surf_y(k, 0, 0.14) or 0.1) + G_) + 0.01
+    revolve(f'{tag}_hn_buckle', P + Vector((0, by, 0.14)), (0, 1, 0.15), [(0, 0.0), (0, 0.045), (0.018, 0.045), (0.022, 0.03), (0.022, 0.0)], MECH, 16)
+def lapbelt(tag, P):
+    k = 'soldier'
+    for sx in (-1, 1):
+        lap = [(sx * 0.25, -0.12, -0.08), (sx * 0.25, -0.03, -0.02)]
+        for x, y in ((0.21, 0.02), (0.16, 0.05), (0.10, 0.07)): lap.append((sx * x, y, (surf_z(k, sx * x, y, zmax=0.12) or 0.05) + G_))
+        lap.append((sx * 0.03, lap[-1][1] + 0.02, lap[-1][2]))
+        sweep(f'{tag}_hn_lap{sx}', crom([P + Vector(v) for v in lap], 4), STRAP, DARK, side=(0, 0, 1), smooth=False)
+    z = max(surf_z(k, 0.0, 0.09, zmax=0.12) or 0.05, 0.0) + G_
+    box(f'{tag}_hn_buckle', P + Vector((0, 0.09, z)), (0.08, 0.05, 0.016), MECH, bevel=0.006)
 
 bucket('seat1', Q1, lean=LEAN_PIL)
 for sx in (-1, 1): box(f'seat1_base{sx}', (sx * 0.15, Q1.y + 0.05, (Q1.z - 0.17 + 0.44) / 2), (0.05, 0.36, Q1.z - 0.17 - 0.44), FRAME)
 rifle_on_seat('seat1', Q1)
+harness5('seat1', P1)
 # targeting pod: small stabilised ball behind the nose gear (lases a single target)
-TP = Vector((0, 1.80, 0.295))
-revolve('tpod_mount', (0, 1.80, 0.445), (0, 0, -1), [(0, 0.075), (0.03, 0.07), (0.06, 0.055), (0.06, 0)], MECH, 18)
-revolve('tpod_yoke_ring', (0, 1.80, 0.387), (0, 0, -1), [(0, 0.10), (0.025, 0.10), (0.025, 0.0)], DARK, 22)
+TP = Vector((0, 1.45, 0.30))   # moved aft from 1.80 to clear the nose wheel (Nick 2026-11-12)
+revolve('tpod_mount', (0, TP.y, 0.445), (0, 0, -1), [(0, 0.075), (0.03, 0.07), (0.06, 0.055), (0.06, 0)], MECH, 18)
+revolve('tpod_yoke_ring', (0, TP.y, 0.387), (0, 0, -1), [(0, 0.10), (0.025, 0.10), (0.025, 0.0)], DARK, 22)
 ball('tpod_ball', TP, (0.115, 0.115, 0.115), MECH, seg=20)
 revolve('tpod_window', TP + Vector((0, 0.088, -0.02)), (0, 1, -0.2), [(0, 0.062), (0.03, 0.062), (0.03, 0.0)], DARK, 16)
 revolve('tpod_lens', TP + Vector((0, 0.119, -0.026)), (0, 1, -0.2), [(0, 0.05), (0.002, 0)], SCREEN, 16)
@@ -273,7 +322,16 @@ sweep('nose_mudguard', arc, rect(0.17, 0.008), SKIN, side=(1, 0, 0))
 
 NOSE_SPLIT = 2.58
 part('nose', 'cockpit_F', (0, NOSE_SPLIT, 0.75))
-build_pod(frange(2.765, NOSE_SPLIT, 12), 'nose_shell', cut=False, cap_front=False)
+NOSE_GLASS = 2.90
+build_pod(frange(NOSE_GLASS, NOSE_SPLIT, 10), 'nose_shell', cut=False, cap_front=False)
+build_pod(frange(3.05, NOSE_GLASS, 10), 'nose_glass', m=GLASS, cut=False, cap_front=False)
+hw_, zb_, zt_ = pod_at(NOSE_GLASS); zm_ = zb_ + 0.46 * (zt_ - zb_)
+sweep('nose_glass_frame', [Vector((p.x * 1.01, p.y, zm_ + (p.z - zm_) * 1.01)) for p in pod_ring(NOSE_GLASS)], rect(0.012, 0.014), DARK, side=(0, 1, 0), closed=True, smooth=False)
+# landing light inside the clear fairing: reflector bowl, lamp, mounting bulkhead
+LL = Vector((0, 2.92, zm_ - 0.01))
+box('lamp_bulkhead', (0, NOSE_GLASS - 0.012, zm_), (hw_ * 1.6, 0.012, (zt_ - zb_) * 0.8), DARK)
+revolve('landing_light', LL, (0, 1, -0.12), [(0, 0.0), (0, 0.055), (0.02, 0.062), (0.05, 0.066), (0.05, 0.0)], MECH, 18)
+revolve('landing_lamp', LL + Vector((0, 0.045, -0.005)), (0, 1, -0.12), [(0, 0.0), (0, 0.058), (0.006, 0.0)], SCREEN, 18)
 def top_z(x, y):
     hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb); u = min(abs(x) / hw, 0.999)
     return zm + (zt - zm) * (1 - u ** 2.1) ** (1 / 2.1) + 0.004
@@ -282,8 +340,7 @@ for x0, y0, x1, y1 in ((-0.11, 2.60, 0.11, 2.60), (0.11, 2.60, 0.08, 2.69), (0.0
     for t in frange(0, 1, 6)[:-1]: x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t; HP.append(Vector((x, y, top_z(x, y))))
 sweep('nose_hatch', HP, rect(0.006, 0.0025), DARK, side=(0, 0, 1), smooth=False, closed=True)
 for sx in (-1, 1): revolve(f'static_port{sx}', (sx * pod_at(2.62)[0], 2.62, 0.78), (sx, 0, 0), [(0, 0.012), (0.004, 0.012), (0.004, 0)], DARK, 10)
-revolve('landing_light', (0, 2.63, pod_at(2.63)[1] + 0.012), (0, 1, -0.45), [(0, 0.045), (0.02, 0.045), (0.024, 0.036), (0.025, 0)], MECH, 14)
-pipe('pitot', [(0.11, 2.64, 0.86), (0.125, 2.72, 0.86), (0.125, 2.88, 0.86)], 0.008, MECH, 3, segs=6)
+pipe('pitot', [(pod_at(2.56)[0] - 0.01, 2.56, 0.84), (pod_at(2.56)[0] + 0.02, 2.66, 0.84), (pod_at(2.56)[0] + 0.02, 2.88, 0.84)], 0.008, MECH, 3, segs=6)
 
 # ================================================================ frame (root UL2Airtrike = centre section)
 part('UL2Airtrike', None, (0, 0.0, KZ))
@@ -298,8 +355,8 @@ for sx in (-1, 1):
     # gunner footrests
     tube(f'footrest2{sx}', (sx * 0.12, 0.98, 0.70), (sx * 0.30, 0.98, 0.70), 0.016, DARK, 8)
     tube(f'footrest2_post{sx}', (sx * 0.29, 0.98, 0.70), (sx * 0.29, 0.86, RAIL_Z), 0.014, FRAME, 8)
-    box(f'footplate2{sx}', (sx * 0.30, 1.13, 0.716), (0.16, 0.07, 0.01), MECH)
-for y in (0.75, 0.10, -0.28): box(f'cross_C{y}', (0, y, RAIL_Z - 0.06), (0.56, 0.035, 0.035), FRAME)
+    box(f'footplate2{sx}', (sx * 0.24, 1.04, 0.70), (0.14, 0.14, 0.01), MECH)
+for y in (0.75, 0.10, -0.28): box(f'cross_C{y}', (0, y, RAIL_Z), (0.58, 0.035, 0.035), FRAME)
 box('keel_joint_F', (0, 1.04, 0.565), (0.11, 0.10, 0.11), MECH, rot=(R(-11), 0, 0), bevel=0.01)
 # stub pylons (Ibis-style fuselage pylons)
 for sx in (-1, 1):
@@ -307,19 +364,20 @@ for sx in (-1, 1):
     tube(f'stub_strut{sx}', (sx * 0.29, 0.46, RAIL_Z), (sx * 0.55, 0.20, KZ - 0.01), 0.014, FRAME, 8)
     tube(f'stub_strut_b{sx}', (sx * 0.29, 0.02, RAIL_Z), (sx * 0.50, 0.16, KZ - 0.01), 0.014, FRAME, 8)
     plate(f'pylon{sx}', [(0.12, 0), (-0.26, 0), (-0.20, -0.11), (0.06, -0.11)], 0.055, SKIN, Matrix.Translation((0, 0.20, KZ - 0.02)) @ side_at(sx * 0.70), bevel=0.008)
-    for k in (-1, 1): tube(f'sway{sx}{k}', (sx * 0.70 - 0.05, 0.20 + 0.10 * k, KZ - 0.13), (sx * 0.70 + 0.05, 0.20 + 0.10 * k, KZ - 0.13), 0.008, MECH, 6)
+    for k in (-1, 1): tube(f'sway{sx}{k}', (sx * 0.70 - 0.05, 0.20 + 0.06 * k, KZ - 0.13), (sx * 0.70 + 0.05, 0.20 + 0.06 * k, KZ - 0.13), 0.008, MECH, 6)
 
 # ---- gunner seat (cockpit_R)
 part('cockpit_R', 'UL2Airtrike', (0, P2.y, RAIL_Z))
 bucket('seat2', Q2, lean=LEAN_PIL)
 rifle_on_seat('seat2', Q2)
+harness5('seat2', P2)
 for sx in (-1, 1):
     tube(f'seat2_leg_f{sx}', (sx * 0.17, Q2.y + 0.22, Q2.z - 0.17), (sx * 0.29, Q2.y + 0.30, RAIL_Z + 0.02), 0.016, FRAME, 8)
     tube(f'seat2_leg_r{sx}', (sx * 0.17, Q2.y - 0.12, Q2.z - 0.18), (sx * 0.29, Q2.y - 0.22, RAIL_Z + 0.02), 0.016, FRAME, 8)
 for P, nm in ((Q2, 'seat2'),):
     for sx in (-1, 1):
         tube(f'{nm}_diag{sx}', (sx * 0.29, P.y + 0.30, RAIL_Z + 0.02) if nm == 'seat2' else (sx * 0.29, P.y + 0.32, RAIL_Z + 0.02), (sx * 0.17, P.y - 0.12, P.z - 0.18), 0.012, FRAME, 8)
-    box(f'{nm}_crossbar', (0, P.y + 0.05, P.z - 0.19), (0.36, 0.03, 0.03), FRAME)
+    box(f'{nm}_crossbar', (0, P.y + 0.05, P.z - 0.163), (0.36, 0.03, 0.03), FRAME)
 # gunner MFD post and hand grips
 tube('mfd2_post', (0.08, 0.98, 0.80), (0, 0.98, 1.24), 0.017, FRAME, 8)
 GM = Matrix.Translation((0, 0.99, 1.33)) @ Matrix.Rotation(R(-12), 4, 'X')
@@ -337,8 +395,8 @@ for k in range(3): tube(f'grip2_sw{k}', (-0.03 + 0.03 * k, 0.70, 1.49), (-0.03 +
 box('ics_box', (0.04, 0.97, 1.05), (0.05, 0.035, 0.07), DARK, bevel=0.004)
 revolve('ics_knob', (0.04, 0.95, 1.07), (0, -1, 0), [(0, 0.01), (0.01, 0.01), (0.012, 0)], MECH, 8)
 # ammo box at the gunner's feet (right), feeds the side gun
-box('ammo_box', (0.31, 0.80, 0.66), (0.14, 0.26, 0.20), MECH, bevel=0.008)
-box('ammo_lid', (0.31, 0.80, 0.765), (0.15, 0.27, 0.014), DARK)
+box('ammo_box', (0.30, 0.80, 0.66), (0.11, 0.26, 0.20), MECH, bevel=0.008)
+box('ammo_lid', (0.30, 0.80, 0.765), (0.12, 0.27, 0.014), DARK)
 
 # ================================================================ rear frame section (frame_R) + seat 3 + mast
 part('frame_R', 'UL2Airtrike', (0, -0.30, KZ))
@@ -350,7 +408,7 @@ for sx in (-1, 1):
     # passenger footrest bar (raised)
     tube(f'footrest3_post{sx}', (sx * 0.29, -0.30, RAIL_Z), (sx * 0.29, -0.12, 0.80), 0.016, FRAME, 8)
     tube(f'footrest3{sx}', (sx * 0.14, -0.11, 0.80), (sx * 0.40, -0.11, 0.80), 0.016, DARK, 8)
-box('cross_R', (0, -0.62, RAIL_Z - 0.06), (0.56, 0.035, 0.035), FRAME)
+box('cross_R', (0, -0.62, RAIL_Z), (0.58, 0.035, 0.035), FRAME)
 box('mast_shoe', (0, -1.08, KZ + 0.02), (0.20, 0.18, 0.12), MECH, bevel=0.012)
 box('fuel_tank', (0, -0.82, 0.88), (0.40, 0.22, 0.26), SKIN, bevel=0.04)
 revolve('fuel_cap', (0.12, -0.82, 1.01), (0, 0, 1), [(0, 0.03), (0.02, 0.03), (0.02, 0)], DARK, 10)
@@ -359,8 +417,9 @@ box('battery_tray', (-0.17, -0.45, 0.625), (0.30, 0.18, 0.012), FRAME)
 
 part('seat3', 'frame_R', (0, P3.y, P3.z - 0.15))
 bucket('seat3', Q3, width=0.54, lean=LEAN_SOL)
+lapbelt('seat3', P3)
 for sx in (-1, 1): tube(f'seat3_diag{sx}', (sx * 0.29, P3.y + 0.32, RAIL_Z + 0.02), (sx * 0.17, Q3.y - 0.12, Q3.z - 0.18), 0.012, FRAME, 8)
-box('seat3_crossbar', (0, Q3.y + 0.05, Q3.z - 0.19), (0.36, 0.03, 0.03), FRAME)
+box('seat3_crossbar', (0, Q3.y + 0.05, Q3.z - 0.163), (0.36, 0.03, 0.03), FRAME)
 for sx in (-1, 1):
     tube(f'seat3_leg_f{sx}', (sx * 0.12, Q3.y + 0.12, Q3.z - 0.19), (sx * 0.29, P3.y + 0.02, RAIL_Z + 0.02), 0.017, FRAME, 8)
     tube(f'seat3_leg_r{sx}', (sx * 0.16, Q3.y - 0.12, Q3.z - 0.18), (sx * 0.10, -0.92, 1.05), 0.017, FRAME, 8)
@@ -469,27 +528,29 @@ TZ = 1.02; X = Vector((1, 0, 0)); Z = Vector((0, 0, 1))
 for sx, tag in ((1, 'R'), (-1, 'L')):
     part(f'hstab_{tag}', 'tailboom_R', (sx * 0.05, -2.92, TZ))
     wing(f'hstab_{tag}_w', [((sx * 0.04, -2.88, TZ), (0, -0.48, 0), Z), ((sx * 0.52, -2.90, TZ), (0, -0.46, 0), Z)], SKIN, t=0.10)
+    for xk in (0.16, 0.42): tube(f'elev_hinge_{tag}{xk}', (sx * (xk - 0.02), -3.36, TZ), (sx * (xk + 0.02), -3.36, TZ), 0.011, MECH, 8)
     part(f'elevator_{tag}', f'hstab_{tag}', (sx * 0.05, -3.36, TZ))
-    wing(f'elevator_{tag}_w', [((sx * 0.06, -3.37, TZ), (0, -0.20, 0), Z), ((sx * 0.52, -3.37, TZ), (0, -0.20, 0), Z)], SKIN, t=0.08)
+    wing(f'elevator_{tag}_w', [((sx * 0.06, -3.362, TZ), (0, -0.20, 0), Z), ((sx * 0.52, -3.362, TZ), (0, -0.20, 0), Z)], SKIN, t=0.08)
     part(f'hstabTip_{tag}', f'hstab_{tag}', (sx * 0.52, -2.92, TZ))
     wing(f'hstabTip_{tag}_w', [((sx * 0.52, -2.90, TZ), (0, -0.46, 0), Z), ((sx * 0.98, -2.94, TZ), (0, -0.42, 0), Z)], SKIN, t=0.10)
     TO = math.radians(6); EX = Vector((math.cos(TO), -sx * math.sin(TO), 0))   # end plates toed out 6 deg
     wing(f'endplate_{tag}', [((sx * 0.99, -2.86, TZ - 0.24), (-sx * 0.44 * math.sin(TO), -0.44 * math.cos(TO), 0), EX), ((sx * 0.99, -2.96, TZ + 0.04), (-sx * 0.36 * math.sin(TO), -0.36 * math.cos(TO), 0), EX)], SKIN, t=0.10)
+    for xk in (0.62, 0.86): tube(f'elevtip_hinge_{tag}{xk}', (sx * (xk - 0.02), -3.36, TZ), (sx * (xk + 0.02), -3.36, TZ), 0.011, MECH, 8)
     part(f'elevatorTip_{tag}', f'hstabTip_{tag}', (sx * 0.52, -3.36, TZ))
-    wing(f'elevatorTip_{tag}_w', [((sx * 0.52, -3.37, TZ), (0, -0.20, 0), Z), ((sx * 0.96, -3.37, TZ), (0, -0.18, 0), Z)], SKIN, t=0.08)
+    wing(f'elevatorTip_{tag}_w', [((sx * 0.52, -3.362, TZ), (0, -0.20, 0), Z), ((sx * 0.972, -3.362, TZ), (0, -0.18, 0), Z)], SKIN, t=0.08)
 # centre fin: lower + upper; rudder lower + upper
 part('vstab', 'tailboom_R', (0, -2.95, TZ))
-wing('vstab_w', [((0, -2.96, 0.86), (0, -0.42, 0), X), ((0, -3.06, 1.50), (0, -0.33, 0), X)], SKIN, t=0.10)
-part('rudder', 'vstab', (0, -3.40, 0.86))
-wing('rudder_w', [((0, -3.41, 0.62), (0, -0.29, 0), X), ((0, -3.42, 1.50), (0, -0.26, 0), X)], SKIN, t=0.09)
+wing('vstab_w', [((0, -2.96, 0.80), (0, -0.42, 0), X), ((0, -3.06, 1.50), (0, -0.33, 0), X)], SKIN, t=0.10)
+part('rudder', 'vstab', (0, -3.385, 0.80))
+wing('rudder_w', [((0, -3.382, 0.80), (0, -0.29, 0), X), ((0, -3.392, 1.50), (0, -0.26, 0), X)], SKIN, t=0.09)
 part('vstabTip', 'vstab', (0, -2.95, 1.50))
 wing('vstabTip_w', [((0, -3.06, 1.50), (0, -0.33, 0), X), ((0, -3.14, 1.70), (0, -0.25, 0), X)], SKIN, t=0.10)
-revolve('strobe', (0, -3.20, 1.71), (0, 0, 1), [(0, 0.02), (0.03, 0.02), (0.05, 0)], DARK, 10)
-part('rudderTip', 'vstabTip', (0, -3.42, 1.50))
-wing('rudderTip_w', [((0, -3.42, 1.50), (0, -0.26, 0), X), ((0, -3.42, 1.68), (0, -0.22, 0), X)], SKIN, t=0.09)
+revolve('strobe', (0, -3.20, 1.695), (0, 0, 1), [(0, 0.02), (0.03, 0.02), (0.05, 0)], DARK, 10)
+part('rudderTip', 'vstabTip', (0, -3.392, 1.50))
+wing('rudderTip_w', [((0, -3.392, 1.50), (0, -0.26, 0), X), ((0, -3.392, 1.68), (0, -0.22, 0), X)], SKIN, t=0.09)
 part('tailboom_R')
-for k in range(3): tube(f'rudder_hinge{k}', (0, -3.40, 0.70 + 0.30 * k), (0, -3.40, 0.76 + 0.30 * k), 0.012, MECH, 8)
-for sx in (-1, 1): tube(f'rudder_cable{sx}', (sx * 0.03, -1.40, KZ + 0.05), (sx * 0.05, -3.30, 0.90), 0.003, MECH, 4)
+for k in range(3): tube(f'rudder_hinge{k}', (0, -3.386, 0.88 + 0.26 * k), (0, -3.386, 0.94 + 0.26 * k), 0.013, MECH, 8)
+for sx in (-1, 1): pipe(f'rudder_cable{sx}', [(sx * 0.03, -1.40, KZ + 0.06), (sx * 0.035, -1.75, 0.58), (sx * 0.04, -2.15, 0.50), (sx * 0.045, -2.50, 0.62), (sx * 0.05, -2.85, 0.88), (sx * 0.05, -3.25, 0.98)], 0.003, MECH, 4, segs=4)
 
 # ================================================================ main gear: composite bow halves
 for sx, tag in ((1, 'R'), (-1, 'L')):
@@ -505,7 +566,7 @@ for sx, tag in ((1, 'R'), (-1, 'L')):
     # mud guard over the wheel
     arc = [Vector((sx * TRACK, GEAR_Y - 0.02 + math.cos(a) * (WR + 0.05), WR + math.sin(a) * (WR + 0.05))) for a in frange(R(25), R(150), 10)]
     sweep(f'mudguard_{tag}', arc, rect(0.22, 0.008), SKIN, side=(1, 0, 0), smooth=True)
-    tube(f'guard_arm_{tag}', (sx * (TRACK - 0.12), GEAR_Y - 0.02, WR), (sx * (TRACK - 0.12), GEAR_Y + 0.10, WR + 0.30), 0.009, MECH, 6)
+    tube(f'guard_arm_{tag}', (sx * (TRACK - 0.12), GEAR_Y - 0.02, WR), (sx * (TRACK - 0.12), GEAR_Y + 0.11, WR + 0.335), 0.009, MECH, 6)
 
 # ================================================================ Ka-50 style side gun mount (right) and gun
 part('gunmount_R', 'UL2Airtrike', (0.30, 1.40, 0.69))
@@ -558,6 +619,35 @@ for n in ('engine_core', 'engine_L', 'engine_R', 'propHub'):
         if not o.name.startswith(('eng_mount', 'engine_bed', 'bed_strut')): o.data.transform(EM)
     PARTS[n]['pivot'] = EM @ PARTS[n]['pivot']
 PROP = EM @ PROP; PROP_R *= ENG_K
+# ---- engine lowered along the mast (Nick 2026-11-12 11:19); the prop keeps ~8 cm over the tail boom. The bed struts
+# stretch down to their fixed frame points and the pre-rotator shaft stretches up to the rotor head.
+DZ_ENG = 0.14
+for n in ('engine_core', 'engine_L', 'engine_R', 'propHub'):
+    for o in PARTS[n]['objs']:
+        if o.name.startswith('bed_strut'):
+            zs = [v.co.z for v in o.data.vertices]; z0, z1 = min(zs), max(zs)
+            for v in o.data.vertices: v.co.z -= DZ_ENG * (v.co.z - z0) / max(z1 - z0, 1e-6)
+        else: o.data.transform(Matrix.Translation((0, 0, -DZ_ENG)))
+    PARTS[n]['pivot'] = PARTS[n]['pivot'] - Vector((0, 0, DZ_ENG))
+for n, d in PARTS.items():
+    for o in d['objs']:
+        if o.name == 'prerot_shaft':
+            for v in o.data.vertices:
+                if v.co.z < 2.30: v.co.z -= DZ_ENG * min(1.0, (2.30 - v.co.z) / 0.35)
+PROP = PROP - Vector((0, 0, DZ_ENG)); EZ = EZ - DZ_ENG
+# ---- taller fin and rudder (Nick 2026-11-12 11:26): scaled proportionally about the root mid-chord until the tip
+# sits just above the top of the engine
+eng_top = max((o.matrix_world @ v.co).z for n in ('engine_core', 'engine_L', 'engine_R') for o in PARTS[n]['objs'] for v in o.data.vertices)
+FIN = ('vstab', 'vstabTip', 'rudder', 'rudderTip')
+fin_top = max(v.co.z for n in FIN for o in PARTS[n]['objs'] for v in o.data.vertices)
+FC = Vector((0, -3.17, 0.80)); FIN_K = (eng_top + 0.06 - FC.z) / (fin_top - FC.z)
+FM = Matrix.Translation(FC) @ Matrix.Scale(FIN_K, 4) @ Matrix.Translation(-FC)
+for n in FIN:
+    for o in PARTS[n]['objs']: o.data.transform(FM)
+    PARTS[n]['pivot'] = FM @ PARTS[n]['pivot']
+for o in PARTS['tailboom_R']['objs']:
+    if o.name.startswith('rudder_hinge'): o.data.transform(FM)
+print('fin scale %.3f engine top %.3f strobe %s' % (FIN_K, eng_top, tuple(round(c, 3) for c in FM @ Vector((0, -3.20, 1.695)))))
 
 # ================================================================ forward shift of the aft group, main gear; ride height
 AFT = ['mast', 'rotorHead', 'engine_core', 'engine_L', 'engine_R', 'propHub', 'tailboom_F', 'tailboom_R', 'vstab', 'vstabTip', 'rudder', 'rudderTip'] + \
