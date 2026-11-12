@@ -397,7 +397,7 @@ public static class UL2Builder
         // stub pylons on the root frame
         foreach (var s in new[] { "L", "R" })
         {
-            var hp = Need("pylon_fuselage_" + s); hp.SetParent(root, true); hp.position = P("hardpoint_" + s); hp.rotation = Quaternion.identity;
+            var hp = Need("pylon_fuselage_" + s); hp.SetParent(root, true); hp.position = P("hardpoint_" + s); hp.rotation = Quaternion.Euler(0f, 0f, 180f);   // racks mount on TOP of the stub, flipped (Nick 2026-11-12)
         }
         DoomName("pylon_L"); DoomName("pylon_R"); DoomName("ventralHardpoint");
         // side gun: a mount part on the frame, the gun part in it; the Cricket's right gun hardpoint moves into it
@@ -674,8 +674,8 @@ public static class UL2Builder
                 if (q.z > 0.12f && q.y < 0.22f) s1 *= Mathf.InverseLerp(0.30f, 0.12f, q.z);   // thighs and knees stay with the hips
                 // only the neck itself (a 7 cm radius column under the helmet) blends to the head; the plate carrier collar and the
                 // shoulders stay rigid on the spine so the vest never warps when the head turns (Nick 2026-11-12)
-                float nr = new Vector2(q.x, q.z + 0.02f).magnitude;
-                float s2 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.50f, 0.58f, q.y)) * Mathf.InverseLerp(0.085f, 0.06f, nr);
+                float neckR = new Vector2(q.x, q.z + 0.02f).magnitude;
+                float s2 = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.50f, 0.58f, q.y)) * Mathf.InverseLerp(0.085f, 0.06f, neckR);
                 wd = s2; ws = s1 * (1f - s2); wh = 1f - wd - ws;
             }
             bw[i] = new BoneWeight { boneIndex0 = 0, weight0 = wh, boneIndex1 = 1, weight1 = ws, boneIndex2 = 2, weight2 = wd };
@@ -928,7 +928,7 @@ public static class UL2Builder
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.12.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.13.0\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

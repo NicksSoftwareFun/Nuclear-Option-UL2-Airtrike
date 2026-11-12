@@ -322,16 +322,16 @@ sweep('nose_mudguard', arc, rect(0.17, 0.008), SKIN, side=(1, 0, 0))
 
 NOSE_SPLIT = 2.58
 part('nose', 'cockpit_F', (0, NOSE_SPLIT, 0.75))
-NOSE_GLASS = 2.90
+NOSE_GLASS = 2.975     # smaller lamp window: the front half of the old glass dome is hull skin (Nick 2026-11-12 12:42)
 build_pod(frange(NOSE_GLASS, NOSE_SPLIT, 10), 'nose_shell', cut=False, cap_front=False)
 build_pod(frange(3.05, NOSE_GLASS, 10), 'nose_glass', m=GLASS, cut=False, cap_front=False)
 hw_, zb_, zt_ = pod_at(NOSE_GLASS); zm_ = zb_ + 0.46 * (zt_ - zb_)
 sweep('nose_glass_frame', [Vector((p.x * 1.01, p.y, zm_ + (p.z - zm_) * 1.01)) for p in pod_ring(NOSE_GLASS)], rect(0.012, 0.014), DARK, side=(0, 1, 0), closed=True, smooth=False)
 # landing light inside the clear fairing: reflector bowl, lamp, mounting bulkhead
-LL = Vector((0, 2.92, zm_ - 0.01))
+LL = Vector((0, NOSE_GLASS + 0.008, zm_ - 0.005))
 box('lamp_bulkhead', (0, NOSE_GLASS - 0.012, zm_), (hw_ * 1.6, 0.012, (zt_ - zb_) * 0.8), DARK)
-revolve('landing_light', LL, (0, 1, -0.12), [(0, 0.0), (0, 0.055), (0.02, 0.062), (0.05, 0.066), (0.05, 0.0)], MECH, 18)
-revolve('landing_lamp', LL + Vector((0, 0.045, -0.005)), (0, 1, -0.12), [(0, 0.0), (0, 0.058), (0.006, 0.0)], SCREEN, 18)
+revolve('landing_light', LL, (0, 1, -0.12), [(0, 0.0), (0, 0.030), (0.012, 0.034), (0.03, 0.036), (0.03, 0.0)], MECH, 18)
+revolve('landing_lamp', LL + Vector((0, 0.027, -0.003)), (0, 1, -0.12), [(0, 0.0), (0, 0.032), (0.004, 0.0)], SCREEN, 18)
 def top_z(x, y):
     hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb); u = min(abs(x) / hw, 0.999)
     return zm + (zt - zm) * (1 - u ** 2.1) ** (1 / 2.1) + 0.004
@@ -358,14 +358,16 @@ for sx in (-1, 1):
     box(f'footplate2{sx}', (sx * 0.24, 1.04, 0.70), (0.14, 0.14, 0.01), MECH)
 for y in (0.75, 0.10, -0.28): box(f'cross_C{y}', (0, y, RAIL_Z), (0.58, 0.035, 0.035), FRAME)
 box('keel_joint_F', (0, 1.04, 0.565), (0.11, 0.10, 0.11), MECH, rot=(R(-11), 0, 0), bevel=0.01)
-# stub pylons (Ibis-style fuselage pylons); moved forward DYP so the launchers clear the main gear (Nick 2026-11-12)
-DYP = 0.45
+# stub pylons (Ibis-style fuselage pylons); moved forward DYP so the launchers clear the main gear (Nick 2026-11-12);
+# span extended (hardpoint at x HPX) and the pylon now stands ON TOP of the stub: the AT145 rack is mounted on top,
+# flipped upside down so its mounting face sits on the pylon (Nick 2026-11-12 12:38)
+DYP, HPX = 0.45, 0.86
 for sx in (-1, 1):
-    wing(f'stub{sx}', [((sx * 0.08, 0.36 + DYP, KZ - 0.02), (0, -0.40, 0), (0, 0, 1)), ((sx * 0.74, 0.32 + DYP, KZ - 0.02), (0, -0.32, 0), (0, 0, 1))], SKIN, t=0.16)
-    tube(f'stub_strut{sx}', (sx * 0.29, 0.46 + DYP, RAIL_Z), (sx * 0.55, 0.20 + DYP, KZ - 0.01), 0.014, FRAME, 8)
-    tube(f'stub_strut_b{sx}', (sx * 0.29, 0.02 + DYP, RAIL_Z), (sx * 0.50, 0.16 + DYP, KZ - 0.01), 0.014, FRAME, 8)
-    plate(f'pylon{sx}', [(0.12, 0), (-0.26, 0), (-0.20, -0.11), (0.06, -0.11)], 0.055, SKIN, Matrix.Translation((0, 0.20 + DYP, KZ - 0.02)) @ side_at(sx * 0.70), bevel=0.008)
-    for k in (-1, 1): tube(f'sway{sx}{k}', (sx * 0.70 - 0.05, 0.20 + DYP + 0.06 * k, KZ - 0.13), (sx * 0.70 + 0.05, 0.20 + DYP + 0.06 * k, KZ - 0.13), 0.008, MECH, 6)
+    wing(f'stub{sx}', [((sx * 0.08, 0.36 + DYP, KZ - 0.02), (0, -0.40, 0), (0, 0, 1)), ((sx * (HPX + 0.05), 0.32 + DYP, KZ - 0.02), (0, -0.32, 0), (0, 0, 1))], SKIN, t=0.16)
+    tube(f'stub_strut{sx}', (sx * 0.29, 0.46 + DYP, RAIL_Z), (sx * (HPX - 0.18), 0.20 + DYP, KZ - 0.01), 0.014, FRAME, 8)
+    tube(f'stub_strut_b{sx}', (sx * 0.29, 0.02 + DYP, RAIL_Z), (sx * (HPX - 0.22), 0.16 + DYP, KZ - 0.01), 0.014, FRAME, 8)
+    plate(f'pylon{sx}', [(0.12, 0), (-0.26, 0), (-0.20, 0.10), (0.06, 0.10)], 0.055, SKIN, Matrix.Translation((0, 0.20 + DYP, KZ - 0.02)) @ side_at(sx * HPX), bevel=0.008)
+    for k in (-1, 1): tube(f'sway{sx}{k}', (sx * HPX - 0.05, 0.20 + DYP + 0.06 * k, KZ + 0.075), (sx * HPX + 0.05, 0.20 + DYP + 0.06 * k, KZ + 0.075), 0.008, MECH, 6)
 
 # ---- gunner seat (cockpit_R)
 part('cockpit_R', 'UL2Airtrike', (0, P2.y, RAIL_Z))

@@ -10,7 +10,7 @@ point in front of the chest. Elevation tilts the gun about its grip line. Arm IK
 cuffs; harness arm: two links hip hinge -> elbow (forced outboard, rear and up) -> post under the gun's U-yoke."""
 import bpy, bmesh, math, sys
 sys.path.insert(0, '/mnt/project-files/ul2/art/scripts/proto'); sys.path.insert(0, '/mnt/project-files/ul2/art/scripts/seat3')
-from mathutils import Vector, Matrix
+from mathutils import Vector, Matrix, Quaternion
 from mathutils.bvhtree import BVHTree
 import ul2lib; from ul2lib import part, box, tube, pipe, ball, plate, side_at, DARK, MECH, SEAT, FRAME
 import mg_model as mg
@@ -18,7 +18,7 @@ import mg_model as mg
 RIG_BLEND = '/mnt/project-files/ul2/art/blend/ul2_soldier_rig.blend'
 G_T = Vector((0.05, 0.13, 0.45))          # gun origin in the torso frame (reviewed hold: optic just below the eye line)
 H_T = Vector((0.0, 0.02, 0.45))          # swing point for the gun's yaw relative to the torso
-SOCKET = Vector((0.27, -0.06, 0.18)); HINGE = Vector((0.29, -0.06, 0.22))   # harness arm root (hips frame)
+SOCKET = Vector((0.17, 0.06, 0.15)); HINGE = Vector((0.20, 0.10, 0.19))   # waist, front-right of the belt (Nick 12:38)   # harness arm root (hips frame)
 L1 = L2 = 0.26
 POLE_R, POLE_L = Vector((0.45, -0.20, -0.70)), Vector((-0.35, 0.25, -0.75))  # torso frame
 
@@ -98,7 +98,7 @@ class Gunner:
         ul2lib.sweep('hb_belt', sweep_pts, ul2lib.rect(0.012, 0.06), SEAT, side=(0, 0, 1), smooth=False)
         hips_objs = list(ul2lib.PARTS['seat3_harness']['objs'])
         # socket block bolted to the belt on the right hip
-        box('hb_socket', tuple(SOCKET), (0.07, 0.06, 0.12), DARK, bevel=0.008)
+        box('hb_socket', tuple(SOCKET), (0.08, 0.07, 0.08), DARK, bevel=0.008)
         for k in range(2): tube(f'hb_bolt{k}', tuple(SOCKET + Vector((0.035, -0.015 + 0.03 * k, -0.03))), tuple(SOCKET + Vector((0.040, -0.015 + 0.03 * k, -0.03))), 0.006, MECH, segs=8)
         tube('hb_hinge', tuple(HINGE - Vector((0, 0, 0.04))), tuple(HINGE + Vector((0, 0, 0.04))), 0.022, MECH, segs=14)
         hips_objs = list(ul2lib.PARTS['seat3_harness']['objs'])
@@ -135,14 +135,26 @@ class Gunner:
         bpy.context.view_layer.update()
         TF = self.place @ _rz(T)                                       # torso frame (pelvis origin, yawed)
         rho = A - T
-        GMt = Matrix.Translation(H_T) @ _rz(rho) @ Matrix.Translation(G_T - H_T)
+        lift = max(0.0, E) / 60.0
+        GMt = Matrix.Translation(Vector((0, -0.06 * lift, 0.10 * lift))) @ Matrix.Translation(H_T) @ _rz(rho) @ Matrix.Translation(G_T - H_T)
         PIV = Vector((0, 0.16, 0.0))                                   # elevation axis through the grip line
         GM = TF @ GMt @ Matrix.Translation(PIV) @ Matrix.Rotation(math.radians(E), 4, 'X') @ Matrix.Translation(-PIV)
         self.gun.matrix_world = GM; self.GM = GM
         self.ik['R'].location = GM @ self.wR; self.ik['L'].location = GM @ self.wL
         self.pole['R'].location = TF @ POLE_R; self.pole['L'].location = TF @ POLE_L
         if head:
-            hy = max(-60, min(60, rho * 0.6)); self.pb['head'].rotation_mode = 'YXZ'; self.pb['head'].rotation_euler = (math.radians(10 - 0.3 * E), math.radians(-hy) * self.tw_sign, 0)
+            bpy.context.view_layer.update()
+            hb = self.ao.data.bones['head']; ph = self.pb['head']; ph.rotation_mode = 'QUATERNION'; ph.rotation_quaternion = (1, 0, 0, 0)
+            bpy.context.view_layer.update()
+            AW = self.ao.matrix_world.to_3x3()
+            fwd_l = hb.matrix_local.to_3x3().inverted() @ Vector((0, 1, 0))           # rest gaze in head-bone space
+            Mh = self.pb['head'].matrix.copy()                                           # armature space, chest-posed
+            g0 = (Mh.to_3x3() @ fwd_l).normalized()
+            hw = self.ao.matrix_world @ Mh.translation + AW @ (Mh.to_3x3() @ Vector((0, 0.10, 0)))   # roughly the eyes
+            tgt = GM @ Vector((0, 3.0, mg.BORE)); d = (AW.inverted() @ (tgt - hw)).normalized()
+            q = g0.rotation_difference(d)
+            if q.angle > math.radians(85): q = Quaternion(q.axis, math.radians(85))
+            R3 = q.to_matrix() @ Mh.to_3x3(); M4 = R3.to_4x4(); M4.translation = Mh.translation; ph.matrix = M4
         bpy.context.view_layer.update()
         self._arm()
         bpy.context.view_layer.update()
@@ -154,8 +166,8 @@ class Gunner:
         part('seat3_arm'); ul2lib.PARTS['seat3_arm']['objs'] = []
         P = self.place
         hinge = P @ HINGE
-        post_top = self.GM @ (mg.MOUNT + Vector((0, 0, -0.040)))
-        post_bot = post_top - Vector((0, 0, 0.08))
+        post_top = self.GM @ (mg.MOUNT + Vector((0, 0, -0.028)))
+        post_bot = post_top - (self.GM.to_3x3() @ Vector((0, 0, 1))).normalized() * 0.08
         d = post_bot - hinge; L = d.length; L_ = min(L, L1 + L2 - 0.005); self.arm_len = L
         h = math.sqrt(max(0.0, L1 * L1 - (L_ / 2) ** 2))
         # elbow forced outboard (away from the body centre), to the rear and up

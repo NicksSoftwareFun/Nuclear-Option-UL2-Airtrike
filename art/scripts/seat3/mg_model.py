@@ -9,7 +9,7 @@ from mathutils import Vector, Matrix
 BORE = 0.060
 GRIP = Vector((0, -0.01, -0.06))      # pistol grip centre (under the rear of the receiver)
 FORE = Vector((0, 0.33, -0.075))      # vertical foregrip centre under the handguard (left hand, Nick 2026-11-12)
-MOUNT = Vector((0, 0.11, -0.012))     # support arm gimbal under the receiver, ahead of the trigger guard
+MOUNT = Vector((0, 0.43, 0.008))      # support arm U-yoke under the handguard, ahead of the foregrip (Nick 2026-11-12 12:38)
 REC_Y0, REC_Y1, HG_Y1 = -0.10, 0.30, 0.64
 W = 0.064
 GUN_CUTTERS = []
@@ -173,12 +173,12 @@ def build_gun(M):
           rect(0.008, 0.052), DARK, side=(0, 1, 0), smooth=False, M=M)
     box('mg_feedport', (-W / 2 - 0.002, 0.205, 0.058), (0.008, 0.06, 0.020), DARK, bevel=0.002, M=M)
     # support arm interface: rail clamp + U-yoke holding a ball (the arm post rises into it)
-    box('mg_mount_rail', (0, MOUNT.y, -0.004), (0.030, 0.06, 0.012), DARK, bevel=0.002, M=M)
+    box('mg_mount_rail', (0, MOUNT.y, MOUNT.z + 0.002), (0.030, 0.06, 0.012), DARK, bevel=0.002, M=M)
     for sx in (-1, 1):
-        box(f'mg_yoke{sx}', (sx * 0.026, MOUNT.y, -0.034), (0.008, 0.040, 0.050), DARK, bevel=0.002, M=M)
-    box('mg_yoke_top', (0, MOUNT.y, -0.012), (0.060, 0.040, 0.008), DARK, bevel=0.002, M=M)
-    ball('mg_gimbal', tuple(MOUNT + Vector((0, 0, -0.040))), (0.0175, 0.0175, 0.0175), MECH, M=M, seg=14)
-    tube('mg_yoke_pin', (-0.030, MOUNT.y, -0.040), (0.030, MOUNT.y, -0.040), 0.005, MECH, segs=8, M=M)
+        box(f'mg_yoke{sx}', (sx * 0.026, MOUNT.y, MOUNT.z - 0.022), (0.008, 0.040, 0.050), DARK, bevel=0.002, M=M)
+    box('mg_yoke_top', (0, MOUNT.y, MOUNT.z), (0.060, 0.040, 0.008), DARK, bevel=0.002, M=M)
+    ball('mg_gimbal', tuple(MOUNT + Vector((0, 0, -0.028))), (0.0175, 0.0175, 0.0175), MECH, M=M, seg=14)
+    tube('mg_yoke_pin', (-0.030, MOUNT.y, MOUNT.z - 0.028), (0.030, MOUNT.y, MOUNT.z - 0.028), 0.005, MECH, segs=8, M=M)
 
 
 def _glove_wrap(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top'):

@@ -12,10 +12,10 @@ from gunner_rig import Gunner
 # livery
 m = bpy.data.materials['UL2_skin']; m.use_nodes = True; nt = m.node_tree
 bsdf = [n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'][0]
-tx = nt.nodes.new('ShaderNodeTexImage'); tx.image = bpy.data.images.load('/tmp/claude-0/ul2liv/out/UL2_skin_b.png'); nt.links.new(tx.outputs['Color'], bsdf.inputs['Base Color'])
+tx = nt.nodes.new('ShaderNodeTexImage'); tx.image = bpy.data.images.load('/tmp/ul2work/ul2liv/out/UL2_skin_b.png'); nt.links.new(tx.outputs['Color'], bsdf.inputs['Base Color'])
 # AT145 racks
 vs, fs = [], []
-for ln in open('/tmp/claude-0/atgm.obj'):
+for ln in open('/tmp/ul2work/atgm.obj'):
     p = ln.split()
     if not p: continue
     if p[0] == 'v': vs.append(tuple(map(float, p[1:4])))
@@ -24,30 +24,12 @@ me = bpy.data.meshes.new('atgm'); me.from_pydata(vs, [], fs); me.update()
 for pg in me.polygons: pg.use_smooth = True
 mt = bpy.data.materials.new('atgm_mat'); mt.use_nodes = True
 mt.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.16, 0.17, 0.15, 1); me.materials.append(mt)
-ABOVE = '--above' in sys.argv
-zlo = min(v[2] for v in vs)
-# stub top surface under the rack: measure it
-stub = bpy.data.objects['UL2Airtrike']
-from mathutils.bvhtree import BVHTree
-dg = bpy.context.evaluated_depsgraph_get(); sm = stub.evaluated_get(dg).to_mesh(); SM = stub.matrix_world
-bvh = BVHTree.FromPolygons([SM @ v.co for v in sm.vertices], [list(p.vertices) for p in sm.polygons]); stub.evaluated_get(dg).to_mesh_clear()
+ABOVE = '--below' not in sys.argv     # design (Nick 2026-11-12 12:38): racks on TOP of the extended stubs, flipped upside down
+HPX, HPY, HPZ = 0.86, 0.53, 0.80
 for sx in (-1, 1):
     o = bpy.data.objects.new(f'atgm{sx}', me); bpy.context.scene.collection.objects.link(o)
-    if ABOVE:
-        hit = bvh.ray_cast(Vector((sx * 0.70, 0.53, 2.0)), Vector((0, 0, -1)), 2.0)
-        top = hit[0].z if hit[0] is not None else 0.74
-        o.matrix_world = Matrix.Translation((sx * 0.70, 0.53, top + 0.035 - zlo))
-        print('stub top', round(top, 3), 'rack bottom', round(top + 0.035, 3), 'rack top', round(top + 0.035 - zlo, 3))
-    else:
-        o.matrix_world = Matrix.Translation((sx * 0.70, 0.53, 0.59))
-if ABOVE:   # short saddle posts between the stub and the rack
-    import ul2lib
-    from ul2lib import part, box
-    part('saddle')
-    for sx in (-1, 1):
-        for y in (0.35, 0.71):
-            hit = bvh.ray_cast(Vector((sx * 0.70, y, 2.0)), Vector((0, 0, -1)), 2.0); t = hit[0].z if hit[0] else 0.74
-            box(f'saddle{sx}{y}', (sx * 0.70, y, t + 0.018), (0.05, 0.06, 0.04), ul2lib.MECH, bevel=0.004)
+    if ABOVE: o.matrix_world = Matrix.Translation((sx * HPX, HPY, HPZ)) @ Matrix.Rotation(math.pi, 4, 'Y')   # mounting face down on the pylon
+    else: o.matrix_world = Matrix.Translation((sx * 0.70, 0.53, 0.59))
 # crew: seats 1-2 stock pilot refs stay, seat 3 = rigged gunner (hide the static soldier ref)
 bpy.data.objects['REF_soldier'].hide_render = True
 c = bpy.data.collections.get('CREWREF'); c.hide_render = False
@@ -65,7 +47,7 @@ if mode == 'still':
     shot(sc, cam, f'{out}/air_{tag}_topfront.png', (-1.6, 6.4, 4.8), (0.4, -0.4, 1.2), 40, res=(1600, 1000), scale=1.0)
     if ABOVE: shot(sc, cam, f'{out}/air_{tag}_side.png', (-40, -0.2, 1.55), (0, -0.2, 1.55), ortho=8.4, res=(1600, 900))
 else:
-    keys = [(95, -30), (70, -5), (40, 30), (12, 55), (0, 62), (-12, 55), (-40, 30), (-70, -5), (-95, -30)]
+    keys = [(95, -30), (70, -5), (40, 35), (12, 65), (0, 72), (-12, 65), (-40, 35), (-70, -5), (-95, -30)]
     N = 36; log = []
     def interp(t):
         x = t * (len(keys) - 1); i = min(int(x), len(keys) - 2); f = x - i; f = f * f * (3 - 2 * f)
