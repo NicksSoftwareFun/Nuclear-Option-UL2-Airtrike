@@ -58,6 +58,17 @@ def extract_rifle():
     o = bpy.data.objects.new('ibis_rifle', me); bpy.data.objects.remove(tr); return [o]
 RIFLE = extract_rifle()
 
+# screen quad with 0..1 UVs (the game's camera feed is drawn on it), facing -Y in frame M
+def screen(name, w, h, M, y=0.0):
+    bm = bmesh.new(); uv = bm.loops.layers.uv.new('UVMap')
+    vs = [bm.verts.new(M @ Vector(p)) for p in ((-w / 2, y, -h / 2), (w / 2, y, -h / 2), (w / 2, y, h / 2), (-w / 2, y, h / 2))]
+    f = bm.faces.new(vs)
+    for lp, t in zip(f.loops, ((1, 0), (0, 0), (0, 1), (1, 1))): lp[uv].uv = t
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    if me.polygons[0].normal.dot(M.to_3x3() @ Vector((0, -1, 0))) < 0: me.flip_normals()
+    o = bpy.data.objects.new(name, me); me.materials.append(mat(SCREEN)); coll('WORK').objects.link(o)
+    PARTS[CUR[0]]['objs'].append(o); return o
+
 # ================================================================ nose pod (cockpit_F + nose)
 POD = [  # y, half width, bottom z, top z
     (2.965, 0.030, 0.735, 0.765), (2.945, 0.135, 0.640, 0.865), (2.895, 0.215, 0.560, 0.945), (2.815, 0.278, 0.500, 1.015),
@@ -146,16 +157,50 @@ for sx in (-1, 1): box(f'hud_arm{sx}', (sx * 0.08, 2.11, 1.30), (0.01, 0.016, 0.
 PM = Matrix.Translation((0, 2.18, 1.07)) @ Matrix.Rotation(R(-20), 4, 'X')
 box('panel', (0, 0, 0), (0.62, 0.035, 0.24), CPIT, M=PM, bevel=0.01)
 box('mfd', (0, -0.022, 0.0), (0.21, 0.02, 0.19), DARK, M=PM, bevel=0.006)
-box('mfd_screen', (0, -0.033, 0.0), (0.15, 0.004, 0.15), SCREEN, M=PM)
+part('x_mfd1', 'cockpit_F', tuple(PM.translation)); screen('mfd_screen', 0.15, 0.15, PM, -0.036); part('cockpit_F')
 for sx in (-1, 1):
     for k in range(5): box(f'mfd_btn{sx}{k}', (sx * 0.093, -0.034, 0.066 - 0.033 * k), (0.018, 0.008, 0.018), MECH, M=PM)
     for k, (gx, gz) in enumerate(((0.165, 0.05), (0.255, 0.05), (0.165, -0.055), (0.255, -0.055))):
         revolve(f'gauge{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, 0.042), (0.012, 0.042), (0.012, 0.035), (0.006, 0.035), (0.006, 0)], DARK, 16, M=PM)
+# exterior detail (pass 2): raised panel seams, side seam, boarding step, antennas
+def seam_ring(y, tag, cut=True):
+    pts = pod_ring(y); hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb)
+    pts = [Vector((p.x * 1.006, y, zm + (p.z - zm) * 1.006)) for p in pts]
+    if cut:
+        k0 = max(range(NS), key=lambda i: pts[i].z)            # open the ring at the cockpit opening
+        lim = sill(y) - 0.02
+        run, runs = [], []
+        for i in range(NS):
+            p = pts[(k0 + i) % NS]
+            if p.z < lim: run.append(p)
+            elif run: runs.append(run); run = []
+        if run: runs.append(run)
+        for j, r in enumerate(runs):
+            if len(r) > 2: sweep(f'seam_{tag}{j}', r, rect(0.006, 0.0025), DARK, side=(0, 1, 0), smooth=False)
+    else:
+        sweep(f'seam_{tag}', pts, rect(0.006, 0.0025), DARK, side=(0, 1, 0), smooth=False, closed=True)
+for y, tag in ((2.02, 'c'), (1.55, 'd')): seam_ring(y, tag)
+for sx in (-1, 1):
+    side = []
+    for y in frange(2.68, 1.30, 16):
+        hw, zb, zt = pod_at(y); side.append(Vector((sx * (hw + 0.002), y, zb + 0.46 * (zt - zb) - 0.02)))
+    sweep(f'seam_side{sx}', side, rect(0.0025, 0.006), DARK, side=(sx, 0, 0), smooth=False)
+# boarding step (left) on a short strut
+box('board_step', (-0.47, 1.45, 0.47), (0.14, 0.20, 0.018), MECH, bevel=0.004)
+for k, yy in enumerate((1.38, 1.52)): tube(f'board_step_strut{k}', (-0.40, yy, 0.47), (-0.33, yy, 0.55), 0.012, FRAME, 8)
+# blade antenna under the pod and a GPS puck on the windscreen frame
+plate('ant_belly', [(0.0, 0.0), (0.10, 0.0), (0.05, -0.16), (-0.01, -0.16)], 0.012, DARK, Matrix.Translation((0, 1.62, 0.39)) @ Matrix.Rotation(R(90), 4, 'Z') @ side_at(0.0), bevel=0.003)
 # pilot controls
-pipe('stick', [(0, 1.95, 0.45), (0, 1.94, 0.70), (0, 1.90, 0.88)], 0.014, DARK, 4, segs=8)
-box('stick_grip', (0, 1.895, 0.94), (0.045, 0.05, 0.12), DARK, rot=(R(12), 0, 0), bevel=0.014)
-box('throttle_box', (-0.30, 1.78, 0.88), (0.06, 0.22, 0.06), MECH, bevel=0.01)
-tube('throttle', (-0.30, 1.80, 0.90), (-0.30, 1.86, 1.00), 0.009, MECH, 6); ball('throttle_knob', (-0.30, 1.865, 1.01), (0.022,) * 3, DARK, seg=10)
+part('x_stick', 'cockpit_F', (0, 1.95, 0.47))
+pipe('stick', [(0, 1.95, 0.45), (0, 1.90, 0.80), (0, 1.80, 1.12)], 0.015, DARK, 4, segs=8)
+
+box('stick_grip', (0, 1.79, 1.18), (0.045, 0.05, 0.12), DARK, rot=(R(12), 0, 0), bevel=0.014)
+part('cockpit_F')
+box('stick_boot', (0, 1.95, 0.47), (0.10, 0.10, 0.05), DARK, bevel=0.015)
+box('throttle_box', (-0.31, 1.72, 1.06), (0.06, 0.22, 0.06), MECH, bevel=0.01)
+part('x_throttle', 'cockpit_F', (-0.31, 1.73, 1.08))
+tube('throttle', (-0.31, 1.73, 1.08), (-0.31, 1.77, 1.20), 0.009, MECH, 6); ball('throttle_knob', (-0.31, 1.775, 1.21), (0.022,) * 3, DARK, seg=10)
+part('cockpit_F')
 for sx in (-1, 1):
     box(f'pedal{sx}', (sx * 0.15, 2.42, 0.56), (0.11, 0.02, 0.15), MECH, rot=(R(-25), 0, 0), bevel=0.004)
     tube(f'pedal_bar{sx}', (sx * 0.15, 2.46, 0.44), (sx * 0.15, 2.43, 0.52), 0.01, MECH, 6)
@@ -195,6 +240,14 @@ sweep('nose_mudguard', arc, rect(0.17, 0.008), SKIN, side=(1, 0, 0))
 
 part('nose', 'cockpit_F', (0, 2.70, 0.75))
 build_pod(frange(2.965, 2.70, 10), 'nose_shell', cut=False, cap_front=False)
+def top_z(x, y):
+    hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb); u = min(abs(x) / hw, 0.999)
+    return zm + (zt - zm) * (1 - u ** 2.1) ** (1 / 2.1) + 0.004
+HP = []
+for x0, y0, x1, y1 in ((-0.12, 2.73, 0.12, 2.73), (0.12, 2.73, 0.10, 2.86), (0.10, 2.86, -0.10, 2.86), (-0.10, 2.86, -0.12, 2.73)):
+    for t in frange(0, 1, 6)[:-1]: x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t; HP.append(Vector((x, y, top_z(x, y))))
+sweep('nose_hatch', HP, rect(0.006, 0.0025), DARK, side=(0, 0, 1), smooth=False, closed=True)
+for sx in (-1, 1): revolve(f'static_port{sx}', (sx * 0.33, 2.66, 0.80), (sx, 0, 0), [(0, 0.012), (0.004, 0.012), (0.004, 0)], DARK, 10)
 revolve('landing_light', (0, 2.87, 0.555), (0, 1, -0.45), [(0, 0.045), (0.02, 0.045), (0.024, 0.036), (0.025, 0)], MECH, 14)
 pipe('pitot', [(0.18, 2.84, 0.80), (0.20, 2.95, 0.80), (0.20, 3.10, 0.80)], 0.008, MECH, 3, segs=6)
 
@@ -237,13 +290,13 @@ for P, nm in ((P2, 'seat2'),):
 tube('mfd2_post', (0.08, 0.98, 0.80), (0, 0.98, 1.24), 0.017, FRAME, 8)
 GM = Matrix.Translation((0, 0.99, 1.33)) @ Matrix.Rotation(R(-12), 4, 'X')
 box('mfd2', (0, 0, 0), (0.25, 0.04, 0.20), DARK, M=GM, bevel=0.008)
-box('mfd2_screen', (0, -0.021, 0), (0.18, 0.004, 0.15), SCREEN, M=GM)
+part('x_mfd2', 'cockpit_R', tuple(GM.translation)); screen('mfd2_screen', 0.18, 0.15, GM, -0.024); part('cockpit_R')
 for sx in (-1, 1):
     for k in range(4): box(f'mfd2_btn{sx}{k}', (sx * 0.108, -0.022, 0.055 - 0.037 * k), (0.016, 0.008, 0.016), MECH, M=GM)
-    pipe(f'grip2_arm{sx}', [(sx * 0.05, 0.97, 1.20), (sx * 0.16, 0.86, 1.30), (sx * 0.20, 0.70, 1.40)], 0.014, FRAME, 4, segs=8)
-    tube(f'grip2{sx}', (sx * 0.20, 0.70, 1.37), (sx * 0.20, 0.68, 1.50), 0.018, DARK, 10)
-    box(f'grip2_trigger{sx}', (sx * 0.20, 0.72, 1.47), (0.02, 0.025, 0.035), MECH)
-box('grip2_bar', (0, 0.70, 1.40), (0.40, 0.025, 0.025), FRAME)
+    pipe(f'grip2_arm{sx}', [(sx * 0.05, 0.97, 1.20), (sx * 0.15, 0.84, 1.36), (sx * 0.20, 0.72, 1.45)], 0.014, FRAME, 4, segs=8)
+    tube(f'grip2{sx}', (sx * 0.20, 0.68, 1.42), (sx * 0.20, 0.64, 1.55), 0.018, DARK, 10)
+    box(f'grip2_trigger{sx}', (sx * 0.20, 0.68, 1.52), (0.02, 0.025, 0.035), MECH)
+box('grip2_bar', (0, 0.70, 1.45), (0.40, 0.025, 0.025), FRAME)
 # ammo box at the gunner's feet (right), feeds the side gun
 box('ammo_box', (0.27, 0.80, 0.66), (0.20, 0.26, 0.20), MECH, bevel=0.008)
 box('ammo_lid', (0.27, 0.80, 0.765), (0.21, 0.27, 0.014), DARK)
@@ -306,7 +359,7 @@ for sy in (-1, 1): plate(f'teeter_tower{sy}', [(-0.04, 0), (0.04, 0), (0.025, 0.
 tube('teeter_bolt', HEAD + Vector((0, -0.075, 0.04)), HEAD + Vector((0, 0.075, 0.04)), 0.012, MECH, 10)
 box('hub_bar', HEAD + Vector((0, 0, 0.05)), (1.20, 0.11, 0.032), MECH, bevel=0.005)
 for sx in (-1, 1):
-    for k in range(4): tube(f'hub_bolt{sx}{k}', HEAD + Vector((sx * (0.45 + 0.04 * k), 0.03 * (-1) ** k, 0.02)), HEAD + Vector((sx * (0.45 + 0.04 * k), 0.03 * (-1) ** k, 0.08)), 0.008, DARK, 6)
+    if False: tube(f'hub_bolt{sx}', HEAD + Vector((sx * (0.45 + 0.04 * k), 0.03 * (-1) ** k, 0.02)), HEAD + Vector((sx * (0.45 + 0.04 * k), 0.03 * (-1) ** k, 0.08)), 0.008, DARK, 6)
 CONE = R(1.5)
 def bpt(sx, r): return HEAD + Vector((sx * r, 0, 0.05 + max(0, r - 0.6) * math.tan(CONE)))
 for sx, tag in ((1, 'R'), (-1, 'L')):

@@ -349,11 +349,24 @@ public static class UL2Builder
         var cf = Need("cockpit_F");
         Visual("gear_F_visible", "gear_F", cf);
         // the Cricket cockpit, canopies and ejection seats go invisible; their components stay for the stock logic
-        foreach (var n in new[] { "cockpit_F_interior", "joystick", "throttle", "throttleZero", "targetScreen", "cockpit_F_exterior",
+        foreach (var n in new[] { "cockpit_F_interior", "cockpit_F_exterior",
                                   "canopyFrame_F", "canopy_F_LOD1", "canopyGlass_F_interior", "canopyFrame_F_exterior", "canopyFrame_F_interior",
                                   "canopyGlass_F_exterior", "canopyFrame_R", "canopy_R_LOD1", "canopy_glass_R_exterior", "canopy_glass_R_interior",
                                   "geardoor_FL", "geardoor_FR", "geardoor_LL", "geardoor_LR", "geardoor_RL", "geardoor_RR", "ejectionSeat2" })
             Hide(n);
+        // pilot controls on the Cricket's Cockpit links: stick and throttle move with the inputs (stock Cockpit component)
+        {
+            var js = Need("joystick"); MoveAlone(js, P("x_stick")); SetMesh(js, "x_stick"); js.GetComponent<Renderer>().enabled = true;
+            var tz = Need("throttleZero"); MoveAlone(tz, P("x_throttle"));
+            var th = Need("throttle"); MoveAlone(th, P("x_throttle")); SetMesh(th, "x_throttle"); th.GetComponent<Renderer>().enabled = true;
+            // the MFDs show the targeting ball's camera, the stock way (TargetCam draws onto targetScreen's material)
+            var ts = Need("targetScreen"); MoveAlone(ts, P("x_mfd1"));
+            ts.GetComponent<MeshFilter>().sharedMesh = M["x_mfd1"]; var tr = ts.GetComponent<Renderer>(); tr.enabled = true;
+            var ts2 = Find(root, "targetScreen2");
+            if (ts2 == null) { ts2 = ((GameObject)Object.Instantiate(ts.gameObject, Need("cockpit_R"))).transform; ts2.name = "targetScreen2"; }
+            MoveAlone(ts2, P("x_mfd2")); ts2.GetComponent<MeshFilter>().sharedMesh = M["x_mfd2"];
+            log.AppendLine("screen material " + (tr.sharedMaterial ? tr.sharedMaterial.name : "none"));
+        }
         foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == "EjectionSeat").ToList()) { NoMesh(t); var mc = t.GetComponent<Collider>(); if (mc) mc.enabled = false; }
         foreach (var c in root.GetComponentsInChildren<Component>(true).Where(c => c != null && c.GetType().Name == "Pilot")) Set(c, "ejectionSeat", false);
         // crew: the Cricket pilot and WSO (the copilot) sit at the UL-2 seats; pelvis is 0.01 below the Pilot transform
@@ -689,7 +702,7 @@ public static class UL2Builder
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.1.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.2.0\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

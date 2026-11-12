@@ -48,7 +48,7 @@ for o in parts:
     uvl = bm.loops.layers.uv.active or bm.loops.layers.uv.new('UVMap')
     gl = [i for i, m in enumerate(me.materials) if m and m.name == 'UL2_glass']
     st = [i for i, m in enumerate(me.materials) if m and m.name in ('UL2_mech', 'UL2_frame')]
-    for f in bm.faces:
+    for f in ([] if o.name.startswith('x_mfd') else bm.faces):
         if f.material_index in st:
             nn = f.normal; ax = max(range(3), key=lambda i: abs(nn[i]))
             for lp in f.loops:
