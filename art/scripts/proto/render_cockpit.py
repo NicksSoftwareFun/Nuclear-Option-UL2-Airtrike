@@ -8,8 +8,9 @@ a = sys.argv[sys.argv.index('--') + 1:]
 bpy.ops.wm.open_mainfile(filepath=a[0]); out = a[1]; only = set(a[2:])
 sc, cam, g = setup(24)
 EYE = Vector((0, 1.315, 1.665))
-def S(name, loc, look, fov=None, lens=40, res=(1600, 900), fp=False):
+def S(name, loc, look, fov=None, lens=40, res=(1600, 900), fp=False, clip=0.05):
     if only and name not in only: return
+    cam.data.clip_start = clip
     for o in bpy.data.objects:
         if o.name.startswith(('x_harness1', 'REF_pilot')): o.hide_render = fp
     if fov: cam.data.sensor_fit = 'VERTICAL'; cam.data.angle = math.radians(fov)
@@ -28,6 +29,8 @@ S('nose_3q', (2.6, 4.6, 2.2), (0, 1.9, 1.25), lens=40, res=(1400, 900))
 S('side', (-6.0, 1.2, 1.45), (0, 1.2, 1.25), lens=50, res=(1400, 900))
 S('rifle1', (-0.95, 1.05, 1.45), (-0.29, 1.25, 1.35), lens=45, res=(1000, 1200))
 S('rifle1_back', (-0.75, 0.55, 1.55), (-0.29, 1.15, 1.35), lens=45, res=(1000, 1200), fp=True)
+S('sub_side', (-1.0, 1.15, 1.55), (-0.30, 1.15, 1.55), lens=50, res=(1200, 1200), clip=0.66)
+S('sub_3q', (-0.95, 1.55, 1.85), (-0.30, 1.15, 1.55), lens=50, res=(1200, 1200), clip=0.62)
 S('belly_pod', (0.9, 2.2, 0.15), (0, 1.0, 0.40), lens=45, res=(1200, 900))
 S('pod_front', (0.25, 2.0, 0.05), (0, 1.05, 0.25), lens=70, res=(1200, 900))
 S('pylon_R', (1.9, 1.6, 1.4), (0.86, 0.50, 0.80), lens=45, res=(1200, 900))

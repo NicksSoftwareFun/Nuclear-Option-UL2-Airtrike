@@ -180,7 +180,7 @@ public static partial class UL2Builder
         so.ApplyModifiedPropertiesWithoutUndo();
     }
     static Component AP(string n) { return C(Need(n), "AeroPart"); }
-    static int jointIterations = 6;
+    static int jointIterations = 12;   // 0.15.7: stiffer chain (mast lean, soft tail)
     static void Joints(string part, params object[] pairs)
     {
         var ap = AP(part);
@@ -431,6 +431,18 @@ public static partial class UL2Builder
             keep.AddRange(hs); ObjArray(acx, "exteriorRenderers", keep.ToArray());
             log.AppendLine("harness on exteriorRenderers, total " + keep.Count);
         }
+        // 0.15.7 (Nick 22:41: gauges dead in game): the Trident way. Every cockpit object we add sits on the cockpit camera's
+        // layer (the stock targetScreen's) and is listed in Aircraft.cockpitRenderers, or the cockpit view never draws it
+        {
+            int lay = Need("targetScreen").gameObject.layer; var add = new List<Object>();
+            string[] pre = { "UL2_gface_", "UL2_gauge_", "UL2_pedal_", "UL2_mfd2", "UL2_inst2" };
+            foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => pre.Any(x => t.name.StartsWith(x))).ToList())
+                foreach (var tt in t.GetComponentsInChildren<Transform>(true)) { tt.gameObject.layer = lay; var r = tt.GetComponent<MeshRenderer>(); if (r && !add.Contains(r)) add.Add(r); }
+            var acx = C(root, "Aircraft"); var so = new SerializedObject(acx); var cr = so.FindProperty("cockpitRenderers"); var keep = new List<Object>();
+            for (int i = 0; i < cr.arraySize; i++) { var o = cr.GetArrayElementAtIndex(i).objectReferenceValue; if (o != null && !add.Contains(o)) keep.Add(o); }
+            keep.AddRange(add); ObjArray(acx, "cockpitRenderers", keep.ToArray());
+            log.AppendLine("cockpit layer " + lay + ": " + add.Count + " renderers added, cockpitRenderers " + keep.Count);
+        }
         foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == "EjectionSeat").ToList()) { NoMesh(t); var mc = t.GetComponent<Collider>(); if (mc) mc.enabled = false; }
         foreach (var c in root.GetComponentsInChildren<Component>(true).Where(c => c != null && c.GetType().Name == "Pilot")) Set(c, "ejectionSeat", false);
         // crew: the Cricket pilot and WSO (the copilot) sit at the UL-2 seats; pelvis is 0.01 below the Pilot transform
@@ -573,7 +585,9 @@ public static partial class UL2Builder
             Set(lg, "extendedDrag", 0.3f);
             // Cricket rough-field values kept (travel, friction, contact area); springs scaled to the lighter aircraft
             if (g == "F") { Set(lg, "wheelRadius", 0.24f); Set(lg, "springRate", 60000f); Set(lg, "dampingRate", 5000f); Set(lg, "mass", 15f); }
-            else { Set(lg, "wheelRadius", 0.27f); Set(lg, "springRate", 50000f); Set(lg, "dampingRate", 5000f); Set(lg, "mass", 20f); }
+            // 0.15.7 (Nick 22:36: tips over while taxiing): stiffer, better damped mains and less nose steering lock
+            else { Set(lg, "wheelRadius", 0.27f); Set(lg, "springRate", 80000f); Set(lg, "dampingRate", 9000f); Set(lg, "mass", 20f); }
+            if (g == "F") Set(lg, "steeringLock", 30f);
             var bc = gt.GetComponent<BoxCollider>(); if (bc) bc.size = bc.size * 0.4f;
         }
     }
@@ -937,15 +951,15 @@ public static partial class UL2Builder
         J("nose", "cockpit_F", 20000f);
         J("fuselage", "COIN_PLACEHOLDER", 60000f);
         J("intake", "fuselage", 24000f, "cockpit_R", 16000f, "COIN_PLACEHOLDER", 16000f);
-        J("mast", "fuselage", 60000f, "intake", 20000f);
-        J("rotorHead", "mast", 48000f);
-        J("engine_core", "mast", 48000f, "fuselage", 24000f);
+        J("mast", "fuselage", 60000f, "intake", 20000f, "COIN_PLACEHOLDER", 40000f, "cockpit_R", 24000f);   // 0.15.7: mast leaned right under the engine + rotor (Nick 22:33), brace it to the frame
+        J("rotorHead", "mast", 48000f, "fuselage", 30000f);
+        J("engine_core", "mast", 48000f, "fuselage", 24000f, "COIN_PLACEHOLDER", 30000f);
         J("engine_L", "engine_core", 24000f); J("engine_R", "engine_core", 24000f);
         J("propHub", "engine_core", 40000f);
         J("gunmount_R", "COIN_PLACEHOLDER", 40000f, "cockpit_F", 20000f, "cockpit_R", 20000f);
         J("nacelle_L", "fuselage", 40000f, "COIN_PLACEHOLDER", 24000f); J("nacelle_R", "fuselage", 40000f, "COIN_PLACEHOLDER", 24000f);
-        J("tailboom_L", "fuselage", 40000f, "mast", 30000f, "engine_core", 24000f); J("tailboom_R", "tailboom_L", 32000f);
-        J("vstab1_L", "tailboom_R", 24000f); J("vstab1_R", "vstab1_L", 12000f);
+        J("tailboom_L", "fuselage", 40000f, "mast", 30000f, "engine_core", 24000f, "COIN_PLACEHOLDER", 30000f); J("tailboom_R", "tailboom_L", 32000f, "fuselage", 24000f, "mast", 20000f);
+        J("vstab1_L", "tailboom_R", 24000f, "tailboom_L", 16000f); J("vstab1_R", "vstab1_L", 12000f);
         J("rudder_L", "vstab1_L", 20000f); J("rudder_R", "vstab1_R", 20000f);
         foreach (var s in new[] { "L", "R" })
         {
@@ -955,6 +969,47 @@ public static partial class UL2Builder
             J("elevator_" + s, "hstab_" + s, 20000f); J("elevatorTip_" + s, "hstabTip_" + s, 20000f);
         }
         log.AppendLine("aero + joints set");
+    }
+
+    // 0.15.7 (Nick 22:35): manual rotor rpm on the HUD the way the Alkyon shows its wing angle. Own copy of the stock
+    // COIN HUD extras plus the Alkyon gauge's label (same font/style), and an idle-to-full bar; the plugin fills it in.
+    static GameObject HudExtrasUL2()
+    {
+        if (!AssetDatabase.IsValidFolder(MOD + "UI")) AssetDatabase.CreateFolder(MOD.TrimEnd('/'), "UI");
+        string dst = MOD + "UI/UL2_HUDExtras.prefab";
+        AssetDatabase.DeleteAsset(dst);
+        if (!AssetDatabase.CopyAsset(PH + "GameObject/COIN_HUDExtras_PLACEHOLDER.prefab", dst)) { log.AppendLine("HUD extras: copy failed"); return null; }
+        var go = PrefabUtility.LoadPrefabContents(dst);
+        var quad = PrefabUtility.LoadPrefabContents(PH + "GameObject/QuadVTOL1_HUDExtras_PLACEHOLDER.prefab");
+        try
+        {
+            var src = quad.GetComponentsInChildren<Transform>(true).First(t => t.name == "wingAngleGauge");
+            var g = Object.Instantiate(src.gameObject, go.transform, false); g.name = "UL2_rotorGauge";
+            foreach (var c in g.GetComponents<Component>()) if (c != null && c.GetType().Name == "WingAngleGauge") Object.DestroyImmediate(c);
+            foreach (var n in new[] { "inputPivot", "wingIcon", "tiltArc" }) { var t = g.transform.Find(n); if (t) Object.DestroyImmediate(t.gameObject); }
+            var rt = (RectTransform)g.transform; rt.anchoredPosition = new Vector2(0f, -150f);
+            var lab = (RectTransform)g.transform.Find("label"); lab.anchorMin = lab.anchorMax = new Vector2(0.5f, 0.5f); lab.pivot = new Vector2(0.5f, 0.5f);
+            lab.anchoredPosition = new Vector2(0f, 18f); lab.sizeDelta = new Vector2(320f, 30f);
+            var title = Object.Instantiate(lab.gameObject, g.transform, false); title.name = "title"; ((RectTransform)title.transform).anchoredPosition = new Vector2(0f, 44f);
+            foreach (var tl in new[] { lab.gameObject, title }) { var tmp = tl.GetComponent<TMPro.TextMeshProUGUI>(); if (tmp) { tmp.alignment = TMPro.TextAlignmentOptions.Center; tmp.text = tl == title ? "PRE ROTATOR MANUAL CONTROL" : "ROTOR 0 RPM"; } }
+            // bar: dim frame, fill anchored on its left end (the plugin scales it from idle 110 rpm to full 450 rpm)
+            var bg = new GameObject("barBg", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image)); bg.layer = g.layer;
+            var brt = (RectTransform)bg.transform; brt.SetParent(g.transform, false); brt.anchoredPosition = new Vector2(0f, -4f); brt.sizeDelta = new Vector2(240f, 12f);
+            bg.GetComponent<UnityEngine.UI.Image>().color = new Color(0f, 1f, 0f, 0.25f);
+            var fill = new GameObject("barFill", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image)); fill.layer = g.layer;
+            var frt = (RectTransform)fill.transform; frt.SetParent(brt, false); frt.anchorMin = new Vector2(0f, 0f); frt.anchorMax = new Vector2(0f, 1f); frt.pivot = new Vector2(0f, 0.5f);
+            frt.anchoredPosition = new Vector2(1f, 0f); frt.sizeDelta = new Vector2(238f, -2f);
+            fill.GetComponent<UnityEngine.UI.Image>().color = new Color(1f, 0.2f, 0.15f, 0.9f);
+            var tick = new GameObject("jumpMark", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image)); tick.layer = g.layer;
+            var trt = (RectTransform)tick.transform; trt.SetParent(brt, false); trt.anchorMin = trt.anchorMax = new Vector2((400f - 110f) / 340f, 0.5f); trt.sizeDelta = new Vector2(2f, 20f);
+            tick.GetComponent<UnityEngine.UI.Image>().color = new Color(0.3f, 1f, 0.3f, 0.9f);
+            g.SetActive(false);
+            PrefabUtility.SaveAsPrefabAsset(go, dst);
+            log.AppendLine("HUD extras: rotor gauge added");
+        }
+        catch (System.Exception e) { log.AppendLine("HUD extras ERROR " + e.Message); }
+        finally { PrefabUtility.UnloadPrefabContents(go); PrefabUtility.UnloadPrefabContents(quad); }
+        return AssetDatabase.LoadAssetAtPath<GameObject>(dst);
     }
 
     // ------------------------------------------------------------------ def, parameters, hangar op (literal values)
@@ -975,7 +1030,8 @@ public static partial class UL2Builder
         so.FindProperty("approachSpeed").floatValue = 26f;
         so.FindProperty("landingSpeed").floatValue = 22f;
         so.FindProperty("shortLandingSpeed").floatValue = 20f;
-        so.FindProperty("groundTurningRadius").floatValue = 6f;
+        so.FindProperty("groundTurningRadius").floatValue = 10f;
+        so.FindProperty("HUDExtras").objectReferenceValue = HudExtrasUL2();
         so.FindProperty("DefaultFuelLevel").floatValue = 1f;
         so.FindProperty("cruiseThrottle").floatValue = 0.75f;
         var liv = so.FindProperty("liveries"); liv.arraySize = 1;
@@ -1044,7 +1100,7 @@ public static partial class UL2Builder
         hn = hs.GetArrayElementAtIndex(1).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "Helipad";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.6\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.7\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

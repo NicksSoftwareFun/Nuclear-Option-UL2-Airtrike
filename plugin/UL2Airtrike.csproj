@@ -3,7 +3,7 @@
     <TargetFramework>net472</TargetFramework>
     <AssemblyName>UL2Airtrike</AssemblyName>
     <RootNamespace>UL2Airtrike</RootNamespace>
-    <Version>0.9.0</Version>
+    <Version>0.15.0</Version>
     <LangVersion>latest</LangVersion>
     <Optimize>true</Optimize>
     <NobpFile Condition="'$(NobpFile)' == ''">UL-2 Airtrike_0.9.0.nobp</NobpFile>
@@ -15,6 +15,11 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="seat3\UL2_s3_mg_pose.bytes"><LogicalName>UL2Airtrike.UL2_s3_mg_pose.bytes</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="seat3\UL2_s3_gl_pose.bytes"><LogicalName>UL2Airtrike.UL2_s3_gl_pose.bytes</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="seat3\UL2_s3_spot_pose.bytes"><LogicalName>UL2Airtrike.UL2_s3_spot_pose.bytes</LogicalName></EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
@@ -22,7 +27,12 @@
     <Reference Include="lib\0Harmony.dll" Private="false" />
     <Reference Include="lib\UnityEngine.dll" Private="false" />
     <Reference Include="lib\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="lib\UnityEngine.PhysicsModule.dll" Private="false" />
     <Reference Include="lib\netstandard.dll" Private="false" />
+    <Reference Include="lib\UnityEngine.UI.dll" Private="false" />
+    <Reference Include="lib\Unity.TextMeshPro.dll" Private="false" />
+    <Reference Include="lib\UnityEngine.UIModule.dll" Private="false" />
+    <Reference Include="lib\UnityEngine.TextRenderingModule.dll" Private="false" />
   </ItemGroup>
   <Target Name="WarnNoBundle" BeforeTargets="Build" Condition="!Exists('$(NobpFile)')">
     <Warning Text="No bundle $(NobpFile): the DLL would ship empty" />

@@ -2,6 +2,10 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.7 test build: folded SUB-2000 carbines on seats 1 and 2; HUD pre-rotator gauge (rpm, idle-to-full bar, red to
+  green at jump speed); rotor head pitch authority on the takeoff roll; mast, engine and tail braced to the frame, stiffer
+  main gear, less nose steering lock; faired sensor turret housing with side arm; square MFD with smaller six-pack; gauges
+  moved to the cockpit camera layer so they draw.
 - 0.15.6 test build: prop no longer stops below full throttle (strike-detector disc kept clear of the engine part,
   strike log added); custom axis 1 scaled to the binding's range; main gear casts clear of the nacelle so the wheels roll;
   gunner idle pose upright; darker rifle furniture; harnesses hide with their occupant / gunner kit; side seam removed;
