@@ -207,9 +207,12 @@ for sx in (-1, 1):
 # ---- cockpit detail pass: gauge needles and bezels, standby compass, side consoles, harness
 for sx in (-1, 1):
     for k, (gx, gz) in enumerate(((0.152, 0.05), (0.234, 0.05), (0.152, -0.055), (0.234, -0.055))):
-        ang = R((-60, 35, 110, -20)[k] * sx)
-        NM = PM @ Matrix.Translation((sx * gx, -0.027, gz)) @ Matrix.Rotation(ang, 4, 'Y')
+        # live needle: its own pseudo-part pivoted on the gauge centre, modelled pointing up; the plugin turns it
+        gid = ('asi', 'alt', 'vsi', 'rotor')[k] if sx < 0 else ('rpm', 'fuel', 'oil', 'volt')[k]
+        NM = PM @ Matrix.Translation((sx * gx, -0.027, gz))
+        part(f'x_g_{gid}', 'cockpit_F', tuple(NM.translation))
         box(f'gauge_needle{sx}{k}', (0, 0, 0.012), (0.004, 0.002, 0.026), MECH, M=NM)
+        part('cockpit_F')
         revolve(f'gauge_bezel{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, 0.041), (0.014, 0.041), (0.014, 0.038)], MECH, 16, M=PM, cap=False)
 box('panel_lamp_bezel', (0, -0.02, 0.112), (0.19, 0.012, 0.024), MECH, M=PM, bevel=0.003)
 for k in range(5): box(f'panel_lamp{k}', (-0.072 + 0.036 * k, -0.027, 0.112), (0.03, 0.004, 0.016), DARK, M=PM)

@@ -12,7 +12,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.5.0")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.6.0")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -47,6 +47,11 @@ namespace UL2Airtrike
         Component unit; Transform spin; Component headPart;
         readonly List<KeyValuePair<Component, Transform>> blades = new List<KeyValuePair<Component, Transform>>();
         float rpm; bool ready; int tries;
+        // cockpit gauges (all values the game already has; oil and volts have no game signal and follow engine rpm)
+        readonly Dictionary<string, Transform> gauges = new Dictionary<string, Transform>();
+        readonly Dictionary<string, float> shown = new Dictionary<string, float>();
+        readonly Dictionary<string, Quaternion> rest = new Dictionary<string, Quaternion>();
+        Component engine; static MethodInfo mRpm, mFuel; static FieldInfo fAlt; float lastY, vs; bool haveY;
 
         void Update()
         {
@@ -61,6 +66,7 @@ namespace UL2Airtrike
                 float target = headOn ? Mathf.Clamp(spd * 9f, 0f, 380f) : 0f;
                 rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? 60f : 40f) * dt);
                 spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * dt, 0f);
+                Gauges(spd, dt);
                 for (int i = blades.Count - 1; i >= 0; i--)
                 {
                     var b = blades[i];
@@ -72,6 +78,32 @@ namespace UL2Airtrike
                 }
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 rotor: " + e); enabled = false; }
+        }
+
+        void Gauges(float spd, float dt)
+        {
+            if (gauges.Count == 0 || dt <= 0f) return;
+            float y = transform.position.y;
+            if (haveY) vs = Mathf.Lerp(vs, (y - lastY) / dt, 1f - Mathf.Exp(-dt * 2f));
+            lastY = y; haveY = true;
+            float alt = fAlt != null ? Mathf.Max((float)fAlt.GetValue(unit), 0f) * 3.28084f : 0f;
+            float er = 0f; try { if (engine != null && mRpm != null) er = Mathf.Clamp01((float)mRpm.Invoke(engine, null)); } catch { }
+            float fuel = 0f; try { if (mFuel != null) fuel = Mathf.Clamp01((float)mFuel.Invoke(unit, null)); } catch { }
+            Needle("asi", -135f + 270f * Mathf.Clamp01(spd * 1.94384f / 120f), dt);          // 0-120 kt
+            Needle("alt", alt % 1000f / 1000f * 360f, dt);                                  // one turn per 1000 ft
+            Needle("vsi", -90f + 135f * Mathf.Clamp(vs / 10f, -1f, 1f), dt);                // +-10 m/s, zero at 9 o'clock
+            Needle("rotor", -135f + 270f * Mathf.Clamp01(rpm / 450f), dt);                   // rotor rpm, 0-450
+            Needle("rpm", -135f + 270f * er, dt);
+            Needle("fuel", -120f + 240f * fuel, dt);
+            Needle("oil", er > 0.05f ? -135f + 270f * (0.45f + 0.25f * er) : -135f, dt);
+            Needle("volt", -135f + 270f * (er > 0.05f ? 0.70f : 0.60f), dt);
+        }
+        void Needle(string id, float deg, float dt)
+        {
+            Transform t; if (!gauges.TryGetValue(id, out t) || t == null) return;
+            float a; shown.TryGetValue(id, out a);
+            a = Mathf.Lerp(a, deg, 1f - Mathf.Exp(-dt * 6f)); shown[id] = a;
+            t.localRotation = rest[id] * Quaternion.Euler(0f, 0f, a);      // pivot Z faces the pilot: positive turns clockwise as seen from the seat
         }
 
         bool Detached(Component part) { try { return mDetached != null && (bool)mDetached.Invoke(part, null); } catch { return false; } }
@@ -87,6 +119,16 @@ namespace UL2Airtrike
             if (fParts?.GetValue(unit) is System.Collections.IEnumerable pl)
                 foreach (var o in pl) if (o is Component c && c != null) parts[c.name] = c;
             if (!parts.TryGetValue("rotorHead", out headPart)) return;
+            mRpm = mRpm ?? AccessTools.Method(AccessTools.TypeByName("TurbineEngine"), "GetRPMRatio");
+            mFuel = mFuel ?? AccessTools.Method(AccessTools.TypeByName("Aircraft"), "GetFuelLevel"); fAlt = fAlt ?? AccessTools.Field(tUnit, "radarAlt");
+            var tEng = AccessTools.TypeByName("TurbineEngine");
+            foreach (var c in parts.Values)
+            {
+                if (c == null) continue;
+                foreach (var t in c.GetComponentsInChildren<Transform>(true))
+                    if (t.name.StartsWith("UL2_gauge_")) { gauges[t.name.Substring(10)] = t; rest[t.name.Substring(10)] = t.localRotation; }
+                if (engine == null && tEng != null) { var e = c.GetComponentInChildren(tEng, true); if (e != null) engine = e; }
+            }
             spin = headPart.transform.Find("rotorSpin");
             if (spin == null) return;
             foreach (var s in new[] { "L", "R" })
@@ -99,7 +141,7 @@ namespace UL2Airtrike
                 }
             }
             ready = true;
-            Plugin.Log.LogInfo("UL-2 rotor ready, " + blades.Count + " blade sections");
+            Plugin.Log.LogInfo("UL-2 rotor ready, " + blades.Count + " blade sections, " + gauges.Count + " gauges, engine " + (engine != null));
         }
     }
 }

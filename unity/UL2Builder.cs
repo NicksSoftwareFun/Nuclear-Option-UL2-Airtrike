@@ -368,6 +368,20 @@ public static class UL2Builder
             MoveAlone(ts2, P("x_mfd2")); ts2.GetComponent<MeshFilter>().sharedMesh = M["x_mfd2"];
             log.AppendLine("screen material " + (tr.sharedMaterial ? tr.sharedMaterial.name : "none"));
         }
+        // live gauge needles: a pivot facing the pilot (local Z = panel normal) holding the needle mesh; the plugin turns the pivot
+        {
+            var nrm = new Vector3(0f, Mathf.Sin(20f * Mathf.Deg2Rad), -Mathf.Cos(20f * Mathf.Deg2Rad));   // Blender panel tilt -20 deg about X
+            int ng = 0;
+            foreach (var id in new[] { "asi", "alt", "vsi", "rotor", "rpm", "fuel", "oil", "volt" })
+            {
+                if (!L.ContainsKey("x_g_" + id)) continue;
+                var pv = Find(cf, "UL2_gauge_" + id) ?? New("UL2_gauge_" + id, cf);
+                pv.position = P("x_g_" + id); pv.rotation = Quaternion.LookRotation(nrm, Vector3.up);
+                var nd = Find(pv, "needle") ?? New("needle", pv);
+                nd.position = pv.position; nd.rotation = Quaternion.identity; SetMesh(nd, "x_g_" + id); ng++;
+            }
+            log.AppendLine("gauges " + ng);
+        }
         foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == "EjectionSeat").ToList()) { NoMesh(t); var mc = t.GetComponent<Collider>(); if (mc) mc.enabled = false; }
         foreach (var c in root.GetComponentsInChildren<Component>(true).Where(c => c != null && c.GetType().Name == "Pilot")) Set(c, "ejectionSeat", false);
         // crew: the Cricket pilot and WSO (the copilot) sit at the UL-2 seats; pelvis is 0.01 below the Pilot transform
@@ -797,7 +811,7 @@ public static class UL2Builder
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.5.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.6.0\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
