@@ -494,7 +494,7 @@ for k in range(10):
 tube('trunnion_shaft', (OUT_X - REC + 0.02, GY + 0.065, GZ), (GX - 0.12, GY + 0.065, GZ), 0.03, MECH, 12)
 tube('trunnion_pin', (GX + 0.12, GY + 0.065, GZ), (OUT_X - 0.01, GY + 0.065, GZ), 0.022, MECH, 10)
 part('gun_R', 'gunmount_R', (GX, GY, GZ))
-GM2 = Matrix.Translation((GX, GY, GZ)) @ Matrix.Rotation(R(-4), 4, 'X')
+GM2 = Matrix.Translation((GX, GY, GZ))
 box('gun_receiver', (0.0, -0.02, 0), (0.10, 0.44, 0.12), DARK, M=GM2, bevel=0.01)
 box('gun_feedcover', (0.0, 0.0, 0.07), (0.11, 0.24, 0.035), DARK, M=GM2, bevel=0.006)
 box('gun_backplate', (0.0, -0.265, 0), (0.08, 0.06, 0.10), DARK, M=GM2, bevel=0.01)

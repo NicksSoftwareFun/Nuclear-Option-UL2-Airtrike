@@ -387,8 +387,7 @@ public static class UL2Builder
         // side gun: a mount part on the frame, the gun part in it; the Cricket's right gun hardpoint moves into it
         var ghp = Need("gunmount_R"); ghp.name = "gunmount_R_hp";
         NewPart("intake", "gunmount_R", "COIN_PLACEHOLDER");
-        var gun = NewPart("intake", "gun_R", "gunmount_R");
-        ghp.SetParent(gun, true); ghp.position = P("gunPivot"); ghp.rotation = Quaternion.identity;
+        ghp.SetParent(Need("gunmount_R"), true); ghp.position = P("gunPivot"); ghp.rotation = Quaternion.identity;
     }
 
     // ------------------------------------------------------------------ rotor: mast, head, blades (the blades carry the lift)
@@ -548,7 +547,9 @@ public static class UL2Builder
         var hps = g.FindPropertyRelative("hardpoints"); hps.arraySize = 1;
         var gunHp = Find(root, "gunmount_R_hp");
         hps.GetArrayElementAtIndex(0).FindPropertyRelative("transform").objectReferenceValue = gunHp;
-        hps.GetArrayElementAtIndex(0).FindPropertyRelative("part").objectReferenceValue = C(Need("gun_R"), "AeroPart");
+        hps.GetArrayElementAtIndex(0).FindPropertyRelative("part").objectReferenceValue = C(Need("gunmount_R"), "AeroPart");
+        var opts = g.FindPropertyRelative("weaponOptions"); opts.arraySize = 2; opts.GetArrayElementAtIndex(0).objectReferenceValue = null;
+        opts.GetArrayElementAtIndex(1).objectReferenceValue = Mount("UL2_sidegun");
         var p = sets.GetArrayElementAtIndex(1); p.FindPropertyRelative("name").stringValue = "Stub Pylons";
         var php = p.FindPropertyRelative("hardpoints");
         for (int i = 0; i < php.arraySize; i++) php.GetArrayElementAtIndex(i).FindPropertyRelative("part").objectReferenceValue = C(root, "AeroPart");
@@ -556,7 +557,55 @@ public static class UL2Builder
         log.AppendLine("hardpoint sets: " + sets.arraySize);
     }
 
-    static void Mounts() { }
+    static GameObject CopyPrefab(string src, string dst)
+    {
+        var tmp = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(Placeholder(src, "GameObject")));
+        PrefabUtility.UnpackPrefabInstance(tmp, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+        tmp.name = dst; return tmp;
+    }
+    static Object SaveMount(GameObject go, string key, string copyFrom, Object info, string mountName)
+    {
+        var pf = PrefabUtility.SaveAsPrefabAsset(go, MNT + key + ".prefab");
+        string mpath = MNT + key + ".asset";
+        var m = AssetDatabase.LoadMainAssetAtPath(mpath);
+        if (m == null)
+        {
+            AssetDatabase.CopyAsset(Placeholder(copyFrom, "WeaponMount"), mpath); AssetDatabase.ImportAsset(mpath);
+            m = AssetDatabase.LoadMainAssetAtPath(mpath);
+        }
+        var so = new SerializedObject(m);
+        so.FindProperty("prefab").objectReferenceValue = pf;
+        so.FindProperty("jsonKey").stringValue = key;
+        if (info != null) so.FindProperty("info").objectReferenceValue = info;
+        so.FindProperty("mountName").stringValue = mountName;
+        so.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(m);
+        log.AppendLine("mount " + key + " (" + mountName + ") from " + copyFrom);
+        return m;
+    }
+    // side gun: the stock door gun turret (Ibis), re-skinned with the UL-2 gun in a Ka-50 style limited arc: a little
+    // traverse, mostly depression. Stock flags already let it fire with the gear down and on the ground.
+    static void Mounts()
+    {
+        var go = CopyPrefab("turret_12.7mm_door", "UL2_sidegun");
+        try
+        {
+            var tr = go.transform.Find("traverse"); tr.localPosition = Vector3.zero; tr.localRotation = Quaternion.identity;
+            tr.GetComponent<MeshFilter>().sharedMesh = null;
+            var br = tr.Find("barrel"); br.localPosition = Vector3.zero; br.localRotation = Quaternion.identity;
+            br.GetComponent<MeshFilter>().sharedMesh = M["gun_R"]; br.GetComponent<MeshRenderer>().sharedMaterials = Mats("gun_R");
+            var mz = br.Find("muzzle"); mz.localPosition = new Vector3(0f, 0f, 1.58f); mz.localRotation = Quaternion.identity;
+            var tu = C(tr, "Turret");
+            Set(tu, "traverseRange", 10f); Set(tu, "minElevation", -40f); Set(tu, "maxElevation", 5f);
+            Set(tu, "traverseRate", 40f); Set(tu, "elevationRate", 35f);
+            var m = SaveMount(go, "UL2_sidegun", "turret_12.7mm_door", null, "12.7mm Side Gun (600 rounds)");
+            var so = new SerializedObject(m);
+            so.FindProperty("GearSafety").boolValue = false; so.FindProperty("GroundSafety").boolValue = false;
+            so.FindProperty("drag").floatValue = 0.05f; so.FindProperty("emptyDrag").floatValue = 0.05f;
+            so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
+        }
+        finally { Object.DestroyImmediate(go); }
+    }
 
     // ------------------------------------------------------------------ masses, areas, joints (literal values)
     static void Part(string n, float mass, float area, float drag, float fuel)
@@ -580,7 +629,7 @@ public static class UL2Builder
         Part("mast", 40f, 0f, 0.04f, -1f); Part("rotorHead", 20f, 0f, 0.03f, -1f);
         Part("engine_core", 60f, 0f, 0.06f, -1f); Part("engine_L", 15f, 0f, 0.02f, -1f); Part("engine_R", 15f, 0f, 0.02f, -1f);
         Part("propHub", 15f, 0f, 0.02f, -1f);
-        Part("gunmount_R", 25f, 0f, 0.05f, -1f); Part("gun_R", 30f, 0f, 0.02f, -1f);
+        Part("gunmount_R", 25f, 0f, 0.05f, -1f);
         Part("nacelle_L", 20f, 0f, 0.04f, -1f); Part("nacelle_R", 20f, 0f, 0.04f, -1f);
         Part("tailboom_L", 15f, 0f, 0.02f, -1f); Part("tailboom_R", 12f, 0f, 0.02f, -1f);
         // rotor: ~31 m2 of lifting blade for the gyro's low stall (blade aero is a fixed span; the head spins only visually)
@@ -607,7 +656,6 @@ public static class UL2Builder
         J("engine_L", "engine_core", 6000f); J("engine_R", "engine_core", 6000f);
         J("propHub", "engine_core", 10000f);
         J("gunmount_R", "COIN_PLACEHOLDER", 10000f, "cockpit_F", 5000f);
-        J("gun_R", "gunmount_R", 6000f);
         J("nacelle_L", "fuselage", 10000f, "COIN_PLACEHOLDER", 6000f); J("nacelle_R", "fuselage", 10000f, "COIN_PLACEHOLDER", 6000f);
         J("tailboom_L", "fuselage", 10000f); J("tailboom_R", "tailboom_L", 8000f);
         J("vstab1_L", "tailboom_R", 6000f); J("vstab1_R", "vstab1_L", 3000f);
@@ -654,7 +702,7 @@ public static class UL2Builder
         for (int i = 0; i < lo.arraySize; i++)
         {
             var w = lo.GetArrayElementAtIndex(i).FindPropertyRelative("weapons"); w.arraySize = 2;
-            w.GetArrayElementAtIndex(0).objectReferenceValue = i == 0 ? null : AssetDatabase.LoadMainAssetAtPath(Placeholder("gun_12.7mm_internal", "WeaponMount"));
+            w.GetArrayElementAtIndex(0).objectReferenceValue = i == 0 ? null : Mount("UL2_sidegun");
             w.GetArrayElementAtIndex(1).objectReferenceValue = i == 0 ? null : AssetDatabase.LoadMainAssetAtPath(Placeholder("RocketPod1_single", "WeaponMount"));
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(par);
@@ -702,7 +750,7 @@ public static class UL2Builder
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.2.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.3.0\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
