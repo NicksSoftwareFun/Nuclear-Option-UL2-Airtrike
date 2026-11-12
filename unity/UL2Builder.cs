@@ -346,6 +346,7 @@ public static class UL2Builder
         PartAt("cockpit_R"); PartAt("cockpit_F"); PartAt("nose");
         PartAt("fuselage", "frame_R");
         PartAt("intake", "seat3");
+        try { Soldier(); } catch (System.Exception ex) { log.AppendLine("SOLDIER ERROR " + ex); }
         var cf = Need("cockpit_F");
         Visual("gear_F_visible", "gear_F", cf);
         // the Cricket cockpit, canopies and ejection seats go invisible; their components stay for the stock logic
@@ -523,6 +524,40 @@ public static class UL2Builder
         foreach (var r in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) if (r.enabled) r0.Add(r);
         lg.SetLODs(new[] { new LOD(old[0].screenRelativeTransitionHeight, r0.ToArray()), new LOD(old[old.Length - 1].screenRelativeTransitionHeight, r1.ToArray()) });
         log.AppendLine("LOD0 " + r0.Count + " renderers, LOD1 " + r1.Count);
+    }
+    // seat 3 gunner: one soldier taken out of the Ibis 8-man troop mesh (stock soldier1 material), turned to face forward, pelvis on the seat
+    static void Soldier()
+    {
+        var src = AssetDatabase.LoadAssetAtPath<Mesh>(PH + "Mesh/utilityHelo1_troops_F_PLACEHOLDER.asset");
+        var v = src.vertices; var nr = src.normals; var uv = src.uv; var col = src.colors; var tr = src.GetTriangles(2); int n = v.Length;
+        var par = new int[n]; for (int i = 0; i < n; i++) par[i] = i;
+        System.Func<int, int> F = null; F = x => { while (par[x] != x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+        var key = new Dictionary<Vector3Int, int>();
+        for (int i = 0; i < n; i++) { var k = Vector3Int.RoundToInt(v[i] * 2000f); int o; if (key.TryGetValue(k, out o)) par[F(i)] = F(o); else key[k] = i; }
+        for (int t = 0; t < tr.Length; t += 3) { par[F(tr[t])] = F(tr[t + 1]); par[F(tr[t + 1])] = F(tr[t + 2]); }
+        var sum = new Dictionary<int, Vector4>();
+        for (int t = 0; t < tr.Length; t += 3) { int r = F(tr[t]); var c = (v[tr[t]] + v[tr[t + 1]] + v[tr[t + 2]]) / 3f; Vector4 a; sum.TryGetValue(r, out a); sum[r] = a + new Vector4(c.x, c.y, c.z, 1f); }
+        var map = new Dictionary<int, int>(); var nv = new List<Vector3>(); var nn = new List<Vector3>(); var nu = new List<Vector2>(); var nc = new List<Color>(); var nt = new List<int>();
+        var rot = Quaternion.Euler(0f, 180f, 0f);                     // the troop row faces -Z; the gunner faces forward
+        for (int t = 0; t < tr.Length; t += 3)
+        {
+            var c = sum[F(tr[t])]; c /= c.w; if (!(c.x >= 0.5f && c.z < 0.05f)) continue;
+            for (int j = 0; j < 3; j++) { int i = tr[t + j]; int o; if (!map.TryGetValue(i, out o)) { o = nv.Count; map[i] = o; nv.Add(rot * v[i]); nn.Add(rot * nr[i]); nu.Add(uv[i]); if (col.Length == n) nc.Add(col[i]); } nt.Add(o); }
+        }
+        var b = new Bounds(nv[0], Vector3.zero); foreach (var q in nv) b.Encapsulate(q);
+        var pel = new Vector3(b.center.x, b.min.y + 0.52f, b.min.z + 0.30f);   // same pelvis estimate used for the stock pilot fit
+        for (int i = 0; i < nv.Count; i++) nv[i] -= pel;
+        string path = MOD + "Art/UL2_soldier.asset";
+        var me = AssetDatabase.LoadAssetAtPath<Mesh>(path); bool fresh = me == null; if (fresh) me = new Mesh();
+        me.Clear(); me.name = "UL2_soldier"; me.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        me.SetVertices(nv); me.SetNormals(nn); me.SetUVs(0, nu); if (nc.Count == nv.Count) me.SetColors(nc); me.SetTriangles(nt, 0); me.RecalculateBounds(); me.RecalculateTangents();
+        if (fresh) AssetDatabase.CreateAsset(me, path); else EditorUtility.SetDirty(me);
+        var seat = Need("intake"); var so = Find(seat, "gunner_soldier") ?? New("gunner_soldier", seat);
+        so.position = P("gunner"); so.rotation = Quaternion.identity;
+        var smf = so.GetComponent<MeshFilter>(); if (smf == null) smf = so.gameObject.AddComponent<MeshFilter>(); smf.sharedMesh = me;
+        var mr = so.GetComponent<MeshRenderer>(); if (mr == null) mr = so.gameObject.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/soldier1_PLACEHOLDER.mat");
+        log.AppendLine("soldier " + nv.Count + " verts, " + nt.Count / 3 + " tris, mat " + (mr.sharedMaterial ? mr.sharedMaterial.name : "MISSING"));
     }
     static void Misc()
     {
@@ -762,7 +797,7 @@ public static class UL2Builder
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.4.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.5.0\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

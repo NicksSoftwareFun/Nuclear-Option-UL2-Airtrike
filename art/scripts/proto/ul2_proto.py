@@ -160,8 +160,8 @@ box('mfd', (0, -0.022, 0.0), (0.21, 0.02, 0.19), DARK, M=PM, bevel=0.006)
 part('x_mfd1', 'cockpit_F', tuple(PM.translation)); screen('mfd_screen', 0.15, 0.15, PM, -0.036); part('cockpit_F')
 for sx in (-1, 1):
     for k in range(5): box(f'mfd_btn{sx}{k}', (sx * 0.093, -0.034, 0.066 - 0.033 * k), (0.018, 0.008, 0.018), MECH, M=PM)
-    for k, (gx, gz) in enumerate(((0.165, 0.05), (0.255, 0.05), (0.165, -0.055), (0.255, -0.055))):
-        revolve(f'gauge{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, 0.042), (0.012, 0.042), (0.012, 0.035), (0.006, 0.035), (0.006, 0)], DARK, 16, M=PM)
+    for k, (gx, gz) in enumerate(((0.152, 0.05), (0.234, 0.05), (0.152, -0.055), (0.234, -0.055))):
+        revolve(f'gauge{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, 0.038), (0.012, 0.038), (0.012, 0.032), (0.006, 0.032), (0.006, 0)], DARK, 16, M=PM)
 # exterior detail (pass 2): raised panel seams, side seam, boarding step, antennas
 def seam_ring(y, tag, cut=True):
     pts = pod_ring(y); hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb)
@@ -204,6 +204,31 @@ part('cockpit_F')
 for sx in (-1, 1):
     box(f'pedal{sx}', (sx * 0.15, 2.42, 0.56), (0.11, 0.02, 0.15), MECH, rot=(R(-25), 0, 0), bevel=0.004)
     tube(f'pedal_bar{sx}', (sx * 0.15, 2.46, 0.44), (sx * 0.15, 2.43, 0.52), 0.01, MECH, 6)
+# ---- cockpit detail pass: gauge needles and bezels, standby compass, side consoles, harness
+for sx in (-1, 1):
+    for k, (gx, gz) in enumerate(((0.152, 0.05), (0.234, 0.05), (0.152, -0.055), (0.234, -0.055))):
+        ang = R((-60, 35, 110, -20)[k] * sx)
+        NM = PM @ Matrix.Translation((sx * gx, -0.027, gz)) @ Matrix.Rotation(ang, 4, 'Y')
+        box(f'gauge_needle{sx}{k}', (0, 0, 0.012), (0.004, 0.002, 0.026), MECH, M=NM)
+        revolve(f'gauge_bezel{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, 0.041), (0.014, 0.041), (0.014, 0.038)], MECH, 16, M=PM, cap=False)
+box('panel_lamp_bezel', (0, -0.02, 0.112), (0.19, 0.012, 0.024), MECH, M=PM, bevel=0.003)
+for k in range(5): box(f'panel_lamp{k}', (-0.072 + 0.036 * k, -0.027, 0.112), (0.03, 0.004, 0.016), DARK, M=PM)
+box('panel_masterarm', (0.17, -0.022, 0.108), (0.05, 0.012, 0.03), MECH, M=PM, bevel=0.003)
+box('panel_masterarm_guard', (0.17, -0.032, 0.108), (0.04, 0.006, 0.022), DARK, M=PM)
+# standby compass on a stalk above the binnacle
+tube('compass_stalk', (0.22, 2.19, 1.19), (0.22, 2.18, 1.25), 0.008, DARK, 6)
+box('compass', (0.22, 2.18, 1.27), (0.06, 0.05, 0.045), DARK, bevel=0.012)
+# left console beside the throttle: fuel / mags / lights switch strip; right console: radio head
+box('lconsole', (-0.26, 1.88, 1.03), (0.07, 0.20, 0.04), CPIT, bevel=0.006)
+for k in range(5):
+    tube(f'lconsole_sw{k}', (-0.26, 1.81 + 0.035 * k, 1.05), (-0.26, 1.82 + 0.035 * k, 1.075), 0.0035, MECH, 5)
+box('fuel_selector', (-0.26, 1.97, 1.055), (0.03, 0.03, 0.012), DARK, bevel=0.004)
+box('rconsole', (0.25, 1.82, 1.03), (0.08, 0.26, 0.04), CPIT, bevel=0.006)
+box('radio_head', (0.25, 1.80, 1.06), (0.06, 0.12, 0.022), DARK, bevel=0.004)
+for k in range(2): revolve(f'radio_knob{k}', (0.25, 1.76 + 0.08 * k, 1.07), (0, 0, 1), [(0, 0.012), (0.014, 0.012), (0.016, 0)], MECH, 10)
+for k in range(3): tube(f'rconsole_sw{k}', (0.25, 1.90 + 0.025 * k, 1.05), (0.25, 1.91 + 0.025 * k, 1.075), 0.0035, MECH, 5)
+# pedal toe straps
+for sx in (-1, 1): box(f'pedal_strap{sx}', (sx * 0.15, 2.405, 0.60), (0.115, 0.03, 0.02), DARK, rot=(R(-25), 0, 0))
 # pilot seat on the pod floor / keel
 def rifle_on_seat(tag, P, side=-1):
     # service rifle clamped vertically to the outboard side of the seat back, muzzle up
@@ -297,6 +322,11 @@ for sx in (-1, 1):
     tube(f'grip2{sx}', (sx * 0.20, 0.68, 1.42), (sx * 0.20, 0.64, 1.55), 0.018, DARK, 10)
     box(f'grip2_trigger{sx}', (sx * 0.20, 0.68, 1.52), (0.02, 0.025, 0.035), MECH)
 box('grip2_bar', (0, 0.70, 1.45), (0.40, 0.025, 0.025), FRAME)
+# gunner detail: arming box on the grip bar, intercom box and cord on the MFD post
+box('grip2_armbox', (0, 0.70, 1.475), (0.10, 0.04, 0.03), DARK, bevel=0.004)
+for k in range(3): tube(f'grip2_sw{k}', (-0.03 + 0.03 * k, 0.70, 1.49), (-0.03 + 0.03 * k, 0.705, 1.51), 0.003, MECH, 5)
+box('ics_box', (0.04, 0.97, 1.05), (0.05, 0.035, 0.07), DARK, bevel=0.004)
+revolve('ics_knob', (0.04, 0.95, 1.07), (0, -1, 0), [(0, 0.01), (0.01, 0.01), (0.012, 0)], MECH, 8)
 # ammo box at the gunner's feet (right), feeds the side gun
 box('ammo_box', (0.27, 0.80, 0.66), (0.20, 0.26, 0.20), MECH, bevel=0.008)
 box('ammo_lid', (0.27, 0.80, 0.765), (0.21, 0.27, 0.014), DARK)
@@ -434,16 +464,17 @@ for sx, tag in ((1, 'R'), (-1, 'L')):
     wing(f'elevator_{tag}_w', [((sx * 0.06, -3.37, TZ), (0, -0.20, 0), Z), ((sx * 0.52, -3.37, TZ), (0, -0.20, 0), Z)], SKIN, t=0.08)
     part(f'hstabTip_{tag}', f'hstab_{tag}', (sx * 0.52, -2.92, TZ))
     wing(f'hstabTip_{tag}_w', [((sx * 0.52, -2.90, TZ), (0, -0.46, 0), Z), ((sx * 0.98, -2.94, TZ), (0, -0.42, 0), Z)], SKIN, t=0.10)
-    wing(f'endplate_{tag}', [((sx * 0.99, -2.86, TZ - 0.24), (0, -0.44, 0), X), ((sx * 0.99, -2.96, TZ + 0.04), (0, -0.36, 0), X)], SKIN, t=0.10)
+    TO = math.radians(6); EX = Vector((math.cos(TO), -sx * math.sin(TO), 0))   # end plates toed out 6 deg
+    wing(f'endplate_{tag}', [((sx * 0.99, -2.86, TZ - 0.24), (-sx * 0.44 * math.sin(TO), -0.44 * math.cos(TO), 0), EX), ((sx * 0.99, -2.96, TZ + 0.04), (-sx * 0.36 * math.sin(TO), -0.36 * math.cos(TO), 0), EX)], SKIN, t=0.10)
     part(f'elevatorTip_{tag}', f'hstabTip_{tag}', (sx * 0.52, -3.36, TZ))
     wing(f'elevatorTip_{tag}_w', [((sx * 0.52, -3.37, TZ), (0, -0.20, 0), Z), ((sx * 0.96, -3.37, TZ), (0, -0.18, 0), Z)], SKIN, t=0.08)
 # centre fin: lower + upper; rudder lower + upper
 part('vstab', 'tailboom_R', (0, -2.95, TZ))
-wing('vstab_w', [((0, -2.96, 0.86), (0, -0.44, 0), X), ((0, -3.06, 1.50), (0, -0.34, 0), X)], SKIN, t=0.10)
+wing('vstab_w', [((0, -2.96, 0.86), (0, -0.42, 0), X), ((0, -3.06, 1.50), (0, -0.33, 0), X)], SKIN, t=0.10)
 part('rudder', 'vstab', (0, -3.40, 0.86))
-wing('rudder_w', [((0, -3.40, 0.62), (0, -0.30, 0), X), ((0, -3.42, 1.50), (0, -0.26, 0), X)], SKIN, t=0.09)
+wing('rudder_w', [((0, -3.41, 0.62), (0, -0.29, 0), X), ((0, -3.42, 1.50), (0, -0.26, 0), X)], SKIN, t=0.09)
 part('vstabTip', 'vstab', (0, -2.95, 1.50))
-wing('vstabTip_w', [((0, -3.06, 1.50), (0, -0.34, 0), X), ((0, -3.14, 1.70), (0, -0.26, 0), X)], SKIN, t=0.10)
+wing('vstabTip_w', [((0, -3.06, 1.50), (0, -0.33, 0), X), ((0, -3.14, 1.70), (0, -0.25, 0), X)], SKIN, t=0.10)
 revolve('strobe', (0, -3.20, 1.71), (0, 0, 1), [(0, 0.02), (0.03, 0.02), (0.05, 0)], DARK, 10)
 part('rudderTip', 'vstabTip', (0, -3.42, 1.50))
 wing('rudderTip_w', [((0, -3.42, 1.50), (0, -0.26, 0), X), ((0, -3.42, 1.68), (0, -0.22, 0), X)], SKIN, t=0.09)

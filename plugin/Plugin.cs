@@ -12,7 +12,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.4.0")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.5.0")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -53,12 +53,14 @@ namespace UL2Airtrike
             try
             {
                 if (!ready) { if (tries++ < 120) Setup(); return; }
+                // game time reads 0 inside plugin components (seen on the PB-22 gauges): use unscaled time, frozen while paused
+                float dt = Time.timeScale > 0f ? Time.unscaledDeltaTime : 0f;
                 float spd = fSpeed != null ? (float)fSpeed.GetValue(unit) : 0f;
                 bool headOn = headPart == null || !Detached(headPart);
                 // autorotation: about 9 rpm per m/s of airspeed, 380 rpm cap (~42 m/s); spins down over a few seconds
                 float target = headOn ? Mathf.Clamp(spd * 9f, 0f, 380f) : 0f;
-                rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? 60f : 40f) * Time.deltaTime);
-                spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * Time.deltaTime, 0f);
+                rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? 60f : 40f) * dt);
+                spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * dt, 0f);
                 for (int i = blades.Count - 1; i >= 0; i--)
                 {
                     var b = blades[i];
