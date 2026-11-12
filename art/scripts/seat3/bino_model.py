@@ -82,34 +82,85 @@ def build_hands(M):
 
 
 def build_chest(snap):
-    """radio in a pouch on the left chest with its antenna over the shoulder, PTT on the right strap, EUD phone in a
-    fold-down chest mount at the sternum, cables. snap(p, dir, gap) pushes a rest-pose body point out of the vest."""
-    # radio pouch + radio (handheld manpack-radio class): body, top knobs, keypad face, antenna base and whip
-    R0 = snap(Vector((-0.085, 0.0, 0.36)), (0, 1, 0), 0.004)
-    box('kit_radio_pouch', tuple(R0 + Vector((0, 0.020, 0))), (0.078, 0.042, 0.120), SEAT, bevel=0.008)
-    box('kit_pouch_flap', tuple(R0 + Vector((0, 0.022, 0.050))), (0.082, 0.046, 0.024), SEAT, bevel=0.006)
-    box('radio_body', tuple(R0 + Vector((0, 0.020, 0.088))), (0.064, 0.036, 0.060), SEAT, bevel=0.006)
-    box('radio_face', tuple(R0 + Vector((0, 0.039, 0.088))), (0.046, 0.002, 0.040), MECH, bevel=0.001)
-    for k, dx in enumerate((-0.016, 0.010)):
-        tube(f'radio_knob{k}', tuple(R0 + Vector((dx, 0.020, 0.118))), tuple(R0 + Vector((dx, 0.020, 0.132))), 0.008 if k == 0 else 0.006, MECH, segs=12)
-    A0 = R0 + Vector((0.018, 0.016, 0.118))
-    tube('radio_antbase', tuple(A0), tuple(A0 + Vector((0, 0, 0.022))), 0.007, DARK, segs=10)
-    pipe('radio_ant', [tuple(A0 + Vector((0, 0, 0.020))), tuple(A0 + Vector((-0.010, -0.010, 0.090))), tuple(A0 + Vector((-0.030, -0.050, 0.170))), tuple(A0 + Vector((-0.045, -0.110, 0.210)))], 0.0045, DARK, n=6, segs=6)
-    # PTT on the right shoulder strap and its cable across the chest
-    P0 = snap(Vector((0.090, 0.0, 0.44)), (0, 1, 0), 0.006)
-    box('radio_ptt', tuple(P0), (0.040, 0.020, 0.050), DARK, bevel=0.006)
-    tube('radio_ptt_btn', tuple(P0 + Vector((0, 0.010, 0.004))), tuple(P0 + Vector((0, 0.016, 0.004))), 0.012, MECH, segs=14)
-    mid = snap(Vector((0.0, 0.0, 0.33)), (0, 1, 0), 0.010)
-    pipe('radio_cable', [tuple(R0 + Vector((0.020, 0.010, 0.060))), tuple(mid + Vector((-0.04, 0, 0))), tuple(mid + Vector((0.04, 0, 0.04))), tuple(P0 + Vector((0, 0, -0.026)))], 0.004, DARK, n=6, segs=6)
-    # EUD: rugged phone in a fold-down chest mount, folded flat against the vest
-    E0 = snap(Vector((0.020, 0.0, 0.30)), (0, 1, 0), 0.006)
-    box('eud_mount', tuple(E0), (0.090, 0.012, 0.040), SEAT, bevel=0.004)
-    tube('eud_hinge', tuple(E0 + Vector((-0.040, 0.010, 0.012))), tuple(E0 + Vector((0.040, 0.010, 0.012))), 0.005, MECH, segs=10)
-    tilt = Matrix.Rotation(math.radians(-8), 4, 'X')
-    H = Matrix.Translation(E0 + Vector((0, 0.012, 0.012))) @ tilt
-    box('eud_case', tuple(H @ Vector((0, 0.008, 0.085))), (0.086, 0.014, 0.165), DARK, rot=(math.radians(-8), 0, 0), bevel=0.006)
-    box('eud_bezel', tuple(H @ Vector((0, 0.0155, 0.085))), (0.078, 0.002, 0.152), DARK, rot=(math.radians(-8), 0, 0), bevel=0.002)
-    box('eud_screen', tuple(H @ Vector((0, 0.0168, 0.087))), (0.068, 0.001, 0.136), SCREEN, rot=(math.radians(-8), 0, 0))
-    for k, x in enumerate((-0.044, 0.044)):
-        box(f'eud_strap{k}', tuple(H @ Vector((x, 0.006, 0.085))), (0.006, 0.020, 0.030), DARK, rot=(math.radians(-8), 0, 0), bevel=0.001)
-    pipe('radio_cable_eud', [tuple(E0 + Vector((-0.040, 0.008, 0.0))), tuple(E0 + Vector((-0.070, 0.016, 0.020))), tuple(R0 + Vector((0.020, 0.030, -0.040)))], 0.0035, DARK, n=5, segs=6)
+    """spotter chest kit (Nick 16:50): a large two-channel manpack radio (PRC-162 class, original) carried upright in an
+    open-top pouch on the chest, its base resting on the lap; controls and keypad on the front-top, two antenna ports,
+    side handles, battery box; PTT on the right strap, a small EUD on a fold-down mount above it, cables.
+    Rest-pose body frame: +Y forward, +Z up, -X the soldier's left. snap(p, dir, gap) pushes a point out of the vest."""
+    RX, W, D, Z0, Z1 = -0.015, 0.220, 0.095, 0.086, 0.370          # radio centre x, width, depth, base and top height
+    Y0 = max(snap(Vector((x, 0.0, z)), (0, 1, 0), 0.006).y for x in (RX - W / 2 + 0.01, RX, RX + W / 2 - 0.01) for z in (0.12, 0.20, 0.28, 0.36))
+    C = Vector((RX, Y0 + D / 2, (Z0 + Z1) / 2)); H = Z1 - Z0; YF = Y0 + D        # body centre, front face y
+    def P(x, y, z): return (RX + x, y, z)
+    # pouch: open top, covers the lower two thirds, MOLLE webbing rows, straps up to the shoulder harness
+    PZ1 = Z0 + 0.125
+    box('kit_radio_pouch', P(0, C.y, (Z0 - 0.006 + PZ1) / 2), (W + 0.016, D + 0.014, PZ1 - Z0 + 0.006), SEAT, bevel=0.010)
+    for k in range(3):
+        box(f'kit_pouch_web{k}', P(0, YF + 0.0075, Z0 + 0.030 + k * 0.040), (W + 0.010, 0.004, 0.022), SEAT, bevel=0.002)
+        for j in range(4):
+            box(f'kit_pouch_tack{k}{j}', P(-W / 2 + 0.030 + j * (W - 0.060) / 3, YF + 0.0095, Z0 + 0.030 + k * 0.040), (0.004, 0.002, 0.024), SEAT)
+    for sx in (-1, 1):
+        top = snap(Vector((RX + sx * 0.085, 0.0, 0.445)), (0, 1, 0), 0.004)
+        pipe(f'kit_pouch_strap{sx}', [P(sx * (W / 2 - 0.012), C.y, PZ1 - 0.010), P(sx * (W / 2 - 0.016), Y0 + 0.012, Z1 + 0.030), tuple(top)], 0.006, SEAT, n=5, segs=6)
+        box(f'kit_pouch_buckle{sx}', P(sx * (W / 2 - 0.014), Y0 + 0.020, Z1 + 0.010), (0.022, 0.006, 0.014), MECH, bevel=0.002)
+    # radio body: main chassis, battery box at the base (seam + latches), side handles (rails) the full height
+    box('radio_body', tuple(C + Vector((0, 0, 0.020))), (W, D, H - 0.040), SEAT, bevel=0.008)
+    box('radio_batt', tuple(Vector((C.x, C.y, Z0 + 0.020))), (W - 0.004, D - 0.004, 0.040), SEAT, bevel=0.006)
+    box('radio_batt_seam', tuple(Vector((C.x, C.y, Z0 + 0.041))), (W + 0.002, D + 0.002, 0.003), DARK)
+    for sx in (-1, 1):
+        box(f'radio_batt_latch{sx}', P(sx * (W / 2 + 0.001), C.y, Z0 + 0.036), (0.006, 0.030, 0.016), MECH, bevel=0.002)
+        x = sx * (W / 2 + 0.010)
+        pipe(f'radio_rail{sx}', [P(x * 0.86, C.y - 0.020, Z1 - 0.004), P(x, C.y - 0.020, Z1 - 0.020), P(x, C.y - 0.020, PZ1 + 0.010), P(x * 0.86, C.y - 0.020, PZ1 - 0.004)], 0.0055, DARK, n=6, segs=8)
+        for k in range(3):
+            box(f'radio_fin{sx}{k}', P(sx * (W / 2 + 0.001), C.y + 0.012, PZ1 + 0.030 + k * 0.016), (0.004, D - 0.040, 0.006), DARK)
+    # front control face (upper third): recessed panel, display, 4x4 keypad, function keys, labels plate
+    FZ = Z1 - 0.058
+    box('radio_panel', P(0, YF + 0.0005, FZ), (W - 0.024, 0.003, 0.090), DARK, bevel=0.003)
+    box('radio_screen', P(-0.040, YF + 0.0025, FZ + 0.020), (0.070, 0.002, 0.034), SCREEN, bevel=0.001)
+    box('radio_screen_bezel', P(-0.040, YF + 0.0020, FZ + 0.020), (0.080, 0.002, 0.042), MECH, bevel=0.002)
+    for r in range(4):
+        for c in range(4):
+            box(f'radio_key{r}{c}', P(0.022 + c * 0.017, YF + 0.003, FZ + 0.030 - r * 0.017), (0.013, 0.004, 0.012), MECH, bevel=0.002)
+    for k in range(4):
+        box(f'radio_fkey{k}', P(-0.068 + k * 0.019, YF + 0.003, FZ - 0.020), (0.014, 0.004, 0.008), MECH, bevel=0.0015)
+    box('radio_plate', P(-0.040, YF + 0.0025, FZ - 0.036), (0.070, 0.0015, 0.010), MECH, bevel=0.001)
+    # top: volume and channel knobs with guards, two antenna ports (VHF whip, UHF/SATCOM tape over the shoulder),
+    # side connectors with dust caps
+    for k, (dx, r) in enumerate(((-0.060, 0.011), (-0.028, 0.013))):
+        tube(f'radio_knob{k}', P(dx, YF - 0.022, Z1), P(dx, YF - 0.022, Z1 + 0.016), r, MECH, segs=16)
+        for j in range(8):
+            a = math.radians(j * 45)
+            box(f'radio_knob_rib{k}{j}', P(dx + (r + 0.0005) * math.cos(a), YF - 0.022 + (r + 0.0005) * math.sin(a), Z1 + 0.008), (0.002, 0.002, 0.014), MECH, rot=(0, 0, a))
+    box('radio_guard', P(-0.044, YF - 0.006, Z1 + 0.010), (0.070, 0.004, 0.020), DARK, bevel=0.002)
+    ants = []
+    for k, dx in enumerate((0.010, 0.088)):
+        b = Vector(P(dx, C.y - 0.006, Z1))
+        tube(f'radio_port{k}', tuple(b), tuple(b + Vector((0, 0, 0.014))), 0.010, MECH, segs=14)
+        tube(f'radio_antbase{k}', tuple(b + Vector((0, 0, 0.014))), tuple(b + Vector((0, 0, 0.050))), 0.0075, DARK, segs=12)
+        ants.append(b + Vector((0, 0, 0.050)))
+    a0 = ants[0]
+    pipe('radio_ant0', [tuple(a0), tuple(a0 + Vector((0, -0.010, 0.120))), tuple(a0 + Vector((-0.010, -0.040, 0.260))), tuple(a0 + Vector((-0.020, -0.090, 0.380)))], 0.0040, DARK, n=8, segs=6)
+    a1 = ants[1]
+    pipe('radio_ant1', [tuple(a1), tuple(a1 + Vector((0.012, -0.010, 0.060))), tuple(a1 + Vector((0.030, -0.050, 0.110))), tuple(a1 + Vector((0.045, -0.120, 0.120)))], 0.0050, DARK, n=6, segs=6)
+    for k in range(2):
+        z = Z1 - 0.040 - k * 0.040
+        tube(f'radio_conn{k}', P(W / 2, C.y + 0.010, z), P(W / 2 + 0.012, C.y + 0.010, z), 0.009, MECH, segs=14)
+        tube(f'radio_conn_cap{k}', P(W / 2 + 0.012, C.y + 0.010, z), P(W / 2 + 0.016, C.y + 0.010, z), 0.010, DARK, segs=14)
+    # PTT on the right shoulder strap, cable from the radio's side connector up to it
+    P0 = snap(Vector((0.100, 0.0, 0.445)), (0, 1, 0), 0.008)
+    box('radio_ptt', tuple(P0), (0.042, 0.022, 0.056), DARK, bevel=0.006)
+    tube('radio_ptt_btn', tuple(P0 + Vector((0, 0.011, 0.004))), tuple(P0 + Vector((0, 0.017, 0.004))), 0.013, MECH, segs=14)
+    c0 = Vector(P(W / 2 + 0.016, C.y + 0.010, Z1 - 0.040))
+    pipe('radio_cable', [tuple(c0), tuple(c0 + Vector((0.020, 0.0, 0.020))), tuple(P0 + Vector((0.010, -0.004, -0.060))), tuple(P0 + Vector((0, 0, -0.028)))], 0.0045, DARK, n=6, segs=6)
+    # EUD: rugged phone on a fold-down mount on the left upper chest above the radio, cable to the second connector
+    E0 = snap(Vector((-0.105, 0.0, 0.385)), (0, 1, 0), 0.006)
+    E0 = Vector((E0.x, max(E0.y, Y0 + 0.010), E0.z))
+    box('eud_mount', tuple(E0), (0.084, 0.012, 0.036), SEAT, bevel=0.004)
+    tube('eud_hinge', tuple(E0 + Vector((-0.038, 0.010, -0.012))), tuple(E0 + Vector((0.038, 0.010, -0.012))), 0.005, MECH, segs=10)
+    tilt = math.radians(-12)
+    Hm = Matrix.Translation(E0 + Vector((0, 0.014, -0.012))) @ Matrix.Rotation(tilt, 4, 'X')
+    box('eud_case', tuple(Hm @ Vector((0, 0.008, 0.062))), (0.080, 0.014, 0.135), DARK, rot=(tilt, 0, 0), bevel=0.006)
+    box('eud_bezel', tuple(Hm @ Vector((0, 0.0155, 0.062))), (0.072, 0.002, 0.124), DARK, rot=(tilt, 0, 0), bevel=0.002)
+    box('eud_screen', tuple(Hm @ Vector((0, 0.0168, 0.064))), (0.062, 0.001, 0.108), SCREEN, rot=(tilt, 0, 0))
+    for k, x in enumerate((-0.041, 0.041)):
+        box(f'eud_strap{k}', tuple(Hm @ Vector((x, 0.006, 0.062))), (0.006, 0.020, 0.030), DARK, rot=(tilt, 0, 0), bevel=0.001)
+    c1 = Vector(P(W / 2 + 0.016, C.y + 0.010, Z1 - 0.080))
+    pipe('radio_cable_eud', [tuple(c1), tuple(c1 + Vector((0.010, 0.012, -0.020))), tuple(Vector(P(0, YF + 0.012, PZ1 + 0.004))), tuple(E0 + Vector((0.030, 0.010, -0.030)))], 0.0035, DARK, n=7, segs=6)

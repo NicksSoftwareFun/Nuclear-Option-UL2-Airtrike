@@ -17,11 +17,11 @@ FP0, FP1 = 0.214, 0.232       # front frame plate
 HG0, HG1 = 0.240, 0.470       # handguard
 MUZ = 0.505
 GRIP_TOP, GRIP_BOT = Vector((0, 0.008, -0.012)), Vector((0, -0.032, -0.118))
-VG_Y = 0.300
+VG_Y = 0.255
 VG_TOP, VG_BOT = Vector((0, VG_Y, BORE - 0.044)), Vector((0, VG_Y, BORE - 0.174))
-SIGHT = Vector((-0.050, 0.110, BORE + 0.064))   # tube reflex sight on a left side mount (axis centre)
-STOCK_TUBE = (Vector((0, 0.000, 0.064)), Vector((0, -0.250, 0.064)))
-BUTT_Y = -0.300
+SIGHT = Vector((-0.040, 0.110, BORE + 0.064))   # tube reflex sight on a left side mount (axis centre)
+STOCK_TUBE = (Vector((0, 0.000, 0.064)), Vector((0, -0.190, 0.064)))
+BUTT_Y = -0.230
 
 
 def _plate_yz(name, prof, x0, x1, m, M, bevel=0.003):
@@ -139,6 +139,32 @@ def build_gl(M):
     tube('gl_sling_r', (-0.018, BUTT_Y + 0.018, -0.022), (0.018, BUTT_Y + 0.018, -0.022), 0.005, MECH, segs=8, M=M)
     for k, p in enumerate(((0.024, -0.020, 0.066), (0.024, 0.300, BORE - 0.030))):
         tube(f'gl_qd{k}', p, (p[0] + 0.006, p[1], p[2]), 0.008, MECH, segs=10, M=M)
+    # ---- pass 3 (realism): stock position holes, flip-up backup iron sights, FDE rail covers, axis release,
+    #      receiver pins and side plate screws, cylinder detent notches, barrel lock lever, sling loop
+    for k in range(5):
+        tube(f'gl_tube_hole{k}', (0, -0.110 - k * 0.016, 0.064 - 0.0145), (0, -0.110 - k * 0.016, 0.064 - 0.017), 0.003, SCREEN, segs=8, M=M)
+    rz = BORE + 0.066                                            # top of the strap rail / handguard top rail
+    box('gl_bus_r_base', (0, 0.046, BORE + 0.068), (0.026, 0.020, 0.008), DARK, bevel=0.0015, M=M)
+    _plate_yz('gl_bus_r', [(0.038, 0.000), (0.054, 0.000), (0.052, 0.026), (0.040, 0.026)], -0.009, 0.009, DARK, Mm @ Matrix.Translation((0, 0, BORE + 0.072)), bevel=0.0015)
+    tube('gl_bus_r_ap', (0, 0.044, BORE + 0.090), (0, 0.050, BORE + 0.090), 0.0035, SCREEN, segs=10, M=M)
+    box('gl_bus_f_base', (0, HG1 - 0.024, BORE + 0.048), (0.026, 0.022, 0.008), DARK, bevel=0.0015, M=M)
+    for sx in (-1, 1):
+        box(f'gl_bus_f_ear{sx}', (sx * 0.010, HG1 - 0.024, BORE + 0.066), (0.004, 0.012, 0.030), DARK, bevel=0.001, M=M)
+    box('gl_bus_f_post', (0, HG1 - 0.024, BORE + 0.068), (0.003, 0.004, 0.026), MECH, M=M)
+    for nm, off, sz in (('l', (-0.0405, 0, 0), (0.006, 0.090, 0.024)), ('r', (0.0405, 0, 0), (0.006, 0.090, 0.024))):
+        box(f'gl_rcover_{nm}', tuple(hgc + Vector(off) + Vector((0, 0.050, 0))), sz, DARK, bevel=0.002, M=M)
+        for k in range(6):
+            box(f'gl_rcover_{nm}{k}', tuple(hgc + Vector(off) * 1.07 + Vector((0, 0.012 + k * 0.014, 0))), (0.003, 0.004, 0.020), DARK, M=M)
+    tube('gl_axis_btn', (0.034, FP1 + 0.002, CZ), (0.040, FP1 + 0.002, CZ), 0.006, MECH, segs=12, M=M)
+    box('gl_lock_lever', (0.036, FP0 - 0.010, CZ - 0.040), (0.006, 0.040, 0.010), MECH, rot=(math.radians(-25), 0, 0), bevel=0.002, M=M)
+    for sx in (-1, 1):
+        for k, (y, z) in enumerate(((0.000, 0.070), (0.040, 0.070), (0.000, 0.026), (0.030, 0.008))):
+            tube(f'gl_pin{sx}{k}', (sx * 0.0255, y, z), (sx * 0.0275, y, z), 0.0035, MECH, segs=8, M=M)
+        box(f'gl_recv_plate{sx}', (sx * 0.0265, 0.020, 0.048), (0.002, 0.050, 0.030), DARK, bevel=0.001, M=M)
+    for k in range(6):
+        a = math.radians(60 * k); d = Vector((math.cos(a), 0, math.sin(a)))
+        box(f'gl_detent{k}', tuple(Vector((0, CY0 + 0.010, CZ)) + d * (CR - 0.0005)), (0.006, 0.010, 0.003), SCREEN, rot=(0, -a + math.pi / 2, 0), M=M)
+    pipe('gl_sling_loop', [(-0.046, HG1 - 0.020, BORE), (-0.054, HG1 - 0.012, BORE), (-0.046, HG1 - 0.004, BORE)], 0.002, MECH, n=4, segs=6, M=M)
 
 
 def build_hands(M):

@@ -9,7 +9,7 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 from gunner_rig import Gunner
 from render_lib import setup, shot
 g = Gunner(Matrix.Translation((0, 0, 0.55)), kind=KIND)
-m = g.pose(A, E); print('wrist miss', {k: round(v, 3) for k, v in m.items()}, 'T', g.T, 'arm', round(g.arm_len, 3))
+m = g.pose(A, E); print('wrist miss', {k: round(v, 3) for k, v in m.items()}, 'elbow drop', getattr(g, 'elbow_drop', None), 'T', g.T, 'arm', round(g.arm_len, 3))
 sc, cam, gg = setup(20)
 import look; look.crew(g); look.gun(g.gun_objs); look.gear(g)
 c = Vector((0.05, 0.10, 0.90)); tag = f'{KIND}_{int(A)}_{int(E)}'

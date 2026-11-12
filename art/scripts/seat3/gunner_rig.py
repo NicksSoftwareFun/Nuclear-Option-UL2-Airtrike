@@ -20,7 +20,8 @@ G_T = Vector((0.05, 0.17, 0.34))          # gun origin in the torso frame: heads
 H_T = Vector((0.0, 0.02, 0.33))          # swing point for the gun's yaw relative to the torso
 SOCKET = Vector((0.17, 0.06, 0.15)); HINGE = Vector((0.20, 0.10, 0.19))   # waist, front-right of the belt (Nick 12:38)   # harness arm root (hips frame)
 L1 = L2 = 0.26
-GL_T = Vector((0.10, 0.23, 0.49)); GL_H = Vector((0.10, 0.02, 0.49))   # grenadier: launcher grip in the torso frame, shouldered
+ARM_SCALE = (1.14, 1.06)        # upper arm, forearm length factors
+GL_SHOULDER = Vector((0.150, 0.000, 0.430)); GL_CANT = 0.0   # right shoulder pocket in the torso frame   # grenadier: launcher grip in the torso frame, shouldered
 POLE_R_SPOT, POLE_L_SPOT = Vector((0.45, 0.05, -0.20)), Vector((-0.45, 0.05, -0.20))
 POLE_R, POLE_L = Vector((0.45, -0.20, -0.70)), Vector((-0.35, 0.25, -0.75))  # torso frame
 
@@ -37,8 +38,10 @@ class Gunner:
         self.so = bpy.data.objects['UL2_soldier']; self.ao = bpy.data.objects['UL2_soldier_rig']
         self.ao.matrix_world = place; self.place = place.copy()
         self._strip()
+        self._lengthen_arms()
         self.pb = self.ao.pose.bones
         for n in ('spine', 'chest', 'head'): self.pb[n].rotation_mode = 'XYZ'
+        # proportions (Nick 16:51 OK): the stock soldier's arms are short for shouldered and raised holds; lengthen them
         # spine twist sign: measure the chest yaw produced by +10 deg on the spine bone
         self.pb['spine'].rotation_euler = (0, math.radians(10), 0); bpy.context.view_layer.update()
         f = (self.ao.matrix_world.inverted() @ self._chest_mat()).to_3x3() @ Vector((0, 1, 0))
@@ -85,6 +88,29 @@ class Gunner:
         dl = bm.verts.layers.deform.active; hidx = [so.vertex_groups[f'hand_{q}'].index for q in 'LR']
         kill.update(v for v in bm.verts if sum(v[dl].get(i, 0) for i in hidx) > 0.5)
         bmesh.ops.delete(bm, geom=list(kill), context='VERTS'); bm.to_mesh(so.data); bm.free()
+
+    def _lengthen_arms(self):
+        """proportions (Nick 16:51 OK): lengthen the upper arms and forearms in the REST pose, moving the bones and the
+        skinned vertices together (weights blend the shift), so IK works on the real lengths"""
+        import bpy as _b
+        print('so parent', self.so.parent.name if self.so.parent else None, tuple(round(x, 3) for x in self.so.matrix_local.translation))
+        arm = self.ao.data; vg = {g.name: g.index for g in self.so.vertex_groups}
+        _b.context.view_layer.objects.active = self.ao; _b.ops.object.mode_set(mode='EDIT')
+        eb = arm.edit_bones; shifts = {}
+        for q in 'LR':
+            ua, fa, hd = eb[f'upperarm_{q}'], eb[f'forearm_{q}'], eb[f'hand_{q}']
+            d1 = (ua.tail - ua.head) * (ARM_SCALE[0] - 1.0); d2 = (fa.tail - fa.head) * (ARM_SCALE[1] - 1.0)
+            ua.tail += d1; fa.head += d1; fa.tail += d1 + d2; hd.head += d1 + d2; hd.tail += d1 + d2
+            shifts[q] = (d1.copy(), d2.copy())
+        _b.ops.object.mode_set(mode='OBJECT')
+        me = self.so.data
+        for v in me.vertices:
+            w = {g.group: g.weight for g in v.groups}
+            for q in 'LR':
+                d1, d2 = shifts[q]
+                wf = w.get(vg.get(f'forearm_{q}', -1), 0.0); wh = w.get(vg.get(f'hand_{q}', -1), 0.0)
+                if wf or wh: v.co += d1 * (wf + wh) + d2 * wh
+        me.update()
 
     def _chest_mat(self):
         b = self.ao.data.bones['chest']; return self.ao.matrix_world @ self.pb['chest'].matrix @ b.matrix_local.inverted()
@@ -186,23 +212,42 @@ class Gunner:
             f = (H.to_3x3() @ self.fwd_h).normalized(); u = (H.to_3x3() @ self.up_h); u = (u - f * u.dot(f)).normalized(); r = f.cross(u)
             GM = Matrix((r, f, u)).transposed().to_4x4(); GM.translation = eye + f * 0.024
         else:
+            # butt in the right shoulder pocket: the launcher yaws and pitches about that point (Nick 16:50: no chest clipping)
+            import gl_model as gl
             rho = A - T
-            GMt = Matrix.Translation(GL_H) @ _rz(rho) @ Matrix.Translation(GL_T - GL_H)
-            PIV = Vector((0, -0.25, 0.06))                      # elevation about the shoulder pocket (butt)
-            GM = TF @ GMt @ Matrix.Translation(PIV) @ Matrix.Rotation(math.radians(E), 4, 'X') @ Matrix.Translation(-PIV)
+            BUTT = Vector((0, gl.BUTT_Y - 0.016, 0.030))
+            GM = TF @ Matrix.Translation(GL_SHOULDER) @ _rz(rho) @ Matrix.Rotation(math.radians(E), 4, 'X') @ Matrix.Rotation(math.radians(GL_CANT), 4, 'Y') @ Matrix.Translation(-BUTT)
             import gl_model as gl
             self._aim_head((GM.to_3x3() @ Vector((0, 1, 0))).normalized(), clamp=70)
         self.gun.matrix_world = GM; self.GM = GM
         self.ik['R'].location = GM @ self.wR; self.ik['L'].location = GM @ self.wL
-        pr, pl = (POLE_R_SPOT, POLE_L_SPOT) if self.kind == 'spot' else (POLE_R, POLE_L)
-        self.pole['R'].location = TF @ pr; self.pole['L'].location = TF @ pl
-        bpy.context.view_layer.update(); self.arm_len = 0.0
+        self._settle_elbows(TF); self.arm_len = 0.0
         return {s: ((self.ao.matrix_world @ self.pb[f'hand_{s}'].head) - self.ik[s].location).length for s in 'RL'}
+
+    def _settle_elbows(self, TF):
+        """elbow constraint (Nick 16:51): for each arm try a set of pole targets and keep the one that reaches the hand
+        target with the elbow lowest, so the elbow stays below the shoulder"""
+        out = {}
+        for s, sx in (('R', 1), ('L', -1)):
+            cands = [(sx * 0.45, 0.05, -0.60), (sx * 0.35, -0.25, -0.70), (sx * 0.60, 0.20, -0.40), (sx * 0.15, 0.30, -0.70),
+                     (sx * 0.55, -0.10, -0.20), (sx * 0.25, 0.10, -0.90), (-sx * 0.10, 0.25, -0.70), (sx * 0.45, -0.20, -0.70),
+                     (sx * 0.45, 0.05, 0.90), (-sx * 0.30, 0.05, 0.90), (sx * 0.10, -0.40, 0.60), (-sx * 0.45, 0.05, -0.60), (sx * 0.0, -0.50, -0.30)]
+            best = None
+            for c in cands:
+                self.pole[s].location = TF @ Vector(c); bpy.context.view_layer.update()
+                sh = self.ao.matrix_world @ self.pb[f'upperarm_{s}'].head; el = self.ao.matrix_world @ self.pb[f'forearm_{s}'].head
+                miss = ((self.ao.matrix_world @ self.pb[f'hand_{s}'].head) - self.ik[s].location).length
+                score = (el.z - sh.z) + 4.0 * miss + (0.5 if el.z > sh.z - 0.02 else 0.0)
+                if best is None or score < best[0]: best = (score, c, miss, el.z - sh.z)
+            self.pole[s].location = TF @ Vector(best[1]); out[s] = best
+        bpy.context.view_layer.update()
+        self.elbow_drop = {s: round(-out[s][3], 3) for s in out}
+        return out
 
     # ------------------------------------------------------------------ pose
     def pose(self, A, E, T=None, head=True):
         if T is None:
-            T = max(-50.0, min(65.0, A + 25.0)) if self.kind == 'gl' else max(-50.0, min(65.0, 20.0 + 0.5 * A))   # grenadier: bladed, left shoulder forward
+            T = max(-50.0, min(78.0, A + 22.0)) if self.kind == 'gl' else max(-50.0, min(65.0, 20.0 + 0.5 * A))   # grenadier: bladed, left shoulder forward
         self.A, self.E, self.T = A, E, T
         if self.kind != 'mg': return self._pose_kit(A, E, T)
         self.pb['spine'].rotation_euler = (0, math.radians(T) * self.tw_sign, 0)
@@ -216,6 +261,7 @@ class Gunner:
         self.gun.matrix_world = GM; self.GM = GM
         self.ik['R'].location = GM @ self.wR; self.ik['L'].location = GM @ self.wL
         self.pole['R'].location = TF @ POLE_R; self.pole['L'].location = TF @ POLE_L
+        self._settle_elbows(TF)
         if head:
             bpy.context.view_layer.update()
             hb = self.ao.data.bones['head']; ph = self.pb['head']; ph.rotation_mode = 'QUATERNION'; ph.rotation_quaternion = (1, 0, 0, 0)

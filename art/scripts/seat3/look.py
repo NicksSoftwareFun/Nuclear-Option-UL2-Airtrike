@@ -94,9 +94,9 @@ RULES = [  # (regex on the base name, finish); first match wins; SCREEN-material
     # grenade launcher (same scheme): bronze frame and handguard, black cylinder/barrel/rails, FDE furniture
     (r'^gl_nose', dict(rgb=(176, 146, 72), rough=0.35, metal=0.7)),
     (r'^gl_buttpad', RUBBER),
-    (r'^gl_(stock|grip$|grip_rib|vg|guard)', FDE),
+    (r'^gl_(stock|grip$|grip_rib|vg|guard|rcover)', FDE),
     (r'^gl_(recv|rplate|fplate|strap|lstrap|hinge_lug|hg_[tblrc]|latch)', BRONZE),
-    (r'^gl_(hub_rib|ratchet|sight_knob|sight_drum|safety|trigger|qd|stock_lever|screw|sling|hinge_pin)', STEEL),
+    (r'^gl_(hub_rib|ratchet|sight_knob|sight_drum|safety|trigger|qd|stock_lever|screw|sling|hinge_pin|axis_btn|lock_lever|pin\d|bus_f_post)', STEEL),
     (r'^gl_', BLACK),
     # spotter kit: FDE binocular body with black rubber armour and eyecups, ranger-green radio, black EUD
     (r'^bino_lens$', dict(rgb=(38, 46, 62), rough=0.08, metal=0.3)),
@@ -104,8 +104,8 @@ RULES = [  # (regex on the base name, finish); first match wins; SCREEN-material
     (r'^bino_(eyecup|armour|grip|focus)', RUBBER),
     (r'^bino_(btn|batt_cap|mount|screw)', STEEL),
     (r'^bino_', FDE),
-    (r'^radio_(ant|knob|ptt|cable)', BLACK),
-    (r'^radio_', dict(rgb=(62, 64, 52), rough=0.8)),
+    (r'^radio_(key|fkey|knob|port|conn$|conn\d|batt_latch|screen_bezel|plate)', STEEL),
+    (r'^radio_', dict(rgb=(40, 42, 41), rough=0.65, metal=0.2, wear=0.4)),   # PRC-162 class: black/dark grey chassis
     (r'^eud_(case|bezel|strap|hinge)', BLACK),
     (r'^eud_', dict(rgb=(62, 64, 52), rough=0.9, noise=0.10, scale=500.0)),
     (r'^kit_', dict(rgb=(62, 64, 52), rough=0.95, noise=0.10, scale=500.0)),
