@@ -2,6 +2,10 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.9 test build: rotor hub spins with the blades; blade lift area x1.6 and drag roughly halved; rotor assist on
+  the takeoff roll held to 25 m/s; jump gauge moved to the right middle of the HUD as a vertical bar in the stock HUD
+  font and colour; flight assist on + full throttle on the ground starts an automatic jump; spawns at revetments and
+  shelters as well as medium hangars; takeoff-roll log (speed, climb, yaw rate).
 - 0.15.8 test build: spawns at medium hangars only (helipads off for runway testing); takeoff stability: rotor lift
   centred just behind the centre of mass, larger fins, gentler pedal brake on the main wheels, main tyres slide before
   they trip the narrow track, gun mount mass moved to the centreline. SUB-2000 raised out of the seat sill with cleaner

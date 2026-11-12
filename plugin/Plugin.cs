@@ -12,7 +12,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.8")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.9")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -98,6 +98,7 @@ namespace UL2Airtrike
         Transform tilt; float tiltX, tiltZ, thr, pitchIn, rollIn, axis, prevAxis, alt, er, jumpT = -1f, jumpE, massSum, massT;
         readonly List<Component> partList = new List<Component>(); float scanT, offGround, dbgT;
 
+        static FieldInfo fFa; bool autoArmed = true, autoSpin;
         void Update()
         {
             try
@@ -118,9 +119,17 @@ namespace UL2Airtrike
                 float upRate = 60f;
                 // pre-rotator: on the ground with the engine running the clutch drives the rotor, 110 rpm at idle throttle
                 // up to 250 rpm at full; the custom axis over-speeds it (blades flat) up to 450 rpm for a jump launch
+                // auto jump (Nick 23:12): with flight assist on, full throttle on the ground spins the rotor up as if the
+                // axis were held and launches the jump on its own at 430 rpm; armed again once the throttle comes back
+                bool fa = false; try { if (fFa == null) fFa = AccessTools.Field(unit.GetType(), "flightAssist"); if (fFa != null) fa = (bool)fFa.GetValue(unit); } catch { }
+                if (thr < 0.9f || !ground) autoArmed = ground && thr < 0.9f;
+                bool autoJ = fa && ground && engOn && thr > 0.98f && autoArmed && axis < 0.05f;
+                autoSpin = autoJ;
                 if (headOn && clutch && engOn && jumpT < 0f)
                 {
                     float pre = ground ? Mathf.Lerp(110f, 250f, thr) : 0f;
+                    if (autoJ) { pre = Mathf.Max(pre, 450f); if (rpm > 250f) upRate = 20f; }
+                    if (autoJ && rpm >= 430f) { autoArmed = false; jumpT = 0f; jumpE = Mathf.Clamp01((rpm - 300f) / 150f); Plugin.Log.LogInfo("UL-2 auto jump launch (flight assist), rotor " + Mathf.RoundToInt(rpm) + " rpm"); }
                     if (axis > 0.05f) { pre = Mathf.Max(pre, 250f + 200f * axis); if (rpm > 250f) upRate = 20f; }
                     target = Mathf.Max(target, pre);
                     // jump: axis released after a spin-up past 400 rpm -> blades to flying pitch, stored energy becomes lift
@@ -176,7 +185,7 @@ namespace UL2Airtrike
         bool inErr;
         // HUD rotor gauge (Nick 22:31/22:35/22:36): the Alkyon-style label from our HUD extras prefab (UL2_rotorGauge),
         // rpm readout and an idle (110) to full (450 rpm) bar, red until the rotor is fast enough to jump (400), then green
-        Transform hud; RectTransform barFill; UnityEngine.UI.Image fillImg; TMPro.TMP_Text hudRpm, hudTitle; float hudFind, hudShow;
+        Transform hud; RectTransform barFill; UnityEngine.UI.Image fillImg; TMPro.TMP_Text hudRpm, hudHint; float hudFind, hudShow;
         void HudGauge(float dt, bool engOn)
         {
             try
@@ -188,34 +197,36 @@ namespace UL2Airtrike
                     if (hud == null) return;
                     barFill = hud.Find("barBg/barFill") as RectTransform; if (barFill != null) fillImg = barFill.GetComponent<UnityEngine.UI.Image>();
                     var l = hud.Find("label"); if (l != null) hudRpm = l.GetComponent<TMPro.TMP_Text>();
-                    var ti = hud.Find("title"); if (ti != null) hudTitle = ti.GetComponent<TMPro.TMP_Text>();
+                    var ti = hud.Find("hint"); if (ti != null) hudHint = ti.GetComponent<TMPro.TMP_Text>();
                     Plugin.Log.LogInfo("UL-2 HUD rotor gauge found, bar " + (barFill != null) + " text " + (hudRpm != null));
                 }
-                bool want = axis > 0.05f || jumpT >= 0f;
+                bool want = axis > 0.05f || jumpT >= 0f || autoSpin;
                 if (want) hudShow = 3f; else if (hudShow > 0f) hudShow -= dt;
                 bool show = hudShow > 0f;
                 if (hud.gameObject.activeSelf != show) hud.gameObject.SetActive(show);
                 if (!show) return;
                 bool ready = rpm >= 400f;
                 var col = jumpT >= 0f || ready ? new Color(0.3f, 1f, 0.3f, 1f) : new Color(1f, 0.25f, 0.2f, 1f);
-                if (barFill != null) barFill.sizeDelta = new Vector2(238f * Mathf.Clamp01((rpm - 110f) / 340f), barFill.sizeDelta.y);
+                // vertical bar (0.15.9): only the fill changes colour; the texts keep the HUD colour from their style applier
+                if (barFill != null) barFill.sizeDelta = new Vector2(barFill.sizeDelta.x, 198f * Mathf.Clamp01((rpm - 110f) / 340f));
                 if (fillImg != null) fillImg.color = col;
-                if (hudRpm != null) { hudRpm.text = "ROTOR " + Mathf.RoundToInt(rpm) + " RPM" + (jumpT >= 0f ? "  JUMP" : ready ? "  RELEASE TO JUMP" : ""); hudRpm.color = col; }
-                if (hudTitle != null) hudTitle.color = col;
+                if (hudRpm != null) hudRpm.text = "ROTOR " + Mathf.RoundToInt(rpm) + " RPM";
+                if (hudHint != null) hudHint.text = jumpT >= 0f ? "JUMP" : autoSpin ? "AUTO JUMP" : ready ? "RELEASE TO JUMP" : "";
             }
             catch (Exception e) { if (!hudErr) { hudErr = true; Plugin.Log.LogWarning("UL-2 HUD gauge: " + e.Message); } }
         }
         bool hudErr;
         float leanT = 2f;
+        float logSpd, logVy, logYaw, logF;
         void LeanLog(float dt)
         {
-            if ((leanT -= dt) > 0f) return; leanT = 5f;
+            if ((leanT -= dt) > 0f) return; leanT = logSpd > 3f ? 1f : 5f;
             try
             {
                 string o = "";
                 foreach (var c in partList) { if (c == null) continue; if (c.name == "mast" || c.name == "rotorHead" || c.name == "engine_core" || c.name == "tailboom_R" || c.name.StartsWith("nacelle")) { var q = Quaternion.Inverse(transform.rotation) * c.transform.rotation; var e = q.eulerAngles; o += $" {c.name} p{Wrap(e.x):0.0} r{Wrap(e.z):0.0}"; } }
                 var re = transform.rotation.eulerAngles;
-                Plugin.Log.LogInfo($"UL-2 lean: root pitch {Wrap(re.x):0.0} roll {Wrap(re.z):0.0} alt {alt:0.00} |{o}");
+                Plugin.Log.LogInfo($"UL-2 roll-out: {logSpd * 3.6f:0} km/h climb {logVy:0.0} m/s yaw rate {logYaw:0} deg/s rotor assist {logF:0.00} W | pitch {Wrap(re.x):0.0} roll {Wrap(re.z):0.0} alt {alt:0.00} |{o}");
             }
             catch { }
         }
@@ -257,13 +268,16 @@ namespace UL2Airtrike
                     if (massSum < rb.mass) massSum = rb.mass;
                 }
                 float W = massSum * 9.81f, spd = fSpeed != null ? (float)fSpeed.GetValue(unit) : 0f, F = 0f;
-                if (alt < 15f && spd < 30f)
+                // 0.15.9 (Nick 23:10: never lifts off): rotor lift on the roll held to 25 m/s (was fading out from 18 m/s,
+                // right across the 20 m/s takeoff speed), then handed over to the blade surfaces by 40 m/s
+                if (alt < 15f && spd < 40f)
                 {
                     float s = Mathf.Clamp01(rpm / 250f);
-                    F += W * 0.35f * s * s * Mathf.Clamp01(spd / 10f) * (1f - Mathf.InverseLerp(18f, 30f, spd));
+                    F += W * 0.45f * s * s * Mathf.Clamp01(spd / 10f) * (1f - Mathf.InverseLerp(25f, 40f, spd));
                 }
                 if (jumpT >= 0f) F += W * 2.2f * jumpE * Mathf.Clamp01(1f - jumpT / 2.0f);
                 if (F > 0f) rb.AddForce(transform.up * F, ForceMode.Force);
+                logSpd = spd; logVy = rb.velocity.y; logYaw = Vector3.Dot(rb.angularVelocity, transform.up) * Mathf.Rad2Deg; logF = W > 0f ? F / W : 0f;
                 // rotor head pitch authority (a gyro pitches by tilting the head, Nick 22:31: nose would not come up on the
                 // takeoff roll). Scales with rotor rpm; strongest on the ground, eased off in flight where the elevator works.
                 // Game pitch input: positive = nose down.

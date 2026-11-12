@@ -497,6 +497,9 @@ public static partial class UL2Builder
         // spinning copy of the blades (turned in game by the plugin); the lifting blade parts keep colliders but hide their mesh
         var spin = Find(Need("rotorHead"), "rotorSpin") ?? New("rotorSpin", Need("rotorHead"));
         spin.position = P("rotorCentre"); spin.rotation = Quaternion.identity;
+        // 0.15.9 (Nick 23:10): the hub bar / blade grips (rotorHead mesh) spin with the blades; the part keeps its collider
+        Visual("spin_hub", "rotorHead", spin);
+        { var hr = Need("rotorHead").GetComponent<MeshRenderer>(); if (hr) hr.enabled = false; }
         foreach (var s in new[] { "L", "R" })
         {
             string[] seg = { "root", "mid", "tip" };
@@ -582,7 +585,7 @@ public static partial class UL2Builder
             // never retracts: the gear key only switches the aircraft's gear state (lights, weapon safeties, AI)
             Set(lg, "foldDegrees", 0f); Set(lg, "foldSpeed", 1000f); Set(lg, "hingeFoldMotion", Vector3.zero);
             Size(lg, "gearDoors", 0);
-            Set(lg, "extendedDrag", 0.3f);
+            Set(lg, "extendedDrag", 0.1f);   // 0.15.9: fixed gear drag 0.3 -> 0.1
             // Cricket rough-field values kept (travel, friction, contact area); springs scaled to the lighter aircraft
             if (g == "F") { Set(lg, "wheelRadius", 0.24f); Set(lg, "springRate", 60000f); Set(lg, "dampingRate", 5000f); Set(lg, "mass", 15f); }
             // 0.15.7 (Nick 22:36: tips over while taxiing): stiffer, better damped mains and less nose steering lock
@@ -925,13 +928,13 @@ public static partial class UL2Builder
     static void AeroAndDamage()
     {
         // ~680 kg empty with the gun; 60 kg fuel in the frame tank
-        Part("", 120f, 0f, 0.10f, -1f);
-        Part("cockpit_F", 75f, 0.4f, 0.08f, -1f); Part("nose", 10f, 0f, 0.05f, -1f);
-        Part("cockpit_R", 40f, 0f, 0.08f, -1f);
-        Part("fuselage", 60f, 0f, 0.06f, 60f);
+        Part("", 120f, 0f, 0.05f, -1f);   // 0.15.9: drag areas roughly halved
+        Part("cockpit_F", 75f, 0.4f, 0.04f, -1f); Part("nose", 10f, 0f, 0.025f, -1f);
+        Part("cockpit_R", 40f, 0f, 0.04f, -1f);
+        Part("fuselage", 60f, 0f, 0.03f, 60f);
         Part("intake", 15f, 0f, 0.05f, -1f);
         Part("mast", 40f, 0f, 0.04f, -1f); Part("rotorHead", 20f, 0f, 0.03f, -1f);
-        Part("engine_core", 60f, 0f, 0.06f, -1f); Part("engine_L", 15f, 0f, 0.02f, -1f); Part("engine_R", 15f, 0f, 0.02f, -1f);
+        Part("engine_core", 60f, 0f, 0.03f, -1f); Part("engine_L", 15f, 0f, 0.02f, -1f); Part("engine_R", 15f, 0f, 0.02f, -1f);
         Part("propHub", 15f, 0f, 0.02f, -1f);
         // 0.15.8: gun mount 25 -> 10 kg (it sits 0.30 m right of centre), the 15 kg moves to the centred cockpit_F
         Part("gunmount_R", 10f, 0f, 0.05f, -1f);
@@ -940,8 +943,9 @@ public static partial class UL2Builder
         // rotor: ~31 m2 of lifting blade for the gyro's low stall (blade aero is a fixed span; the head spins only visually)
         foreach (var s in new[] { "L", "R" })
         {
-            Part("wing1_" + s, 8f, 4.5f, 0.01f, -1f); Part("wing2_" + s, 8f, 6f, 0.01f, -1f); Part("wing3_" + s, 6f, 4.5f, 0.01f, -1f);
-            Part("aileron_" + s, 2f, 2f, 0f, -1f);
+            // 0.15.9 (Nick 23:10: never lifts off; game aircraft need much more lift and less drag than real): blade area x1.6
+            Part("wing1_" + s, 8f, 7f, 0.005f, -1f); Part("wing2_" + s, 8f, 10f, 0.005f, -1f); Part("wing3_" + s, 6f, 7f, 0.005f, -1f);
+            Part("aileron_" + s, 2f, 3f, 0f, -1f);
             Part("hstab_" + s, 5f, 0.9f, 0.01f, -1f); Part("hstabTip_" + s, 3f, 0.5f, 0.01f, -1f);
             Part("elevator_" + s, 3f, 0.7f, 0f, -1f); Part("elevatorTip_" + s, 2f, 0.4f, 0f, -1f);
             foreach (var w in new[] { "hstab_", "hstabTip_", "elevator_", "elevatorTip_" }) Set(AP(w + s), "centerOfLift", Vector3.zero);
@@ -994,23 +998,38 @@ public static partial class UL2Builder
             var src = quad.GetComponentsInChildren<Transform>(true).First(t => t.name == "wingAngleGauge");
             var g = Object.Instantiate(src.gameObject, go.transform, false); g.name = "UL2_rotorGauge";
             foreach (var c in g.GetComponents<Component>()) if (c != null && c.GetType().Name == "WingAngleGauge") Object.DestroyImmediate(c);
-            foreach (var n in new[] { "inputPivot", "wingIcon", "tiltArc" }) { var t = g.transform.Find(n); if (t) Object.DestroyImmediate(t.gameObject); }
-            var rt = (RectTransform)g.transform; rt.anchoredPosition = new Vector2(0f, -150f);
-            var lab = (RectTransform)g.transform.Find("label"); lab.anchorMin = lab.anchorMax = new Vector2(0.5f, 0.5f); lab.pivot = new Vector2(0.5f, 0.5f);
-            lab.anchoredPosition = new Vector2(0f, 18f); lab.sizeDelta = new Vector2(320f, 30f);
-            var title = Object.Instantiate(lab.gameObject, g.transform, false); title.name = "title"; ((RectTransform)title.transform).anchoredPosition = new Vector2(0f, 44f);
-            foreach (var tl in new[] { lab.gameObject, title }) { var tmp = tl.GetComponent<TMPro.TextMeshProUGUI>(); if (tmp) { tmp.alignment = TMPro.TextAlignmentOptions.Center; tmp.text = tl == title ? "PRE ROTATOR MANUAL CONTROL" : "ROTOR 0 RPM"; } }
-            // bar: dim frame, fill anchored on its left end (the plugin scales it from idle 110 rpm to full 450 rpm)
-            var bg = new GameObject("barBg", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image)); bg.layer = g.layer;
-            var brt = (RectTransform)bg.transform; brt.SetParent(g.transform, false); brt.anchoredPosition = new Vector2(0f, -4f); brt.sizeDelta = new Vector2(240f, 12f);
-            bg.GetComponent<UnityEngine.UI.Image>().color = new Color(0f, 1f, 0f, 0.25f);
+            // 0.15.9 (Nick 23:11): sits where the Alkyon's swept-wing gauge sits (stock position, right middle); texts are the
+            // stock label (game HUD font, TextStyleApplier keeps the HUD colour); frame and jump mark are stock HUD images
+            // (ImageStyleApplier); only the vertical fill turns red / green
+            var rt = (RectTransform)g.transform; rt.anchoredPosition = src.GetComponent<RectTransform>().anchoredPosition;
+            var hudImg = g.transform.Find("wingIcon").gameObject;
+            foreach (var n in new[] { "inputPivot", "tiltArc" }) { var t = g.transform.Find(n); if (t) Object.DestroyImmediate(t.gameObject); }
+            var lab = (RectTransform)g.transform.Find("label");
+            System.Func<string, Vector2, string, RectTransform> text = (nm, pos, txt) =>
+            {
+                var r = nm == "label" ? lab : (RectTransform)Object.Instantiate(lab.gameObject, g.transform, false).transform; r.name = nm;
+                r.anchorMin = r.anchorMax = new Vector2(0.5f, 0.5f); r.pivot = new Vector2(1f, 0.5f); r.anchoredPosition = pos; r.sizeDelta = new Vector2(320f, 30f);
+                var tmp = r.GetComponent<TMPro.TextMeshProUGUI>(); if (tmp) { tmp.alignment = TMPro.TextAlignmentOptions.Right; tmp.text = txt; }
+                return r;
+            };
+            text("title", new Vector2(-24f, 122f), "PRE ROTATOR"); text("title2", new Vector2(-24f, 94f), "MANUAL CONTROL");
+            text("label", new Vector2(-24f, -112f), "ROTOR 0 RPM"); text("hint", new Vector2(-24f, -140f), "");
+            System.Func<string, Transform, RectTransform> img = (nm, parent) =>
+            {
+                var o = Object.Instantiate(hudImg, parent, false); o.name = nm; foreach (Transform ch in o.transform) Object.DestroyImmediate(ch.gameObject);
+                var im = o.GetComponent<UnityEngine.UI.Image>(); im.sprite = null; im.type = UnityEngine.UI.Image.Type.Simple;
+                var r = (RectTransform)o.transform; r.anchorMin = r.anchorMax = r.pivot = new Vector2(0.5f, 0.5f); r.localRotation = Quaternion.identity; r.localScale = Vector3.one; return r;
+            };
+            // vertical bar 200 tall: frame (HUD colour, faint), fill from the bottom (idle 110 rpm) to the top (450 rpm)
+            var brt = img("barBg", g.transform); brt.anchoredPosition = new Vector2(0f, 0f); brt.sizeDelta = new Vector2(16f, 200f);
+            brt.GetComponent<UnityEngine.UI.Image>().color = new Color(0f, 1f, 0f, 0.25f);
             var fill = new GameObject("barFill", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image)); fill.layer = g.layer;
-            var frt = (RectTransform)fill.transform; frt.SetParent(brt, false); frt.anchorMin = new Vector2(0f, 0f); frt.anchorMax = new Vector2(0f, 1f); frt.pivot = new Vector2(0f, 0.5f);
-            frt.anchoredPosition = new Vector2(1f, 0f); frt.sizeDelta = new Vector2(238f, -2f);
+            var frt = (RectTransform)fill.transform; frt.SetParent(brt, false); frt.anchorMin = new Vector2(0f, 0f); frt.anchorMax = new Vector2(1f, 0f); frt.pivot = new Vector2(0.5f, 0f);
+            frt.anchoredPosition = new Vector2(0f, 1f); frt.sizeDelta = new Vector2(-2f, 198f);
             fill.GetComponent<UnityEngine.UI.Image>().color = new Color(1f, 0.2f, 0.15f, 0.9f);
-            var tick = new GameObject("jumpMark", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image)); tick.layer = g.layer;
-            var trt = (RectTransform)tick.transform; trt.SetParent(brt, false); trt.anchorMin = trt.anchorMax = new Vector2((400f - 110f) / 340f, 0.5f); trt.sizeDelta = new Vector2(2f, 20f);
-            tick.GetComponent<UnityEngine.UI.Image>().color = new Color(0.3f, 1f, 0.3f, 0.9f);
+            var trt = img("jumpMark", brt); trt.anchorMin = trt.anchorMax = new Vector2(0.5f, (400f - 110f) / 340f); trt.sizeDelta = new Vector2(30f, 2f); trt.anchoredPosition = Vector2.zero;
+            trt.GetComponent<UnityEngine.UI.Image>().color = new Color(0f, 1f, 0f, 1f);
+            Object.DestroyImmediate(hudImg);
             g.SetActive(false);
             PrefabUtility.SaveAsPrefabAsset(go, dst);
             log.AppendLine("HUD extras: rotor gauge added");
@@ -1101,12 +1120,18 @@ public static partial class UL2Builder
         so = new SerializedObject(AssetDatabase.LoadMainAssetAtPath(op));
         so.FindProperty("aircraftJsonKey").stringValue = "UL2Airtrike";
         // medium hangars only (0.15.8, Nick 22:53: helipad spawns off for now, runway starts give repeatable takeoff tests)
-        var hs = so.FindProperty("hangars"); hs.arraySize = 1;
-        hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarUnitJsonKey").stringValue = "hangar_med";
-        var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
+        // 0.15.9 (Nick 23:14: no spawn at small airbases): every building the stock Cricket spawns from, revetments and
+        // shelters included (shelter1 also holds a helipad hangar, which stays off)
+        var hk = new[] { "hangar_med", "revetment1", "shelter1" };
+        var hs = so.FindProperty("hangars"); hs.arraySize = hk.Length;
+        for (int i = 0; i < hk.Length; i++)
+        {
+            hs.GetArrayElementAtIndex(i).FindPropertyRelative("hangarUnitJsonKey").stringValue = hk[i];
+            var hn = hs.GetArrayElementAtIndex(i).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = hk[i];
+        }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.8\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.9\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
