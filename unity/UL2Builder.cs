@@ -728,9 +728,40 @@ public static class UL2Builder
         hps.GetArrayElementAtIndex(0).FindPropertyRelative("part").objectReferenceValue = C(Need("gunmount_R"), "AeroPart");
         var opts = g.FindPropertyRelative("weaponOptions"); opts.arraySize = 2; opts.GetArrayElementAtIndex(0).objectReferenceValue = null;
         opts.GetArrayElementAtIndex(1).objectReferenceValue = Mount("UL2_sidegun");
-        var p = sets.GetArrayElementAtIndex(1); p.FindPropertyRelative("name").stringValue = "Stub Pylons";
-        var php = p.FindPropertyRelative("hardpoints");
-        for (int i = 0; i < php.arraySize; i++) php.GetArrayElementAtIndex(i).FindPropertyRelative("part").objectReferenceValue = C(root, "AeroPart");
+        // stub pylons split left/right like the Ibis side pylons (Nick 2026-11-12 16:20): a TOP station per side where the
+        // racks mount flipped onto the stub, and an UNDER station per side for the gunpods and the bomb, which hang normally.
+        // Top and under on the same side preclude each other (stock precludingHardpointSets, like the Ibis cargo bays).
+        foreach (var s in new[] { "L", "R" })
+        {
+            var u = root.Find("pylon_under_" + s); if (u == null) { u = new GameObject("pylon_under_" + s).transform; u.SetParent(root, false); }
+            u.position = P("hardpoint_" + s) + new Vector3(0f, -0.125f, 0f); u.rotation = Quaternion.identity;
+        }
+        while (sets.arraySize < 5) sets.InsertArrayElementAtIndex(1);
+        string[] topOpts = { "RocketPod1_single", "AGM1_single", "AAM3_single", "Rocket2_4Pod", "ECMPod1", "ATGM1_quad" };
+        string[] underOpts = { "gun_12.7mm_pod", "gun_20mm_pod", "bomb_125_single" };
+        var defs = new[] {
+            new { name = "Left Stub (top)", hp = "pylon_fuselage_L", sym = false, symName = "Stub Pylons (top)", opts = topOpts, pre = 3 },
+            new { name = "Right Stub (top)", hp = "pylon_fuselage_R", sym = true, symName = "Stub Pylons (top)", opts = topOpts, pre = 4 },
+            new { name = "Left Stub (under)", hp = "pylon_under_L", sym = false, symName = "Stub Pylons (under)", opts = underOpts, pre = 1 },
+            new { name = "Right Stub (under)", hp = "pylon_under_R", sym = true, symName = "Stub Pylons (under)", opts = underOpts, pre = 2 } };
+        for (int i = 0; i < 4; i++)
+        {
+            var d = defs[i]; var p = sets.GetArrayElementAtIndex(i + 1);
+            p.FindPropertyRelative("name").stringValue = d.name;
+            p.FindPropertyRelative("SymmetryWithPrev").boolValue = d.sym;
+            p.FindPropertyRelative("SymmetryName").stringValue = d.symName;
+            var pr = p.FindPropertyRelative("precludingHardpointSets"); pr.arraySize = 1; pr.GetArrayElementAtIndex(0).intValue = d.pre;
+            var php = p.FindPropertyRelative("hardpoints"); php.arraySize = 1;
+            php.GetArrayElementAtIndex(0).FindPropertyRelative("transform").objectReferenceValue = root.Find(d.hp) ?? Find(root, d.hp);
+            php.GetArrayElementAtIndex(0).FindPropertyRelative("part").objectReferenceValue = C(root, "AeroPart");
+            var op = p.FindPropertyRelative("weaponOptions"); op.arraySize = d.opts.Length + 1; op.GetArrayElementAtIndex(0).objectReferenceValue = null;
+            for (int k = 0; k < d.opts.Length; k++)
+            {
+                var m = AssetDatabase.LoadMainAssetAtPath(Placeholder(d.opts[k], "WeaponMount"));
+                if (m == null) log.AppendLine("MISSING mount " + d.opts[k]);
+                op.GetArrayElementAtIndex(k + 1).objectReferenceValue = m;
+            }
+        }
         so.ApplyModifiedPropertiesWithoutUndo();
         log.AppendLine("hardpoint sets: " + sets.arraySize);
     }
@@ -875,13 +906,16 @@ public static class UL2Builder
         li.FindPropertyRelative("faction").objectReferenceValue = null;
         li.FindPropertyRelative("assetReference.m_AssetGUID").stringValue = AssetDatabase.AssetPathToGUID(LIVERY);
         li.FindPropertyRelative("assetReference.m_SubObjectName").stringValue = "";
-        // two hardpoint sets now: side gun, stub pylons
+        // five hardpoint sets now: side gun, left/right stub top, left/right stub under
         var lo = so.FindProperty("loadouts");
         for (int i = 0; i < lo.arraySize; i++)
         {
-            var w = lo.GetArrayElementAtIndex(i).FindPropertyRelative("weapons"); w.arraySize = 2;
-            w.GetArrayElementAtIndex(0).objectReferenceValue = i == 0 ? null : Mount("UL2_sidegun");
-            w.GetArrayElementAtIndex(1).objectReferenceValue = i == 0 ? null : AssetDatabase.LoadMainAssetAtPath(Placeholder("RocketPod1_single", "WeaponMount"));
+            var w = lo.GetArrayElementAtIndex(i).FindPropertyRelative("weapons"); w.arraySize = 5;
+            for (int k = 0; k < 5; k++) w.GetArrayElementAtIndex(k).objectReferenceValue = null;
+            if (i == 0) continue;
+            w.GetArrayElementAtIndex(0).objectReferenceValue = Mount("UL2_sidegun");
+            var at = AssetDatabase.LoadMainAssetAtPath(Placeholder("ATGM1_quad", "WeaponMount"));
+            w.GetArrayElementAtIndex(1).objectReferenceValue = at; w.GetArrayElementAtIndex(2).objectReferenceValue = at;
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(par);
 
@@ -928,7 +962,7 @@ public static class UL2Builder
         var hn = hs.GetArrayElementAtIndex(0).FindPropertyRelative("hangarNames"); hn.arraySize = 1; hn.GetArrayElementAtIndex(0).stringValue = "hangar_med";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.13.0\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.14.0\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

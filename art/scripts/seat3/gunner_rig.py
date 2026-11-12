@@ -20,6 +20,8 @@ G_T = Vector((0.05, 0.17, 0.34))          # gun origin in the torso frame: heads
 H_T = Vector((0.0, 0.02, 0.33))          # swing point for the gun's yaw relative to the torso
 SOCKET = Vector((0.17, 0.06, 0.15)); HINGE = Vector((0.20, 0.10, 0.19))   # waist, front-right of the belt (Nick 12:38)   # harness arm root (hips frame)
 L1 = L2 = 0.26
+GL_T = Vector((0.10, 0.23, 0.49)); GL_H = Vector((0.10, 0.02, 0.49))   # grenadier: launcher grip in the torso frame, shouldered
+POLE_R_SPOT, POLE_L_SPOT = Vector((0.45, 0.05, -0.20)), Vector((-0.45, 0.05, -0.20))
 POLE_R, POLE_L = Vector((0.45, -0.20, -0.70)), Vector((-0.35, 0.25, -0.75))  # torso frame
 
 
@@ -27,7 +29,8 @@ def _rz(deg): return Matrix.Rotation(math.radians(-deg), 4, 'Z')     # + = turn 
 
 
 class Gunner:
-    def __init__(self, place, rifle_out=True):
+    def __init__(self, place, rifle_out=True, kind='mg'):
+        self.kind = kind
         with bpy.data.libraries.load(RIG_BLEND) as (src, dst):
             dst.objects = [n for n in src.objects if n in ('UL2_soldier', 'UL2_soldier_rig')]
         for o in dst.objects: bpy.context.scene.collection.objects.link(o)
@@ -44,8 +47,13 @@ class Gunner:
         # gun + gloves built once in gun space, parented to an empty
         self.gun = bpy.data.objects.new('GUN', None); bpy.context.scene.collection.objects.link(self.gun)
         part('seat3_mg'); n0 = len(ul2lib.PARTS['seat3_mg']['objs'])
-        mg.build_gun(Matrix.Identity(4)); self.wR, self.wL = mg.build_hands(Matrix.Identity(4))
-        for o in ul2lib.PARTS['seat3_mg']['objs'][n0:] + list(mg.GUN_CUTTERS):
+        if kind == 'gl':
+            import gl_model as km; km.build_gl(Matrix.Identity(4)); self.wR, self.wL = km.build_hands(Matrix.Identity(4))
+        elif kind == 'spot':
+            import bino_model as km; km.build_bino(Matrix.Identity(4)); self.wR, self.wL = km.build_hands(Matrix.Identity(4))
+        else:
+            mg.build_gun(Matrix.Identity(4)); self.wR, self.wL = mg.build_hands(Matrix.Identity(4))
+        for o in ul2lib.PARTS['seat3_mg']['objs'][n0:] + (list(mg.GUN_CUTTERS) if kind == 'mg' else []):
             o.parent = self.gun
         self.gun_objs = ul2lib.PARTS['seat3_mg']['objs'][n0:]
         # arm IK
@@ -55,8 +63,10 @@ class Gunner:
             p = bpy.data.objects.new(f'pole_{s}', None); bpy.context.scene.collection.objects.link(p)
             c = self.pb[f'forearm_{s}'].constraints.new('IK'); c.target = e; c.chain_count = 2; c.pole_target = p; c.pole_angle = 0
             self.ik[s] = e; self.pole[s] = p
-        self._harness()
-        self.arm_objs = []
+        self.arm_objs = []; self.harness_objs = []
+        if kind == 'mg': self._harness()
+        elif kind == 'spot': self._chest_kit()
+        self._eye_setup()
 
     # ------------------------------------------------------------------ setup helpers
     def _strip(self):
@@ -127,10 +137,74 @@ class Gunner:
                 o.matrix_world = mw
         self.harness_objs = list(ul2lib.PARTS['seat3_harness']['objs'])
 
+    def _chest_kit(self):
+        """spotter: radio, PTT and EUD on the vest (rest pose), bone-parented to the chest"""
+        import bino_model as bn
+        dg = bpy.context.evaluated_depsgraph_get(); me = self.so.evaluated_get(dg).to_mesh()
+        bvh = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], [list(p.vertices) for p in me.polygons]); self.so.evaluated_get(dg).to_mesh_clear()
+        part('seat3_kit'); bn.build_chest(lambda p, d, gap: self._snap(bvh, p, d, gap))
+        for o in ul2lib.PARTS['seat3_kit']['objs']:
+            mw = self.ao.matrix_world @ o.matrix_world
+            o.parent = self.ao; o.parent_type = 'BONE'; o.parent_bone = 'chest'
+            bpy.context.view_layer.update(); o.matrix_world = mw
+        self.harness_objs = list(ul2lib.PARTS['seat3_kit']['objs'])
+
+    def _eye_setup(self):
+        """eye point (between the eyes, on the face surface) in head-bone space, measured on the rest body"""
+        dg = bpy.context.evaluated_depsgraph_get(); me = self.so.evaluated_get(dg).to_mesh()
+        bvh = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], [list(p.vertices) for p in me.polygons]); self.so.evaluated_get(dg).to_mesh_clear()
+        hb = self.ao.data.bones['head']; z = hb.head_local.z + 0.115
+        hit = bvh.ray_cast(Vector((0.0, 0.6, z)), Vector((0, -1, 0)), 1.0)
+        eye = Vector((0.0, (hit[0].y if hit[0] is not None else 0.08) + 0.010, z))
+        self.eye_h = hb.matrix_local.inverted() @ eye
+        self.fwd_h = (hb.matrix_local.to_3x3().inverted() @ Vector((0, 1, 0))).normalized()
+        self.up_h = (hb.matrix_local.to_3x3().inverted() @ Vector((0, 0, 1))).normalized()
+
+    def _aim_head(self, dw, clamp=85):
+        """turn the head bone so its rest gaze points along world direction dw"""
+        ph = self.pb['head']; ph.rotation_mode = 'QUATERNION'; ph.rotation_quaternion = (1, 0, 0, 0)
+        bpy.context.view_layer.update()
+        AW = self.ao.matrix_world.to_3x3(); hb = self.ao.data.bones['head']
+        fwd_l = hb.matrix_local.to_3x3().inverted() @ Vector((0, 1, 0))
+        Mh = self.pb['head'].matrix.copy(); g0 = (Mh.to_3x3() @ fwd_l).normalized()
+        d = (AW.inverted() @ dw).normalized(); q = g0.rotation_difference(d)
+        if q.angle > math.radians(clamp): q = Quaternion(q.axis, math.radians(clamp))
+        R3 = q.to_matrix() @ Mh.to_3x3(); M4 = R3.to_4x4(); M4.translation = Mh.translation; ph.matrix = M4
+        bpy.context.view_layer.update()
+
+    def _head_world(self):
+        return self.ao.matrix_world @ self.pb['head'].matrix
+
+    def _pose_kit(self, A, E, T):
+        """grenadier: launcher shouldered, head on the sight line. spotter: head on the target, binoculars at the eyes."""
+        self.pb['spine'].rotation_euler = (0, math.radians(T) * self.tw_sign, 0)
+        bpy.context.view_layer.update()
+        TF = self.place @ _rz(T); dw = self.place.to_3x3() @ _rz(A).to_3x3() @ Vector((0, math.cos(math.radians(E)), math.sin(math.radians(E))))
+        if self.kind == 'spot':
+            self._aim_head(dw)
+            H = self._head_world(); eye = H @ self.eye_h
+            f = (H.to_3x3() @ self.fwd_h).normalized(); u = (H.to_3x3() @ self.up_h); u = (u - f * u.dot(f)).normalized(); r = f.cross(u)
+            GM = Matrix((r, f, u)).transposed().to_4x4(); GM.translation = eye + f * 0.024
+        else:
+            rho = A - T
+            GMt = Matrix.Translation(GL_H) @ _rz(rho) @ Matrix.Translation(GL_T - GL_H)
+            PIV = Vector((0, -0.25, 0.06))                      # elevation about the shoulder pocket (butt)
+            GM = TF @ GMt @ Matrix.Translation(PIV) @ Matrix.Rotation(math.radians(E), 4, 'X') @ Matrix.Translation(-PIV)
+            import gl_model as gl
+            self._aim_head((GM.to_3x3() @ Vector((0, 1, 0))).normalized(), clamp=70)
+        self.gun.matrix_world = GM; self.GM = GM
+        self.ik['R'].location = GM @ self.wR; self.ik['L'].location = GM @ self.wL
+        pr, pl = (POLE_R_SPOT, POLE_L_SPOT) if self.kind == 'spot' else (POLE_R, POLE_L)
+        self.pole['R'].location = TF @ pr; self.pole['L'].location = TF @ pl
+        bpy.context.view_layer.update(); self.arm_len = 0.0
+        return {s: ((self.ao.matrix_world @ self.pb[f'hand_{s}'].head) - self.ik[s].location).length for s in 'RL'}
+
     # ------------------------------------------------------------------ pose
     def pose(self, A, E, T=None, head=True):
-        if T is None: T = max(-50.0, min(65.0, 20.0 + 0.5 * A))
+        if T is None:
+            T = max(-50.0, min(65.0, A + 25.0)) if self.kind == 'gl' else max(-50.0, min(65.0, 20.0 + 0.5 * A))   # grenadier: bladed, left shoulder forward
         self.A, self.E, self.T = A, E, T
+        if self.kind != 'mg': return self._pose_kit(A, E, T)
         self.pb['spine'].rotation_euler = (0, math.radians(T) * self.tw_sign, 0)
         bpy.context.view_layer.update()
         TF = self.place @ _rz(T)                                       # torso frame (pelvis origin, yawed)

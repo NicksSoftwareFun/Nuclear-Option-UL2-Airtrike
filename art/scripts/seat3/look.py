@@ -91,6 +91,24 @@ RULES = [  # (regex on the base name, finish); first match wins; SCREEN-material
     (r'^ngal_(illum$|collar|cap|shutter|body|crown|clamp|jaw|pad)', FDE),
     (r'^ngal_', STEEL),
     (r'^mg_', BRONZE),
+    # grenade launcher (same scheme): bronze frame and handguard, black cylinder/barrel/rails, FDE furniture
+    (r'^gl_nose', dict(rgb=(176, 146, 72), rough=0.35, metal=0.7)),
+    (r'^gl_buttpad', RUBBER),
+    (r'^gl_(stock|grip$|grip_rib|vg|guard)', FDE),
+    (r'^gl_(recv|rplate|fplate|strap|lstrap|hinge_lug|hg_[tblrc]|latch)', BRONZE),
+    (r'^gl_(hub_rib|ratchet|sight_knob|sight_drum|safety|trigger|qd|stock_lever|screw|sling|hinge_pin)', STEEL),
+    (r'^gl_', BLACK),
+    # spotter kit: FDE binocular body with black rubber armour and eyecups, ranger-green radio, black EUD
+    (r'^bino_lens$', dict(rgb=(38, 46, 62), rough=0.08, metal=0.3)),
+    (r'^bino_laserplate', BLACK),
+    (r'^bino_(eyecup|armour|grip|focus)', RUBBER),
+    (r'^bino_(btn|batt_cap|mount|screw)', STEEL),
+    (r'^bino_', FDE),
+    (r'^radio_(ant|knob|ptt|cable)', BLACK),
+    (r'^radio_', dict(rgb=(62, 64, 52), rough=0.8)),
+    (r'^eud_(case|bezel|strap|hinge)', BLACK),
+    (r'^eud_', dict(rgb=(62, 64, 52), rough=0.9, noise=0.10, scale=500.0)),
+    (r'^kit_', dict(rgb=(62, 64, 52), rough=0.95, noise=0.10, scale=500.0)),
 ]
 
 
@@ -126,7 +144,8 @@ def _set(objs, fin, keep_screen=True):
 
 def gear(g):
     """harness, gloves and the support arm (re-applied after every pose, the arm is rebuilt each time)"""
-    _set(g.harness_objs, WEB)
+    if getattr(g, 'kind', 'mg') == 'spot': gun(g.harness_objs)
+    else: _set(g.harness_objs, WEB)
     _set([o for o in g.gun_objs if o.name.startswith('glove_') and '_cuff' not in o.name], GLOVE)
     _set([o for o in g.gun_objs if '_cuff' in o.name], WEB)
     _set(g.arm_objs, ARMB)

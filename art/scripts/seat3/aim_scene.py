@@ -33,7 +33,8 @@ for sx in (-1, 1):
 # crew: seats 1-2 stock pilot refs stay, seat 3 = rigged gunner (hide the static soldier ref)
 bpy.data.objects['REF_soldier'].hide_render = True
 c = bpy.data.collections.get('CREWREF'); c.hide_render = False
-g = Gunner(Matrix.Translation((0, -0.55, 1.42)))
+KIND = sys.argv[sys.argv.index('--kind') + 1] if '--kind' in sys.argv else 'mg'
+g = Gunner(Matrix.Translation((0, -0.55, 1.42)), kind=KIND)
 copilot = bpy.data.objects['REF_gunner']
 import look; look.crew(g); look.gun(g.gun_objs); look.gear(g)     # stock crew textures + MG 338 finish (Nick 15:41)
 sc, cam, gg = setup(28)
@@ -52,7 +53,7 @@ if mode == 'still':
         win = Vector((0.018, mg.NGAL_Y + 0.0612, 0.1155 + 0.018))
         o.matrix_world = g.GM @ Matrix.Translation(win + Vector((0, 30.0, 0))) @ Matrix.Rotation(math.pi / 2, 4, 'X') @ Matrix.Rotation(math.pi, 4, 'X')
     print('pose', A, E, 'miss', {k: round(v, 3) for k, v in miss.items()}, 'arm', round(g.arm_len, 3), 'copilot clearance', round(g.clearance(copilot), 3))
-    tag = ('above_' if ABOVE else '') + ('laser_' if '--laser' in sys.argv else '') + f'{int(A)}_{int(E)}'
+    tag = ('' if KIND == 'mg' else KIND + '_') + ('above_' if ABOVE else '') + ('laser_' if '--laser' in sys.argv else '') + f'{int(A)}_{int(E)}'
     shot(sc, cam, f'{out}/air_{tag}_3q.png', (4.6, 5.6, 3.3), (0, -0.2, 1.35), 42, res=(1600, 1000), scale=1.0)
     shot(sc, cam, f'{out}/air_{tag}_rear.png', (4.4, -5.2, 3.0), (0, -0.3, 1.35), 42, res=(1600, 1000), scale=1.0)
     shot(sc, cam, f'{out}/air_{tag}_close.png', (2.6, 1.6, 2.4), (0.25, -0.45, 1.55), 40, res=(1400, 1000), scale=1.0)
