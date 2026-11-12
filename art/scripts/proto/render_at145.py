@@ -22,7 +22,7 @@ mt.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.16
 HP_Z = 0.59      # underside of the stub pylon plate
 for sx in (-1, 1):
     o = bpy.data.objects.new(f'atgm{sx}', me); bpy.context.scene.collection.objects.link(o)
-    o.matrix_world = Matrix.Translation((sx * 0.70, 0.20, HP_Z))
+    o.matrix_world = Matrix.Translation((sx * 0.70, 0.08, HP_Z))
 lo = min(v[2] for v in vs) + HP_Z; print('launcher lowest point z', round(lo, 3), 'length', round(max(v[1] for v in vs) - min(v[1] for v in vs), 3))
 sc, cam, g = setup(int(20 + 40 * scale))
 c = bpy.data.collections.get('CREWREF')

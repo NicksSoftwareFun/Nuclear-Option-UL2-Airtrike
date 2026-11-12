@@ -11,6 +11,10 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 P1 = Vector((0, 1.50, 1.02))     # pilot
 P2 = Vector((0, 0.35, 1.22))     # gunner
 P3 = Vector((0, -0.55, 1.30))    # passenger (seat 3 mount); lowered 0.12 (Nick 2026-11-12)
+# seat shells fitted to the figures (Nick 2026-11-12 11:01): stock pilot reclines ~16 deg, Ibis soldier sits upright
+S_PIL, LEAN_PIL = Vector((0, -0.08, -0.07)), 16
+S_SOL, LEAN_SOL = Vector((0, -0.25, -0.075)), 0
+Q1, Q2, Q3 = P1 + S_PIL, P2 + S_PIL, P3 + S_SOL
 LIFT = 0.12                      # ride height added at the end to everything but the gear
 DY_AFT, DY_GEAR = 0.30, 0.43     # aft group (mast, engine, tail) and main gear shifted forward at the end
 KZ = 0.60                        # keel top-ish
@@ -20,18 +24,19 @@ ROTOR_R = 4.6
 WR, TRACK, GEAR_Y = 0.27, 1.00, -1.08
 
 def bucket(tag, P, width=0.46, back=0.66, pan=0.40, lean=14):
-    a = R(lean); up = Vector((0, -math.sin(a), math.cos(a)))
+    a = R(lean); up = Vector((0, -math.sin(a), math.cos(a))); nrm = Vector((0, math.cos(a), math.sin(a)))
     c0 = P + Vector((0, 0.30, -0.13)); c1 = P + Vector((0, -0.12, -0.15)); c2 = c1 + up * back
     path = crom([c0, P + Vector((0, 0.08, -0.15)), c1 + Vector((0, 0.02, 0.02)), c1 + up * 0.25, c2], 4)
     w = width / 2; t = 0.03
     sec = [(-w, 0.10), (-w, -0.0), (w, -0.0), (w, 0.10), (w - t, 0.10), (w - t, t), (-w + t, t), (-w + t, 0.10)]
     sweep(tag + '_shell', path, sec, SEAT, side=(1, 0, 0), smooth=False)
     box(tag + '_cushion', P + Vector((0, 0.08, -0.115)), (width - 0.08, 0.36, 0.05), SEAT, bevel=0.02)
-    box(tag + '_backpad', P + Vector((0, -0.10, 0.20)) + up * 0.0, (width - 0.09, 0.05, 0.42), SEAT, rot=(-a, 0, 0), bevel=0.02)
+    # back pad, headrest and harness follow the shell's lean (they used to tip forward into the figure)
+    box(tag + '_backpad', c1 + up * 0.36 + nrm * 0.055, (width - 0.09, 0.05, 0.42), SEAT, rot=(a, 0, 0), bevel=0.02)
     hr = c2 - up * 0.04
-    box(tag + '_headrest', hr + Vector((0, 0.03, 0)), (0.24, 0.07, 0.16), SEAT, rot=(-a, 0, 0), bevel=0.02)
+    box(tag + '_headrest', hr + nrm * 0.065, (0.24, 0.07, 0.16), SEAT, rot=(a, 0, 0), bevel=0.02)
     for sx in (-1, 1):   # harness
-        box(f'{tag}_strap{sx}', P + Vector((sx * 0.09, -0.08, 0.38)), (0.045, 0.012, 0.42), DARK, rot=(-a, 0, 0))
+        box(f'{tag}_strap{sx}', c1 + up * 0.52 + nrm * 0.086 + Vector((sx * 0.09, 0, 0)), (0.045, 0.012, 0.42), DARK, rot=(a, 0, 0))
     return c0, c1, c2
 
 # Ibis soldier rifle (from the stock 8-man troop mesh, shipping approved) for the seat-side rifles
@@ -71,8 +76,8 @@ def screen(name, w, h, M, y=0.0):
 
 # ================================================================ nose pod (cockpit_F + nose)
 POD = [  # y, half width, bottom z, top z
-    (2.965, 0.030, 0.735, 0.765), (2.945, 0.135, 0.640, 0.865), (2.895, 0.215, 0.560, 0.945), (2.815, 0.278, 0.500, 1.015),
-    (2.70, 0.322, 0.450, 1.075), (2.55, 0.356, 0.413, 1.135), (2.40, 0.378, 0.390, 1.180), (2.20, 0.392, 0.375, 1.215),
+    # nose made pointier and 0.20 shorter (Nick 2026-11-12 10:58)
+    (2.765, 0.012, 0.738, 0.762), (2.76, 0.037, 0.715, 0.792), (2.747, 0.076, 0.677, 0.837), (2.728, 0.115, 0.641, 0.881), (2.699, 0.162, 0.596, 0.934), (2.663, 0.208, 0.552, 0.986), (2.619, 0.253, 0.509, 1.037), (2.564, 0.298, 0.466, 1.089), (2.51, 0.334, 0.432, 1.13), (2.455, 0.362, 0.405, 1.162), (2.4, 0.378, 0.39, 1.18), (2.20, 0.392, 0.375, 1.215),
     (2.00, 0.398, 0.372, 1.215), (1.80, 0.394, 0.375, 1.185), (1.60, 0.378, 0.385, 1.140), (1.40, 0.345, 0.405, 1.075),
     (1.30, 0.305, 0.428, 1.025), (1.22, 0.235, 0.462, 0.950), (1.17, 0.120, 0.520, 0.850), (1.15, 0.030, 0.575, 0.745)]
 def pod_at(y):
@@ -112,7 +117,7 @@ def build_pod(ys, name, m=SKIN, cut=True, cap_front=False, cap_back=False):
 def frange(a, b, n): return [a + (b - a) * i / n for i in range(n + 1)]
 
 part('cockpit_F', 'UL2Airtrike', (0, 1.20, 0.62))
-ys = sorted(set([round(y, 4) for y in frange(2.70, 1.15, 40)] + [OPEN_F, OPEN_A]), reverse=True)
+ys = sorted(set([round(y, 4) for y in frange(2.58, 1.15, 38)] + [OPEN_F, OPEN_A]), reverse=True)
 build_pod(ys, 'pod_shell')
 # rim along the cut edge
 rim = [Vector((-pod_ring_x, y, sill(y))) for y, pod_ring_x in []]
@@ -129,7 +134,7 @@ sweep('cowl_lip', lip, circ(0.016, 8), DARK, side=(0, 1, 0))
 box('pod_floor', (0, 1.95, 0.43), (0.56, 0.95, 0.025), CPIT)
 for k, y in enumerate((2.55, 1.95, 1.45)):
     r = pod_ring(y); sec = [Vector((p.x * 0.94, y, 0.5 * (pod_at(y)[1] + pod_at(y)[2]) + (p.z - 0.5 * (pod_at(y)[1] + pod_at(y)[2])) * 0.94)) for p in r]
-    sec = [p for p in sec if not (OPEN_A < y < OPEN_F and p.z > sill(y) - 0.03)]
+    sec = [p for p in sec if not (OPEN_A < y < OPEN_F and p.z > min(sill(y) - 0.03, 0.84 if y < 1.6 else 0.66))]
     sweep(f'pod_frame{k}', sec, rect(0.025, 0.03), MECH, side=(0, 1, 0), smooth=False)
 # windscreen: low, HUD height only
 def windscreen(y0, top_z, rake, name):
@@ -226,25 +231,25 @@ box('lconsole', (-0.26, 1.88, 1.03), (0.07, 0.20, 0.04), CPIT, bevel=0.006)
 for k in range(5):
     tube(f'lconsole_sw{k}', (-0.26, 1.81 + 0.035 * k, 1.05), (-0.26, 1.82 + 0.035 * k, 1.075), 0.0035, MECH, 5)
 box('fuel_selector', (-0.26, 1.97, 1.055), (0.03, 0.03, 0.012), DARK, bevel=0.004)
-box('rconsole', (0.25, 1.82, 1.03), (0.08, 0.26, 0.04), CPIT, bevel=0.006)
-box('radio_head', (0.25, 1.80, 1.06), (0.06, 0.12, 0.022), DARK, bevel=0.004)
-for k in range(2): revolve(f'radio_knob{k}', (0.25, 1.76 + 0.08 * k, 1.07), (0, 0, 1), [(0, 0.012), (0.014, 0.012), (0.016, 0)], MECH, 10)
-for k in range(3): tube(f'rconsole_sw{k}', (0.25, 1.90 + 0.025 * k, 1.05), (0.25, 1.91 + 0.025 * k, 1.075), 0.0035, MECH, 5)
+box('rconsole', (0.28, 1.82, 1.03), (0.08, 0.26, 0.04), CPIT, bevel=0.006)
+box('radio_head', (0.28, 1.80, 1.06), (0.06, 0.12, 0.022), DARK, bevel=0.004)
+for k in range(2): revolve(f'radio_knob{k}', (0.28, 1.76 + 0.08 * k, 1.07), (0, 0, 1), [(0, 0.012), (0.014, 0.012), (0.016, 0)], MECH, 10)
+for k in range(3): tube(f'rconsole_sw{k}', (0.28, 1.90 + 0.025 * k, 1.05), (0.28, 1.91 + 0.025 * k, 1.075), 0.0035, MECH, 5)
 # pedal toe straps
 for sx in (-1, 1): box(f'pedal_strap{sx}', (sx * 0.15, 2.405, 0.60), (0.115, 0.03, 0.02), DARK, rot=(R(-25), 0, 0))
 # pilot seat on the pod floor / keel
 def rifle_on_seat(tag, P, side=-1):
     # service rifle clamped vertically to the outboard side of the seat back, muzzle up
-    a = R(14); M = Matrix.Translation(P + Vector((side * 0.29, -0.13, -0.16))) @ Matrix.Rotation(-a, 4, 'X')
+    a = R(LEAN_PIL); M = Matrix.Translation(P + Vector((side * 0.29, -0.13, -0.16))) @ Matrix.Rotation(a, 4, 'X')
     for o in RIFLE:
         part_obj = o.copy(); part_obj.data = o.data.copy(); part_obj.data.transform(M); coll('WORK').objects.link(part_obj)
         part_obj.name = f'{tag}_rifle'; PARTS[CUR[0]]['objs'].append(part_obj)
-    for dz in (0.10, 0.45): box(f'{tag}_rifle_clamp{dz}', P + Vector((side * 0.26, -0.13 - dz * math.sin(a), -0.16 + dz * math.cos(a))), (0.07, 0.05, 0.03), DARK, rot=(-a, 0, 0))
+    for dz in (0.10, 0.45): box(f'{tag}_rifle_clamp{dz}', P + Vector((side * 0.26, -0.13 - dz * math.sin(a), -0.16 + dz * math.cos(a))), (0.07, 0.05, 0.03), DARK, rot=(a, 0, 0))
 P1_SEAT = True
 
-bucket('seat1', P1)
-for sx in (-1, 1): box(f'seat1_base{sx}', (sx * 0.15, P1.y + 0.05, (P1.z - 0.17 + 0.44) / 2), (0.05, 0.36, P1.z - 0.17 - 0.44), FRAME)
-rifle_on_seat('seat1', P1)
+bucket('seat1', Q1, lean=LEAN_PIL)
+for sx in (-1, 1): box(f'seat1_base{sx}', (sx * 0.15, Q1.y + 0.05, (Q1.z - 0.17 + 0.44) / 2), (0.05, 0.36, Q1.z - 0.17 - 0.44), FRAME)
+rifle_on_seat('seat1', Q1)
 # targeting pod: small stabilised ball behind the nose gear (lases a single target)
 TP = Vector((0, 1.80, 0.295))
 revolve('tpod_mount', (0, 1.80, 0.445), (0, 0, -1), [(0, 0.075), (0.03, 0.07), (0.06, 0.055), (0.06, 0)], MECH, 18)
@@ -266,18 +271,19 @@ wheel('wheel_F', (0, NY, NR), NR, 0.14)
 arc = [Vector((0, NY + math.cos(a) * (NR + 0.04), NR + math.sin(a) * (NR + 0.04))) for a in frange(R(30), R(150), 10)]
 sweep('nose_mudguard', arc, rect(0.17, 0.008), SKIN, side=(1, 0, 0))
 
-part('nose', 'cockpit_F', (0, 2.70, 0.75))
-build_pod(frange(2.965, 2.70, 10), 'nose_shell', cut=False, cap_front=False)
+NOSE_SPLIT = 2.58
+part('nose', 'cockpit_F', (0, NOSE_SPLIT, 0.75))
+build_pod(frange(2.765, NOSE_SPLIT, 12), 'nose_shell', cut=False, cap_front=False)
 def top_z(x, y):
     hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb); u = min(abs(x) / hw, 0.999)
     return zm + (zt - zm) * (1 - u ** 2.1) ** (1 / 2.1) + 0.004
 HP = []
-for x0, y0, x1, y1 in ((-0.12, 2.73, 0.12, 2.73), (0.12, 2.73, 0.10, 2.86), (0.10, 2.86, -0.10, 2.86), (-0.10, 2.86, -0.12, 2.73)):
+for x0, y0, x1, y1 in ((-0.11, 2.60, 0.11, 2.60), (0.11, 2.60, 0.08, 2.69), (0.08, 2.69, -0.08, 2.69), (-0.08, 2.69, -0.11, 2.60)):
     for t in frange(0, 1, 6)[:-1]: x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t; HP.append(Vector((x, y, top_z(x, y))))
 sweep('nose_hatch', HP, rect(0.006, 0.0025), DARK, side=(0, 0, 1), smooth=False, closed=True)
-for sx in (-1, 1): revolve(f'static_port{sx}', (sx * 0.33, 2.66, 0.80), (sx, 0, 0), [(0, 0.012), (0.004, 0.012), (0.004, 0)], DARK, 10)
-revolve('landing_light', (0, 2.87, 0.555), (0, 1, -0.45), [(0, 0.045), (0.02, 0.045), (0.024, 0.036), (0.025, 0)], MECH, 14)
-pipe('pitot', [(0.18, 2.84, 0.80), (0.20, 2.95, 0.80), (0.20, 3.10, 0.80)], 0.008, MECH, 3, segs=6)
+for sx in (-1, 1): revolve(f'static_port{sx}', (sx * pod_at(2.62)[0], 2.62, 0.78), (sx, 0, 0), [(0, 0.012), (0.004, 0.012), (0.004, 0)], DARK, 10)
+revolve('landing_light', (0, 2.63, pod_at(2.63)[1] + 0.012), (0, 1, -0.45), [(0, 0.045), (0.02, 0.045), (0.024, 0.036), (0.025, 0)], MECH, 14)
+pipe('pitot', [(0.11, 2.64, 0.86), (0.125, 2.72, 0.86), (0.125, 2.88, 0.86)], 0.008, MECH, 3, segs=6)
 
 # ================================================================ frame (root UL2Airtrike = centre section)
 part('UL2Airtrike', None, (0, 0.0, KZ))
@@ -305,12 +311,12 @@ for sx in (-1, 1):
 
 # ---- gunner seat (cockpit_R)
 part('cockpit_R', 'UL2Airtrike', (0, P2.y, RAIL_Z))
-bucket('seat2', P2)
-rifle_on_seat('seat2', P2)
+bucket('seat2', Q2, lean=LEAN_PIL)
+rifle_on_seat('seat2', Q2)
 for sx in (-1, 1):
-    tube(f'seat2_leg_f{sx}', (sx * 0.17, P2.y + 0.22, P2.z - 0.17), (sx * 0.29, P2.y + 0.30, RAIL_Z + 0.02), 0.016, FRAME, 8)
-    tube(f'seat2_leg_r{sx}', (sx * 0.17, P2.y - 0.12, P2.z - 0.18), (sx * 0.29, P2.y - 0.22, RAIL_Z + 0.02), 0.016, FRAME, 8)
-for P, nm in ((P2, 'seat2'),):
+    tube(f'seat2_leg_f{sx}', (sx * 0.17, Q2.y + 0.22, Q2.z - 0.17), (sx * 0.29, Q2.y + 0.30, RAIL_Z + 0.02), 0.016, FRAME, 8)
+    tube(f'seat2_leg_r{sx}', (sx * 0.17, Q2.y - 0.12, Q2.z - 0.18), (sx * 0.29, Q2.y - 0.22, RAIL_Z + 0.02), 0.016, FRAME, 8)
+for P, nm in ((Q2, 'seat2'),):
     for sx in (-1, 1):
         tube(f'{nm}_diag{sx}', (sx * 0.29, P.y + 0.30, RAIL_Z + 0.02) if nm == 'seat2' else (sx * 0.29, P.y + 0.32, RAIL_Z + 0.02), (sx * 0.17, P.y - 0.12, P.z - 0.18), 0.012, FRAME, 8)
     box(f'{nm}_crossbar', (0, P.y + 0.05, P.z - 0.19), (0.36, 0.03, 0.03), FRAME)
@@ -331,8 +337,8 @@ for k in range(3): tube(f'grip2_sw{k}', (-0.03 + 0.03 * k, 0.70, 1.49), (-0.03 +
 box('ics_box', (0.04, 0.97, 1.05), (0.05, 0.035, 0.07), DARK, bevel=0.004)
 revolve('ics_knob', (0.04, 0.95, 1.07), (0, -1, 0), [(0, 0.01), (0.01, 0.01), (0.012, 0)], MECH, 8)
 # ammo box at the gunner's feet (right), feeds the side gun
-box('ammo_box', (0.27, 0.80, 0.66), (0.20, 0.26, 0.20), MECH, bevel=0.008)
-box('ammo_lid', (0.27, 0.80, 0.765), (0.21, 0.27, 0.014), DARK)
+box('ammo_box', (0.31, 0.80, 0.66), (0.14, 0.26, 0.20), MECH, bevel=0.008)
+box('ammo_lid', (0.31, 0.80, 0.765), (0.15, 0.27, 0.014), DARK)
 
 # ================================================================ rear frame section (frame_R) + seat 3 + mast
 part('frame_R', 'UL2Airtrike', (0, -0.30, KZ))
@@ -352,12 +358,12 @@ box('battery', (-0.17, -0.45, 0.68), (0.14, 0.14, 0.10), DARK, bevel=0.008)
 box('battery_tray', (-0.17, -0.45, 0.625), (0.30, 0.18, 0.012), FRAME)
 
 part('seat3', 'frame_R', (0, P3.y, P3.z - 0.15))
-bucket('seat3', P3, width=0.44)
-for sx in (-1, 1): tube(f'seat3_diag{sx}', (sx * 0.29, P3.y + 0.32, RAIL_Z + 0.02), (sx * 0.17, P3.y - 0.12, P3.z - 0.18), 0.012, FRAME, 8)
-box('seat3_crossbar', (0, P3.y + 0.05, P3.z - 0.19), (0.36, 0.03, 0.03), FRAME)
+bucket('seat3', Q3, width=0.54, lean=LEAN_SOL)
+for sx in (-1, 1): tube(f'seat3_diag{sx}', (sx * 0.29, P3.y + 0.32, RAIL_Z + 0.02), (sx * 0.17, Q3.y - 0.12, Q3.z - 0.18), 0.012, FRAME, 8)
+box('seat3_crossbar', (0, Q3.y + 0.05, Q3.z - 0.19), (0.36, 0.03, 0.03), FRAME)
 for sx in (-1, 1):
-    tube(f'seat3_leg_f{sx}', (sx * 0.16, P3.y + 0.22, P3.z - 0.17), (sx * 0.29, P3.y + 0.32, RAIL_Z + 0.02), 0.017, FRAME, 8)
-    tube(f'seat3_leg_r{sx}', (sx * 0.16, P3.y - 0.12, P3.z - 0.18), (sx * 0.10, -0.92, 1.05), 0.017, FRAME, 8)
+    tube(f'seat3_leg_f{sx}', (sx * 0.12, Q3.y + 0.12, Q3.z - 0.19), (sx * 0.29, P3.y + 0.02, RAIL_Z + 0.02), 0.017, FRAME, 8)
+    tube(f'seat3_leg_r{sx}', (sx * 0.16, Q3.y - 0.12, Q3.z - 0.18), (sx * 0.10, -0.92, 1.05), 0.017, FRAME, 8)
 box('seat3_mast_bracket', (0, -0.94, P3.z + 0.10), (0.16, 0.20, 0.08), MECH, bevel=0.01)
 
 # ---- mast: twin square tubes, near vertical, braces
@@ -537,7 +543,7 @@ box('gun_trunnion_block', (0.0, 0.25, 0), (0.09, 0.10, 0.09), DARK, M=GM2, bevel
 revolve('gun_barrel', (0.0, 0.29, 0), (0, 1, 0), [(0, 0.028), (0.10, 0.028), (0.12, 0.022), (0.55, 0.022), (0.57, 0.018), (1.10, 0.016), (1.12, 0.026), (1.15, 0.030), (1.27, 0.030), (1.29, 0.020), (1.29, 0)], DARK, 14, M=GM2)
 revolve('gun_recoil', (0.0, 0.36, -0.05), (0, 1, 0), [(0, 0.013), (0.34, 0.013), (0.34, 0)], MECH, 8, M=GM2)
 part('gunmount_R')
-CH = crom([(0.27, 0.82, 0.78), (0.33, 0.95, 0.84), (0.40, 1.15, 0.80), (GX, GY - 0.10, GZ + 0.08)], 6)
+CH = crom([(0.31, 0.82, 0.78), (0.33, 0.95, 0.84), (0.40, 1.15, 0.80), (GX, GY - 0.10, GZ + 0.08)], 6)
 sweep('feed_chute', CH, rect(0.09, 0.03), MECH, side=(0, 1, 0), smooth=False)
 
 # ================================================================ Nick 2026-11-12: smaller gun housing, bigger engine and prop
@@ -564,6 +570,24 @@ shift(AFT, Vector((0, DY_AFT, 0)))
 shift(['gear_L', 'gear_R'], Vector((0, DY_GEAR, 0)))
 shift([n for n in PARTS if n not in ('gear_L', 'gear_R', 'gear_F')], Vector((0, 0, LIFT)))
 for o in PARTS['gear_L']['objs'] + PARTS['gear_R']['objs']: pass
+
+# ================================================================ shorter body (Nick 2026-11-12 10:58): everything ahead of seat 3 moves aft by GAP23
+# (seat 3 keeps most of its legroom for the gun side swap). Long frame tubes that cross the cut are stretched, not moved.
+GAP23, YC, Z0, Z1 = 0.12, -0.05, -0.30, 0.10
+def ymap(y):
+    if y <= Z0: return y
+    if y >= Z1: return y - GAP23
+    return y - GAP23 * (y - Z0) / (Z1 - Z0)
+for n, d in PARTS.items():
+    for o in d['objs']:
+        ys = [v.co.y for v in o.data.vertices]
+        if not ys: continue
+        lo_, hi_ = min(ys), max(ys)
+        if hi_ - lo_ > 0.5 and lo_ < YC < hi_:
+            for v in o.data.vertices: v.co.y = ymap(v.co.y)
+        elif (lo_ + hi_) / 2 > YC: o.data.transform(Matrix.Translation((0, -GAP23, 0)))
+    if n != 'UL2Airtrike' and d['pivot'].y > YC: d['pivot'] = d['pivot'] - Vector((0, GAP23, 0))
+P1 = P1 - Vector((0, GAP23, 0)); P2 = P2 - Vector((0, GAP23, 0))
 
 # ================================================================ crew reference (test fit, not exported)
 D = '/mnt/user-data/uploads/Nuclear Option Mods/UL2Art/ingame_ref/'
@@ -602,6 +626,7 @@ bpy.data.objects.remove(tr)
 print('soldier height', hi.z - lo.z, 'depth', hi.y - lo.y)
 
 # ================================================================ join + report
+if '--prejoin' in sys.argv: bpy.ops.wm.save_as_mainfile(filepath=OUT.replace('.blend', '_prejoin.blend'))
 parts = join_parts('PARTS')
 tot = 0
 for n, o in sorted(parts.items()):

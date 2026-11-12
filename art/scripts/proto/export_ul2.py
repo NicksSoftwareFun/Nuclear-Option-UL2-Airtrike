@@ -11,12 +11,12 @@ parts = [o for o in bpy.data.collections['PARTS'].objects if o.type == 'MESH']
 
 # reference points in final Blender space (nose +Y, up +Z, ground z = 0)
 POINTS = {
-    'pilot': (0, 1.50, 1.14), 'copilot': (0, 0.35, 1.34), 'gunner': (0, -0.55, 1.42),
-    'wheel_F': (0, 2.10, 0.24), 'wheel_L': (-1.00, -0.67, 0.27), 'wheel_R': (1.00, -0.67, 0.27),
+    'pilot': (0, 1.38, 1.14), 'copilot': (0, 0.23, 1.34), 'gunner': (0, -0.55, 1.42),
+    'wheel_F': (0, 1.98, 0.24), 'wheel_L': (-1.00, -0.67, 0.27), 'wheel_R': (1.00, -0.67, 0.27),
     'propCentre': (0, -2.008, 1.918), 'rotorCentre': (0, -0.97, 3.19),
-    'gunPivot': (0.45, 1.40, 0.82), 'targetCam': (0, 1.92, 0.415), 'landingLight': (0, 2.88, 0.675),
+    'gunPivot': (0.45, 1.28, 0.82), 'targetCam': (0, 1.80, 0.415), 'landingLight': (0, 2.51, 0.651),
     'navLight_L': (-0.99, -2.91, 1.18), 'navLight_R': (0.99, -2.91, 1.18), 'strobe': (0, -2.90, 1.85),
-    'hardpoint_L': (-0.70, 0.20, 0.52), 'hardpoint_R': (0.70, 0.20, 0.52), 'exhaust': (0, -1.75, 1.55),
+    'hardpoint_L': (-0.70, 0.08, 0.52), 'hardpoint_R': (0.70, 0.08, 0.52), 'exhaust': (0, -1.75, 1.55),
 }
 ORIGIN = Vector((0, 0, 1.20))    # Unity root origin (about the CG height); spawnOffset lifts it above the ground
 root_part = [o for o in parts if o.parent is None][0]
