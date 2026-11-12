@@ -2,6 +2,8 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.10 test build: SUB-2000 detail - black rail with steel slots, dark waffle pockets, black grip inserts and butt
+  pad, steel hinge pin, latch, trigger, sling cup, barrel bands, thread protector and clamp bolts, rear and front sights.
 - 0.15.9 test build: rotor hub spins with the blades; blade lift area x1.6 and drag roughly halved; rotor assist on
   the takeoff roll held to 25 m/s; jump gauge moved to the right middle of the HUD as a vertical bar in the stock HUD
   font and colour; flight assist on + full throttle on the ground starts an automatic jump; spawns at revetments and

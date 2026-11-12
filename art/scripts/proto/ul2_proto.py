@@ -367,7 +367,7 @@ def rifle_on_seat(tag, P, side=-1):
          @ Matrix(((0, 0, 1, 0), (0, -1, 0, 0), (1, 0, 0, 0), (0, 0, 0, 1))))      # gun (u, v, w) -> seat (z, -y, x)
     def uv(x, y): return ((x - 95) * S, (765 - y) * S)
     def O(pts): return [uv(x, y) for x, y in pts]
-    def PL(nm, pts, t, m, w0=0.0, bev=0.003): plate(f'{tag}_sub_{nm}', O(pts), t, m, G @ Matrix.Translation((0, 0, w0)), bevel=bev)
+    def PL(nm, pts, t, m, w0=0.0, bev=0.005): plate(f'{tag}_sub_{nm}', O(pts), t, m, G @ Matrix.Translation((0, 0, w0)), bevel=bev)
     def BX(nm, x0, y0, x1, y1, w, m, wc=0.0):
         (u0, v0), (u1, v1) = uv(x0, y0), uv(x1, y1)
         box(f'{tag}_sub_{nm}', ((u0 + u1) / 2, (v0 + v1) / 2, wc), (abs(u1 - u0), abs(v1 - v0), w), m, M=G)
@@ -377,50 +377,63 @@ def rifle_on_seat(tag, P, side=-1):
     # upper: handguard folded back over the receiver (waffle block + M-LOK section), top rail
     PL('handguard', [(185, 640), (185, 300), (215, 265), (790, 265), (812, 298), (812, 640)], HG + 0.002, FDE_)
     PL('handguard_ml', [(800, 640), (800, 298), (1560, 298), (1582, 325), (1582, 605), (1556, 640)], HG, FDE_)
-    BX('rail', 812, 280, 1558, 300, 0.022, FDE_)
-    for k in range(19): BX(f'rail_slot{k}', 828 + 39 * k, 276, 846 + 39 * k, 290, 0.0225, BLACK_)
+    # 0.15.10 (Nick 23:19: too uniform and blocky): black rail with grey steel cross-slots
+    BX('rail', 812, 280, 1558, 300, 0.022, BLACK_)
+    for k in range(19): BX(f'rail_slot{k}', 828 + 39 * k, 276, 846 + 39 * k, 290, 0.0225, MECH)
     for k, (x0, x1) in enumerate(((835, 935), (965, 1075), (1100, 1210), (1235, 1345), (1370, 1480))):
         for sw in (-1, 1): BX(f'mlok{k}_{sw}', x0, 425, x1, 488, 0.002, BLACK_, wc=sw * HG / 2)
     for i in range(6):
         for j in range(3):
-            for sw in (-1, 1): BX(f'waffle{i}{j}_{sw}', 300 + 78 * i, 320 + 95 * j, 360 + 78 * i, 390 + 95 * j, 0.003, FDE_, wc=sw * (HG / 2 + 0.001))
+            for sw in (-1, 1): BX(f'waffle{i}{j}_{sw}', 300 + 78 * i, 320 + 95 * j, 360 + 78 * i, 390 + 95 * j, 0.0015, DARK, wc=sw * (HG / 2 + 0.0014))   # recessed pockets read dark
     # barrel past the handguard, knurled thread protector, black front block that locks into the stock when folded
     tube(f'{tag}_sub_barrel', L(1575, 405), L(1795, 405), 0.0078, BLACK_, 12)
-    tube(f'{tag}_sub_thread', L(1790, 405), L(1845, 405), 0.0092, BLACK_, 12)
+    tube(f'{tag}_sub_thread', L(1790, 405), L(1845, 405), 0.0092, MECH, 12)
+    BX('frontpost', 1770, 262, 1800, 305, 0.006, MECH)
     PL('frontblock', [(1740, 320), (1790, 300), (1835, 310), (1840, 645), (1740, 645)], 0.030, BLACK_, bev=0.002)
     # black hinge / chamber block at the receiver end
     PL('hinge', [(30, 330), (45, 245), (150, 232), (200, 265), (200, 660), (30, 660)], 0.036, BLACK_, bev=0.002)
     revolve(f'{tag}_sub_bore', L(30, 410), -AX, [(0, 0.011), (0.002, 0.011), (0.002, 0)], DARK, 12)
+    # steel hinge pin through the block, latch lever, flip-up rear sight on top
+    revolve(f'{tag}_sub_hingepin', L(115, 600, -0.021), AW, [(0, 0.008), (0.042, 0.008), (0.042, 0)], MECH, 14)
+    PL('latch', [(40, 520), (95, 505), (110, 585), (55, 600)], 0.040, MECH, bev=0.002)
+    BX('rearsight', 70, 205, 160, 240, 0.020, BLACK_); BX('rearsight_ap', 100, 190, 130, 210, 0.008, MECH)
     # receiver tube (black), front band
     tube(f'{tag}_sub_tube', L(740, 765), L(1350, 765), 0.0152, BLACK_, 16)
-    tube(f'{tag}_sub_band', L(760, 765), L(830, 765), 0.0165, BLACK_, 16)
+    tube(f'{tag}_sub_band', L(760, 765), L(830, 765), 0.0165, MECH, 16)
+    tube(f'{tag}_sub_band2', L(1320, 765), L(1350, 765), 0.0162, MECH, 16)
     # lower frame with pistol grip (magazine well), magazine base plate
     PL('frame', [(95, 660), (150, 600), (225, 555), (300, 600), (330, 650), (760, 690), (770, 845), (650, 862), (440, 1002), (95, 1002)], FR, FDE_)
     PL('grip', [(440, 990), (655, 852), (657, 1000), (640, 1290), (475, 1295), (452, 1050)], FR, FDE_)
     PL('frame_low', [(95, 995), (262, 995), (262, 1060), (130, 1060), (95, 1020)], FR, FDE_)
     BX('magbase', 470, 1288, 615, 1352, 0.030, BLACK_)
+    BX('magbody', 482, 1262, 603, 1290, 0.024, MECH)
+    for sw in (-1, 1): PL(f'gripinsert_{sw}', [(470, 1030), (640, 1020), (632, 1270), (480, 1272)], 0.002, BLACK_, w0=sw * (FR / 2 + 0.0005), bev=0.0)
     for i in range(2):
         for j in range(4):
-            for sw in (-1, 1): BX(f'grip{i}{j}_{sw}', 490 + 62 * i, 1040 + 60 * j, 535 + 62 * i, 1085 + 60 * j, 0.003, FDE_, wc=sw * (FR / 2 + 0.001))
+            for sw in (-1, 1): BX(f'grip{i}{j}_{sw}', 490 + 62 * i, 1040 + 60 * j, 535 + 62 * i, 1085 + 60 * j, 0.004, FDE_, wc=sw * (FR / 2 + 0.002))
     # trigger, guard loop, buttons and frame screws
-    PL('trigger', [(212, 1000), (240, 1000), (250, 1050), (238, 1095), (226, 1060)], 0.008, BLACK_, bev=0.0)
+    PL('trigger', [(212, 1000), (240, 1000), (250, 1050), (238, 1095), (226, 1060)], 0.008, MECH, bev=0.0)
     sweep(f'{tag}_sub_guard', crom([L(*q) for q in ((130, 1045), (150, 1150), (300, 1140), (448, 1110))], 4), rect(0.010, 0.006), BLACK_, side=tuple(AW), smooth=False)
     for k, (x, y, r) in enumerate(((385, 885, 0.0055), (195, 750, 0.004), (180, 965, 0.004), (330, 810, 0.004), (625, 940, 0.004), (690, 800, 0.004), (430, 1080, 0.004))):
-        revolve(f'{tag}_sub_pin{k}', L(x, y, -0.021), AW, [(0, r), (0.042, r), (0.042, 0)], BLACK_, 10)
+        revolve(f'{tag}_sub_pin{k}', L(x, y, -0.021), AW, [(0, r), (0.042, r), (0.042, 0)], MECH if k % 2 == 0 else BLACK_, 10)
     # charging handle under the tube
-    tube(f'{tag}_sub_ch_stem', L(945, 830), L(945, 955), 0.003, BLACK_, 8)
+    tube(f'{tag}_sub_ch_stem', L(945, 830), L(945, 955), 0.003, MECH, 8)
     revolve(f'{tag}_sub_ch_knob', L(945, 950), G.to_3x3() @ Vector((0, -1, 0)), [(0, 0.004), (0.006, 0.010), (0.010, 0.010), (0.012, 0)], BLACK_, 14)
     # buttstock with its three holes and ribbed front edge
     PL('stock', [(1320, 690), (1360, 640), (1745, 640), (1757, 700), (1757, 905), (1330, 865), (1310, 820)], ST, FDE_)
     PL('stock_pad', [(1440, 880), (1757, 895), (1752, 1225), (1530, 1238), (1508, 1180)], ST, FDE_)
     for k, x in enumerate((1600, 1655, 1710)):
         revolve(f'{tag}_sub_hole{k}', L(x, 752, -ST / 2 - 0.0006), AW, [(0, 0.0068), (ST + 0.0012, 0.0068), (ST + 0.0012, 0)], BLACK_ if k == 2 else DARK, 14)
+    # black rubber butt pad and a steel QD sling cup
+    BX('buttpad', 1745, 700, 1778, 1222, ST + 0.003, BLACK_)
+    revolve(f'{tag}_sub_qd', L(1420, 800, -ST / 2 - 0.001), AW, [(0, 0.009), (ST + 0.002, 0.009), (ST + 0.002, 0)], MECH, 16)
     for k in range(7):
         t = k / 6; x, y = 1452 + (1515 - 1452) * t, 905 + (1170 - 905) * t
         BX(f'stock_rib{k}', x - 22, y - 7, x + 4, y + 7, ST + 0.004, FDE_)
     # two clamps round the handguard to the seat side
     for k, x in enumerate((560, 1250)):
         c = L(x, 455); box(f'{tag}_sub_clamp{k}', (c.x - side * 0.006, c.y, c.z), (0.062, 0.11, 0.03), DARK, rot=(a, 0, 0))
+        for dz in (-0.010, 0.010): box(f'{tag}_sub_clampbolt{k}_{dz > 0}', (c.x - side * 0.006, c.y - 0.057, c.z + dz), (0.012, 0.006, 0.012), MECH, rot=(a, 0, 0))
     # boot under the receiver end carrying the weight
     c = L(140, 760); box(f'{tag}_sub_boot', (c.x - side * 0.004, c.y, c.z - 0.012), (0.056, 0.30, 0.04), DARK, rot=(a, 0, 0), bevel=0.006)
 P1_SEAT = True
