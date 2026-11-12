@@ -2,6 +2,8 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.11 test build: SUB-2000 slots, pockets and holes cut into the model (waffle pockets, M-LOK and rail slots,
+  through-holes in the stock, bore, muzzle, rear sight aperture, sling cup) instead of raised colour patches.
 - 0.15.10 test build: SUB-2000 detail - black rail with steel slots, dark waffle pockets, black grip inserts and butt
   pad, steel hinge pin, latch, trigger, sling cup, barrel bands, thread protector and clamp bolts, rear and front sights.
 - 0.15.9 test build: rotor hub spins with the blades; blade lift area x1.6 and drag roughly halved; rotor assist on

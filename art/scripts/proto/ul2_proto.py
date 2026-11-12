@@ -367,36 +367,50 @@ def rifle_on_seat(tag, P, side=-1):
          @ Matrix(((0, 0, 1, 0), (0, -1, 0, 0), (1, 0, 0, 0), (0, 0, 0, 1))))      # gun (u, v, w) -> seat (z, -y, x)
     def uv(x, y): return ((x - 95) * S, (765 - y) * S)
     def O(pts): return [uv(x, y) for x, y in pts]
-    def PL(nm, pts, t, m, w0=0.0, bev=0.005): plate(f'{tag}_sub_{nm}', O(pts), t, m, G @ Matrix.Translation((0, 0, w0)), bevel=bev)
+    def PL(nm, pts, t, m, w0=0.0, bev=0.005): return plate(f'{tag}_sub_{nm}', O(pts), t, m, G @ Matrix.Translation((0, 0, w0)), bevel=bev)
     def BX(nm, x0, y0, x1, y1, w, m, wc=0.0):
         (u0, v0), (u1, v1) = uv(x0, y0), uv(x1, y1)
-        box(f'{tag}_sub_{nm}', ((u0 + u1) / 2, (v0 + v1) / 2, wc), (abs(u1 - u0), abs(v1 - v0), w), m, M=G)
+        return box(f'{tag}_sub_{nm}', ((u0 + u1) / 2, (v0 + v1) / 2, wc), (abs(u1 - u0), abs(v1 - v0), w), m, M=G)
+    # 0.15.11 (Nick 23:50): slots, pockets and holes are cut INTO the part (boolean difference); the cut walls and floor
+    # take the cutter's material, so a pocket reads dark instead of standing proud as a coloured bump
+    def recess(target, cutters):
+        objs = PARTS[CUR[0]]['objs']; cc = bpy.data.collections.new(f'{target.name}_cut')
+        for c in cutters:
+            objs.remove(c); coll('WORK').objects.unlink(c); cc.objects.link(c)
+        mo = target.modifiers.new('cut', 'BOOLEAN'); mo.operation = 'DIFFERENCE'; mo.operand_type = 'COLLECTION'; mo.collection = cc
+        mo.solver = 'EXACT'; mo.material_mode = 'TRANSFER'
+        dg = bpy.context.evaluated_depsgraph_get(); dg.update()
+        me = bpy.data.meshes.new_from_object(target.evaluated_get(dg)); old = target.data
+        target.modifiers.clear(); target.data = me; bpy.data.meshes.remove(old)
+        for c in list(cc.objects): bpy.data.objects.remove(c, do_unlink=True)
+        bpy.data.collections.remove(cc)
+        for pl in me.polygons: pl.use_smooth = False
     def L(x, y, w=0.0): u, v = uv(x, y); return G @ Vector((u, v, w))
     AX = G.to_3x3() @ Vector((1, 0, 0)); AW = G.to_3x3() @ Vector((0, 0, 1))
     HG = 0.042; FR = 0.034; ST = 0.032
     # upper: handguard folded back over the receiver (waffle block + M-LOK section), top rail
-    PL('handguard', [(185, 640), (185, 300), (215, 265), (790, 265), (812, 298), (812, 640)], HG + 0.002, FDE_)
-    PL('handguard_ml', [(800, 640), (800, 298), (1560, 298), (1582, 325), (1582, 605), (1556, 640)], HG, FDE_)
+    hg = PL('handguard', [(185, 640), (185, 300), (215, 265), (790, 265), (812, 298), (812, 640)], HG + 0.002, FDE_)
+    hgm = PL('handguard_ml', [(800, 640), (800, 298), (1560, 298), (1582, 325), (1582, 605), (1556, 640)], HG, FDE_)
     # 0.15.10 (Nick 23:19: too uniform and blocky): black rail with grey steel cross-slots
-    BX('rail', 812, 280, 1558, 300, 0.022, BLACK_)
-    for k in range(19): BX(f'rail_slot{k}', 828 + 39 * k, 276, 846 + 39 * k, 290, 0.0225, MECH)
-    for k, (x0, x1) in enumerate(((835, 935), (965, 1075), (1100, 1210), (1235, 1345), (1370, 1480))):
-        for sw in (-1, 1): BX(f'mlok{k}_{sw}', x0, 425, x1, 488, 0.002, BLACK_, wc=sw * HG / 2)
-    for i in range(6):
-        for j in range(3):
-            for sw in (-1, 1): BX(f'waffle{i}{j}_{sw}', 300 + 78 * i, 320 + 95 * j, 360 + 78 * i, 390 + 95 * j, 0.0015, DARK, wc=sw * (HG / 2 + 0.0014))   # recessed pockets read dark
+    rl = BX('rail', 812, 280, 1558, 300, 0.022, BLACK_)
+    recess(rl, [BX(f'rail_slot{k}', 828 + 39 * k, 270, 846 + 39 * k, 287, 0.03, DARK) for k in range(19)])   # cross-slots cut into the rail
+    recess(hgm, [BX(f'mlok{k}_{sw}', x0, 425, x1, 488, 0.010, BLACK_, wc=sw * HG / 2)
+                 for k, (x0, x1) in enumerate(((835, 935), (965, 1075), (1100, 1210), (1235, 1345), (1370, 1480))) for sw in (-1, 1)])
+    recess(hg, [BX(f'waffle{i}{j}_{sw}', 300 + 78 * i, 320 + 95 * j, 360 + 78 * i, 390 + 95 * j, 0.008, DARK, wc=sw * (HG / 2 + 0.001))
+                for i in range(6) for j in range(3) for sw in (-1, 1)])   # waffle pockets 3 mm deep
     # barrel past the handguard, knurled thread protector, black front block that locks into the stock when folded
     tube(f'{tag}_sub_barrel', L(1575, 405), L(1795, 405), 0.0078, BLACK_, 12)
-    tube(f'{tag}_sub_thread', L(1790, 405), L(1845, 405), 0.0092, MECH, 12)
+    th = tube(f'{tag}_sub_thread', L(1790, 405), L(1845, 405), 0.0092, MECH, 12)
+    recess(th, [revolve(f'{tag}_sub_muzzle', L(1820, 405), AX, [(0, 0.0045), (0.04, 0.0045), (0.04, 0)], DARK, 10)])
     BX('frontpost', 1770, 262, 1800, 305, 0.006, MECH)
     PL('frontblock', [(1740, 320), (1790, 300), (1835, 310), (1840, 645), (1740, 645)], 0.030, BLACK_, bev=0.002)
     # black hinge / chamber block at the receiver end
-    PL('hinge', [(30, 330), (45, 245), (150, 232), (200, 265), (200, 660), (30, 660)], 0.036, BLACK_, bev=0.002)
-    revolve(f'{tag}_sub_bore', L(30, 410), -AX, [(0, 0.011), (0.002, 0.011), (0.002, 0)], DARK, 12)
+    hb = PL('hinge', [(30, 330), (45, 245), (150, 232), (200, 265), (200, 660), (30, 660)], 0.036, BLACK_, bev=0.002)
+    recess(hb, [revolve(f'{tag}_sub_bore', L(10, 410), AX, [(0, 0.0055), (0.030, 0.0055), (0.030, 0)], DARK, 12)])
     # steel hinge pin through the block, latch lever, flip-up rear sight on top
     revolve(f'{tag}_sub_hingepin', L(115, 600, -0.021), AW, [(0, 0.008), (0.042, 0.008), (0.042, 0)], MECH, 14)
     PL('latch', [(40, 520), (95, 505), (110, 585), (55, 600)], 0.040, MECH, bev=0.002)
-    BX('rearsight', 70, 205, 160, 240, 0.020, BLACK_); BX('rearsight_ap', 100, 190, 130, 210, 0.008, MECH)
+    rs = BX('rearsight', 70, 195, 160, 240, 0.020, BLACK_); recess(rs, [revolve(f'{tag}_sub_rs_ap', L(115, 218, -0.02), AW, [(0, 0.0035), (0.04, 0.0035), (0.04, 0)], DARK, 10)])
     # receiver tube (black), front band
     tube(f'{tag}_sub_tube', L(740, 765), L(1350, 765), 0.0152, BLACK_, 16)
     tube(f'{tag}_sub_band', L(760, 765), L(830, 765), 0.0165, MECH, 16)
@@ -420,13 +434,12 @@ def rifle_on_seat(tag, P, side=-1):
     tube(f'{tag}_sub_ch_stem', L(945, 830), L(945, 955), 0.003, MECH, 8)
     revolve(f'{tag}_sub_ch_knob', L(945, 950), G.to_3x3() @ Vector((0, -1, 0)), [(0, 0.004), (0.006, 0.010), (0.010, 0.010), (0.012, 0)], BLACK_, 14)
     # buttstock with its three holes and ribbed front edge
-    PL('stock', [(1320, 690), (1360, 640), (1745, 640), (1757, 700), (1757, 905), (1330, 865), (1310, 820)], ST, FDE_)
+    sk = PL('stock', [(1320, 690), (1360, 640), (1745, 640), (1757, 700), (1757, 905), (1330, 865), (1310, 820)], ST, FDE_)
     PL('stock_pad', [(1440, 880), (1757, 895), (1752, 1225), (1530, 1238), (1508, 1180)], ST, FDE_)
-    for k, x in enumerate((1600, 1655, 1710)):
-        revolve(f'{tag}_sub_hole{k}', L(x, 752, -ST / 2 - 0.0006), AW, [(0, 0.0068), (ST + 0.0012, 0.0068), (ST + 0.0012, 0)], BLACK_ if k == 2 else DARK, 14)
+    recess(sk, [revolve(f'{tag}_sub_hole{k}', L(x, 752, -ST), AW, [(0, 0.0068), (2 * ST, 0.0068), (2 * ST, 0)], DARK, 14) for k, x in enumerate((1600, 1655, 1710))]
+           + [revolve(f'{tag}_sub_qd', L(1420, 800, -ST / 2 - 0.01), AW, [(0, 0.008), (0.014, 0.008), (0.014, 0)], MECH, 16)])   # through-holes, sling cup
     # black rubber butt pad and a steel QD sling cup
     BX('buttpad', 1745, 700, 1778, 1222, ST + 0.003, BLACK_)
-    revolve(f'{tag}_sub_qd', L(1420, 800, -ST / 2 - 0.001), AW, [(0, 0.009), (ST + 0.002, 0.009), (ST + 0.002, 0)], MECH, 16)
     for k in range(7):
         t = k / 6; x, y = 1452 + (1515 - 1452) * t, 905 + (1170 - 905) * t
         BX(f'stock_rib{k}', x - 22, y - 7, x + 4, y + 7, ST + 0.004, FDE_)
