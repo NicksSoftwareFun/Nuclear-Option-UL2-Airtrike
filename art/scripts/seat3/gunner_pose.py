@@ -39,9 +39,14 @@ bpy.context.view_layer.update()
 RIG = ao.matrix_world.copy()
 GM = RIG @ Matrix.Translation(G)                       # gun frame in world (points along rig +Y)
 gun = lambda p: GM @ Vector(p)
-part('seat3_mg'); mg.build_gun(GM)
-tR = gun(mg.GRIP + Vector((0.006, -0.045, 0.005)))
-LOFF = Vector((-0.036, -0.012, 0.055)); tL = gun(mg.FORE + LOFF)
+part('seat3_mg'); mg.build_gun(GM); wR, wL = mg.build_hands(GM)
+# the soldier's own (open, knee-draped) hands are replaced by the modelled gloves that ride with the gun
+bm = bmesh.new(); bm.from_mesh(so.data); bm.verts.ensure_lookup_table(); dl = bm.verts.layers.deform.active
+hidx = [so.vertex_groups[f'hand_{q}'].index for q in 'LR']
+kill = [v for v in bm.verts if sum(v[dl].get(i, 0) for i in hidx) > 0.5]
+bmesh.ops.delete(bm, geom=kill, context='VERTS'); bm.to_mesh(so.data); bm.free(); print('hand verts removed', len(kill))
+tR = gun(wR)
+tL = gun(wL)
 for s, t, pole in (('R', tR, (0.7, -0.4, -0.3)), ('L', tL, (-0.6, 0.1, -0.4))):
     e = bpy.data.objects.new(f'ik_{s}', None); bpy.context.scene.collection.objects.link(e); e.location = t
     c = pb[f'forearm_{s}'].constraints.new('IK'); c.target = e; c.chain_count = 2
@@ -51,7 +56,7 @@ for s, r in (('R', HR[0]), ('L', HR[1])):
     pb[f'hand_{s}'].rotation_mode = 'XYZ'; pb[f'hand_{s}'].rotation_euler = (math.radians(HP[0 if s == 'R' else 1]), math.radians(r), 0)
 bpy.context.view_layer.update()
 # left hand on the vertical foregrip: aim the hand bone down the grip, palm toward the gun centreline
-if '--handfree' not in sys.argv:
+if False:
     bL = ao.data.bones['hand_L']; R0 = bL.matrix_local.to_3x3()
     import numpy as np
     gi = so.vertex_groups['hand_L'].index
@@ -82,7 +87,7 @@ Uv = lambda v: [round(v[0], 5), round(v[2], 5), round(v[1], 5)]
 def Uq(R3):
     q = (SW @ R3 @ SW).to_quaternion(); return [round(q.x, 6), round(q.y, 6), round(q.z, 6), round(q.w, 6)]   # Unity order x y z w
 RI = ao.matrix_world.inverted()
-pose = {'twist': TW, 'gunOrigin': Uv(G), 'grip_R': Uv(mg.GRIP + Vector((0.006, -0.045, 0.005))), 'grip_L': Uv(mg.FORE + LOFF),
+pose = {'twist': TW, 'gunOrigin': Uv(G), 'grip_R': Uv(wR), 'grip_L': Uv(wL),
         'mount': Uv(mg.MOUNT + Vector((0, 0, -0.028))), 'hipSocket': Uv(Vector((0.22, -0.04, 0.14))), 'elbowOut': Uv(Vector((0.15, 0.02, -0.06))),
         'pole_R': [0.7, -0.3, -0.4], 'pole_L': [-0.6, -0.4, 0.1]}
 for s_ in ('R', 'L'):
