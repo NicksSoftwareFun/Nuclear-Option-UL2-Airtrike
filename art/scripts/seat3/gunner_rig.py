@@ -16,8 +16,8 @@ import ul2lib; from ul2lib import part, box, tube, pipe, ball, plate, side_at, D
 import mg_model as mg
 
 RIG_BLEND = '/mnt/project-files/ul2/art/blend/ul2_soldier_rig.blend'
-G_T = Vector((0.05, 0.13, 0.45))          # gun origin in the torso frame (reviewed hold: optic just below the eye line)
-H_T = Vector((0.0, 0.02, 0.45))          # swing point for the gun's yaw relative to the torso
+G_T = Vector((0.05, 0.17, 0.34))          # gun origin in the torso frame: heads-up hold (Nick 13:01), gun forward on the arm, optic well below the eyes
+H_T = Vector((0.0, 0.02, 0.33))          # swing point for the gun's yaw relative to the torso
 SOCKET = Vector((0.17, 0.06, 0.15)); HINGE = Vector((0.20, 0.10, 0.19))   # waist, front-right of the belt (Nick 12:38)   # harness arm root (hips frame)
 L1 = L2 = 0.26
 POLE_R, POLE_L = Vector((0.45, -0.20, -0.70)), Vector((-0.35, 0.25, -0.75))  # torso frame
@@ -136,7 +136,7 @@ class Gunner:
         TF = self.place @ _rz(T)                                       # torso frame (pelvis origin, yawed)
         rho = A - T
         lift = max(0.0, E) / 60.0
-        GMt = Matrix.Translation(Vector((0, -0.06 * lift, 0.10 * lift))) @ Matrix.Translation(H_T) @ _rz(rho) @ Matrix.Translation(G_T - H_T)
+        GMt = Matrix.Translation(Vector((0, -0.11 * lift, 0.20 * lift))) @ Matrix.Translation(H_T) @ _rz(rho) @ Matrix.Translation(G_T - H_T)
         PIV = Vector((0, 0.16, 0.0))                                   # elevation axis through the grip line
         GM = TF @ GMt @ Matrix.Translation(PIV) @ Matrix.Rotation(math.radians(E), 4, 'X') @ Matrix.Translation(-PIV)
         self.gun.matrix_world = GM; self.GM = GM
@@ -151,7 +151,10 @@ class Gunner:
             Mh = self.pb['head'].matrix.copy()                                           # armature space, chest-posed
             g0 = (Mh.to_3x3() @ fwd_l).normalized()
             hw = self.ao.matrix_world @ Mh.translation + AW @ (Mh.to_3x3() @ Vector((0, 0.10, 0)))   # roughly the eyes
-            tgt = GM @ Vector((0, 3.0, mg.BORE)); d = (AW.inverted() @ (tgt - hw)).normalized()
+            # heads-up: the head turns with the heading and dips a little for low aim, never looks up (Nick 13:01)
+            hp = math.radians(max(-25.0, min(0.0, 0.8 * E)))
+            dw = self.place.to_3x3() @ _rz(A).to_3x3() @ Vector((0, math.cos(hp), math.sin(hp)))
+            d = (AW.inverted() @ dw).normalized()
             q = g0.rotation_difference(d)
             if q.angle > math.radians(85): q = Quaternion(q.axis, math.radians(85))
             R3 = q.to_matrix() @ Mh.to_3x3(); M4 = R3.to_4x4(); M4.translation = Mh.translation; ph.matrix = M4

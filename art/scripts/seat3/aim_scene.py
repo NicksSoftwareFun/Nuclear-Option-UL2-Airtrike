@@ -35,11 +35,24 @@ bpy.data.objects['REF_soldier'].hide_render = True
 c = bpy.data.collections.get('CREWREF'); c.hide_render = False
 g = Gunner(Matrix.Translation((0, -0.55, 1.42)))
 copilot = bpy.data.objects['REF_gunner']
+import look; look.crew(g); look.gun(g.gun_objs); look.gear(g)     # stock crew textures + MG 338 finish (Nick 15:41)
 sc, cam, gg = setup(28)
 if mode == 'still':
     A, E = float(a[2]), float(a[3])
-    miss = g.pose(A, E); print('pose', A, E, 'miss', {k: round(v, 3) for k, v in miss.items()}, 'arm', round(g.arm_len, 3), 'copilot clearance', round(g.clearance(copilot), 3))
-    tag = ('above_' if ABOVE else '') + f'{int(A)}_{int(E)}'
+    miss = g.pose(A, E)
+    if '--laser' in sys.argv:   # visual-only green aiming beam from the laser module's visible-laser window (Nick 15:37)
+        import mg_model as mg
+        bm_ = bpy.data.meshes.new('beam'); o = bpy.data.objects.new('lam_beam', bm_); sc0 = bpy.context.scene; sc0.collection.objects.link(o)
+        import bmesh as _b; b = _b.new(); _b.ops.create_cone(b, cap_ends=True, segments=10, radius1=0.003, radius2=0.03, depth=60.0); b.to_mesh(bm_); b.free()
+        em = bpy.data.materials.new('beam'); em.use_nodes = True; n = em.node_tree.nodes; n.clear()
+        e = n.new('ShaderNodeEmission'); e.inputs['Color'].default_value = (0.1, 1.0, 0.15, 1); e.inputs['Strength'].default_value = 6.0
+        tr = n.new('ShaderNodeBsdfTransparent'); mx = n.new('ShaderNodeMixShader'); mx.inputs['Fac'].default_value = 0.55
+        out_ = n.new('ShaderNodeOutputMaterial'); L = em.node_tree.links
+        L.new(tr.outputs[0], mx.inputs[1]); L.new(e.outputs[0], mx.inputs[2]); L.new(mx.outputs[0], out_.inputs[0]); bm_.materials.append(em)
+        win = Vector((0.018, mg.NGAL_Y + 0.0612, 0.1155 + 0.018))
+        o.matrix_world = g.GM @ Matrix.Translation(win + Vector((0, 30.0, 0))) @ Matrix.Rotation(math.pi / 2, 4, 'X') @ Matrix.Rotation(math.pi, 4, 'X')
+    print('pose', A, E, 'miss', {k: round(v, 3) for k, v in miss.items()}, 'arm', round(g.arm_len, 3), 'copilot clearance', round(g.clearance(copilot), 3))
+    tag = ('above_' if ABOVE else '') + ('laser_' if '--laser' in sys.argv else '') + f'{int(A)}_{int(E)}'
     shot(sc, cam, f'{out}/air_{tag}_3q.png', (4.6, 5.6, 3.3), (0, -0.2, 1.35), 42, res=(1600, 1000), scale=1.0)
     shot(sc, cam, f'{out}/air_{tag}_rear.png', (4.4, -5.2, 3.0), (0, -0.3, 1.35), 42, res=(1600, 1000), scale=1.0)
     shot(sc, cam, f'{out}/air_{tag}_close.png', (2.6, 1.6, 2.4), (0.25, -0.45, 1.55), 40, res=(1400, 1000), scale=1.0)
@@ -47,7 +60,7 @@ if mode == 'still':
     shot(sc, cam, f'{out}/air_{tag}_topfront.png', (-1.6, 6.4, 4.8), (0.4, -0.4, 1.2), 40, res=(1600, 1000), scale=1.0)
     if ABOVE: shot(sc, cam, f'{out}/air_{tag}_side.png', (-40, -0.2, 1.55), (0, -0.2, 1.55), ortho=8.4, res=(1600, 900))
 else:
-    keys = [(95, -30), (70, -5), (40, 35), (12, 65), (0, 72), (-12, 65), (-40, 35), (-70, -5), (-95, -30)]
+    keys = [(95, -30), (70, -5), (40, 35), (12, 68), (0, 74), (-12, 69), (-40, 35), (-70, -5), (-95, -30)]
     N = 36; log = []
     def interp(t):
         x = t * (len(keys) - 1); i = min(int(x), len(keys) - 2); f = x - i; f = f * f * (3 - 2 * f)

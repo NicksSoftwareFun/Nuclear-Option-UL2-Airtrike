@@ -8,21 +8,87 @@ from mathutils import Vector, Matrix
 
 BORE = 0.060
 GRIP = Vector((0, -0.01, -0.06))      # pistol grip centre (under the rear of the receiver)
-FORE = Vector((0, 0.33, -0.075))      # vertical foregrip centre under the handguard (left hand, Nick 2026-11-12)
-MOUNT = Vector((0, 0.43, 0.008))      # support arm U-yoke under the handguard, ahead of the foregrip (Nick 2026-11-12 12:38)
+FORE = Vector((0, 0.27, -0.075))      # vertical foregrip centre under the handguard (left hand, Nick 2026-11-12)
+MOUNT = Vector((0, 0.37, 0.008))      # support arm U-yoke under the handguard, ahead of the foregrip (Nick 2026-11-12 12:38)
 REC_Y0, REC_Y1, HG_Y1 = -0.10, 0.30, 0.64
 W = 0.064
 GUN_CUTTERS = []
 import bpy
 GRIP_TOP, GRIP_BOT = Vector((0, 0.008, -0.012)), Vector((0, -0.032, -0.118))   # pistol grip axis (raked)
-VG_TOP, VG_BOT = Vector((0, 0.33, -0.012)), Vector((0, 0.33, -0.142))         # foregrip axis
+VG_TOP, VG_BOT = Vector((0, 0.27, -0.012)), Vector((0, 0.27, -0.142))         # foregrip axis
 
 
 def _bullet(name, x, y0, z, M):
-    """one .338-class round lying parallel to the bore (case + shoulder + projectile)"""
-    revolve(name, (x, y0, z), (0, 1, 0), [(0, 0), (0, 0.0072), (0.052, 0.0072), (0.060, 0.0050), (0.066, 0.0045), (0.068, 0.0044),
-                                         (0.090, 0.0030), (0.096, 0.0), ], MECH, segs=8, M=M)
+    """one .338-class polymer-cased round after True Velocity ammo (Nick 15:49): black metal base with an extractor groove,
+    white polymer case and shoulder, copper projectile; lies parallel to the bore"""
+    o = (x, y0, z); ax = (0, 1, 0)
+    revolve(name + '_base', o, ax, [(0, 0), (0, 0.0072), (0.0035, 0.0072), (0.0040, 0.0062), (0.0052, 0.0062), (0.0058, 0.0072), (0.0062, 0.0072), (0.0062, 0)], DARK, segs=10, M=M)
+    revolve(name + '_case', (x, y0 + 0.0062, z), ax, [(0, 0), (0, 0.0072), (0.0458, 0.0072), (0.0538, 0.0050), (0.0598, 0.0045), (0.0618, 0.0044), (0.0618, 0)], MECH, segs=10, M=M)
+    revolve(name + '_proj', (x, y0 + 0.0680, z), ax, [(0, 0), (0, 0.0041), (0.006, 0.0040), (0.020, 0.0030), (0.028, 0.0008), (0.0285, 0.0)], MECH, segs=10, M=M)
 
+
+
+NGAL_Y = 0.50   # laser aiming module centre on the front top rail, behind the backup sight (Nick 2026-11-12 13:01)
+
+
+def build_ngal(M):
+    """original laser aiming module after the NGAL class (detail pass 2): low housing with an integral rail clamp and a
+    chamfered nose, a large focusable IR illuminator (left, seen from behind) with its flip cap open, a recessed laser
+    window block (right) with a slide shutter, slotted adjusters behind the lasers, one big mode knob at the rear left,
+    rubber pads and the remote port on the rear face, flush battery cap on the left"""
+    Y = NGAL_Y; Z0 = 0.1155; F, R = Y + 0.056, Y - 0.056; ZT = Z0 + 0.044
+    # integral clamp: low base, jaws over the rail, big knurled thumb nut low on the right
+    box('ngal_clamp', (0, Y - 0.006, Z0 + 0.003), (0.066, 0.046, 0.006), DARK, bevel=0.0015, M=M)
+    for sx in (-1, 1):
+        box(f'ngal_jaw{sx}', (sx * 0.0175, Y - 0.006, Z0 - 0.004), (0.008, 0.044, 0.012), DARK, bevel=0.0015, M=M)
+    tube('ngal_bolt', (-0.022, Y - 0.006, Z0 - 0.005), (0.026, Y - 0.006, Z0 - 0.005), 0.0035, MECH, segs=8, M=M)
+    NT = Vector((0.026, Y - 0.006, Z0 - 0.005))
+    revolve('ngal_thumbnut', tuple(NT), (1, 0, 0), [(0, 0), (0, 0.009), (0.008, 0.009), (0.010, 0.0075), (0.010, 0)], MECH, segs=14, M=M)
+    for k in range(3):
+        tube(f'ngal_nut_kn{k}', NT + Vector((0.0015 + k * 0.0025, 0, 0)), NT + Vector((0.0025 + k * 0.0025, 0, 0)), 0.0096, DARK, segs=14, M=M)
+    # housing: side profile with the chamfered front top edge, slight crown on the top
+    prof = [(R, Z0 + 0.006), (F, Z0 + 0.006), (F, Z0 + 0.036), (F - 0.008, ZT), (R + 0.004, ZT), (R, ZT - 0.004)]
+    plate('ngal_body', prof, 0.068, DARK, M @ side_at(0.0), bevel=0.0045)
+    box('ngal_crown', (0, Y - 0.008, ZT + 0.0012), (0.058, 0.084, 0.003), DARK, bevel=0.0012, M=M)
+    # IR illuminator, left: 30 mm bezel standing 12 mm proud, deep knurled focus ring, lens; flip cap hinged at the top, open
+    IL0 = Vector((-0.014, F, Z0 + 0.029))
+    revolve('ngal_collar', tuple(IL0 + Vector((0, -0.001, 0))), (0, 1, 0), [(0, 0), (0, 0.0175), (0.005, 0.0155), (0.005, 0)], DARK, segs=20, M=M)
+    IL = IL0 + Vector((0, 0.004, 0))
+    revolve('ngal_illum', tuple(IL), (0, 1, 0), [(0, 0), (0, 0.015), (0.011, 0.015), (0.012, 0.0135), (0.012, 0)], DARK, segs=20, M=M)
+    for k in range(5):
+        tube(f'ngal_focus{k}', IL + Vector((0, 0.002 + k * 0.0016, 0)), IL + Vector((0, 0.0028 + k * 0.0016, 0)), 0.0158, MECH, segs=20, M=M)
+    tube('ngal_illum_lens', IL + Vector((0, 0.0118, 0)), IL + Vector((0, 0.0128, 0)), 0.0110, SCREEN, segs=20, M=M)
+    tube('ngal_cap_hinge', IL + Vector((-0.010, 0.010, 0.017)), IL + Vector((0.010, 0.010, 0.017)), 0.0028, MECH, segs=8, M=M)
+    HG = IL + Vector((0, 0.010, 0.017))
+    revolve('ngal_cap', tuple(HG + Vector((0, 0.0020, 0.0170))), (0, 0.97, -0.24), [(0, 0), (0, 0.016), (0.003, 0.016), (0.003, 0)], DARK, segs=20, M=M)
+    tube('ngal_cap_knuckle', HG + Vector((-0.004, 0.001, 0.001)), HG + Vector((0.004, 0.001, 0.001)), 0.0022, DARK, segs=10, M=M)
+    # laser block, right: recessed frame with two 10 mm windows side by side and a smaller visible-laser window below
+    LB = Vector((0.018, F, Z0 + 0.025))
+    for k, (dx, dz, r) in enumerate(((-0.007, 0.005, 0.005), (0.007, 0.005, 0.005), (0.0, -0.007, 0.004))):
+        revolve(f'ngal_lip{k}', tuple(LB + Vector((dx, -0.0005, dz))), (0, 1, 0), [(0, 0), (0, r + 0.0022), (0.0012, r + 0.0010), (0.0012, 0)], MECH, segs=16, M=M)
+        tube(f'ngal_laser{k}', LB + Vector((dx, 0.0, dz)), LB + Vector((dx, 0.0004, dz)), r, SCREEN, segs=14, M=M)
+    box('ngal_shutter', LB + Vector((0, 0.0012, 0.0165)), (0.030, 0.0025, 0.007), DARK, bevel=0.001, M=M)
+    # slotted adjusters behind the laser block: elevation on top, windage on the right side, each in a guard boss with a strap
+    for nm, c, ax in (('elev', Vector((0.018, F - 0.026, ZT + 0.0024)), Vector((0, 0, 1))), ('wind', Vector((0.034, F - 0.026, Z0 + 0.025)), Vector((1, 0, 0)))):
+        revolve(f'ngal_{nm}_boss', tuple(c), tuple(ax), [(0, 0), (0, 0.009), (0.003, 0.009), (0.003, 0)], DARK, segs=14, M=M)
+        revolve(f'ngal_{nm}_cap', tuple(c + ax * 0.003), tuple(ax), [(0, 0), (0, 0.006), (0.004, 0.006), (0.0045, 0.005), (0.0045, 0)], MECH, segs=14, M=M)
+        sl = (0.0012, 0.009, 0.0016) if nm == 'elev' else (0.0016, 0.009, 0.0012)
+        box(f'ngal_{nm}_slot', c + ax * 0.0075, sl, DARK, M=M)
+        box(f'ngal_{nm}_strap', c + ax * 0.0035 + Vector((0, -0.012, 0)), (0.004, 0.014, 0.0015) if nm == 'elev' else (0.0015, 0.014, 0.004), DARK, M=M)
+    # mode selector, rear left of the top: one big knob with a raised lever
+    D = Vector((-0.016, R + 0.022, ZT + 0.0024))
+    revolve('ngal_dial', tuple(D), (0, 0, 1), [(0, 0), (0, 0.011), (0.007, 0.011), (0.008, 0.0095), (0.008, 0)], MECH, segs=18, M=M)
+    box('ngal_dial_lever', D + Vector((0, 0.004, 0.0105)), (0.005, 0.020, 0.005), DARK, bevel=0.0015, M=M)
+    # rear face: two rubber pressure pads with the round remote port between them
+    for k, dx in enumerate((-0.019, 0.019)):
+        box(f'ngal_pad{k}', (dx, R - 0.0005, Z0 + 0.026), (0.014, 0.004, 0.008), MECH, bevel=0.0012, M=M)
+    tube('ngal_port', (0, R, Z0 + 0.026), (0, R - 0.006, Z0 + 0.026), 0.005, MECH, segs=14, M=M)
+    tube('ngal_port_rim', (0, R, Z0 + 0.026), (0, R - 0.001, Z0 + 0.026), 0.0065, MECH, segs=14, M=M)
+    tube('ngal_port_in', (0, R - 0.0055, Z0 + 0.026), (0, R - 0.0062, Z0 + 0.026), 0.0032, DARK, segs=12, M=M)
+    # battery: flush knurled cap on the left wall
+    BC = Vector((-0.034, Y - 0.012, Z0 + 0.025))
+    revolve('ngal_batt_cap', tuple(BC), (-1, 0, 0), [(0, 0), (0, 0.011), (0.003, 0.011), (0.004, 0.0095), (0.004, 0)], MECH, segs=18, M=M)
+    box('ngal_batt_slot', BC + Vector((-0.0042, 0, 0)), (0.0012, 0.012, 0.0018), DARK, M=M)
 
 def build_gun(M):
     """original belt-fed LMG after the modern .338 class (Nick's reference photos), detail pass 2: profiled one-piece upper
@@ -101,6 +167,7 @@ def build_gun(M):
     tube('mg_optic_batt', O + Vector((0.026, 0.020, -0.012)), O + Vector((0.033, 0.020, -0.012)), 0.009, MECH, segs=12, M=M)
     # folded front backup sight on the rail front
     box('mg_bus', (0, HG_Y1 - 0.05, 0.118), (0.020, 0.030, 0.008), DARK, bevel=0.002, M=M)
+    build_ngal(M)
     # barrel nut, barrel with a few fluting rings, gas block with front post, barrel handle (folded left)
     tube('mg_bnut', (0, HG_Y1 - 0.004, BORE), (0, HG_Y1 + 0.016, BORE), 0.024, DARK, segs=16, M=M)
     tube('mg_barrel', (0, HG_Y1, BORE), (0, 0.91, BORE), 0.0145, DARK, segs=16, M=M)

@@ -10,6 +10,7 @@ from render_lib import setup, shot
 g = Gunner(Matrix.Translation((0, 0, 0.55)))
 m = g.pose(A, E); print('wrist miss', {k: round(v, 3) for k, v in m.items()}, 'T', g.T, 'arm', round(g.arm_len, 3))
 sc, cam, gg = setup(20)
+import look; look.crew(g); look.gun(g.gun_objs); look.gear(g)
 c = Vector((0.05, 0.10, 0.90)); tag = f'{int(A)}_{int(E)}'
 shot(sc, cam, f'{out}/gp_{tag}_3q.png', c + Vector((1.5, 1.9, 0.55)), c, 45, res=(800, 800), scale=0.8)
 shot(sc, cam, f'{out}/gp_{tag}_side.png', c + Vector((2.6, 0.05, 0.10)), c, 45, res=(800, 800), scale=0.8)
