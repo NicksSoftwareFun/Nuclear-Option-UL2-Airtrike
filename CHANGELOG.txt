@@ -2,6 +2,7 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.28: rotor blur now uses the stock gunship blurred blade pieces (five per blade, on both blades) and the prop uses the stock Cricket blur disc scaled to our prop, since copied blur materials never drew in game; liveries now reach the rudders, elevators and the side gun housing; Polished Stainless no longer shows a wavy band on the tail (smooth top-to-bottom shading).
 - 0.15.27: rotor blur is now two blurred blade sweeps that turn with the rotor (the 0.15.26 disc was too faint to see); own prop blur disc replaces the Cricket's six-blade disc; spinner with a white tip and two white spiral stripes, turning at a capped rate so the spin always reads; blur materials copied from the stock ducted-fan blur.
 - 0.15.26: rotor blur disc fades in with rotor rpm (the blades hide behind it, so paused screenshots keep the blur); prop blades wired into the stock prop so its blur disc covers them and a prop strike leaves broken stubs; rotor blades break where they hit the ground or anything solid (both blades lose that segment and everything outboard, the rotor stops, stock strike dust); engine rpm gauge replaces the turn coordinator; airspeed in km/h with yellow 200-240 and a red line at 240; compass card turns under a fixed red pointer; artificial horizon now banks the right way.
 - 0.15.25: two new liveries, Polished Stainless (bright steel with mirror cues painted in, livery gloss 0.6) and Black Tiger (black with orange tiger stripes); seat 3 MG 338 fires a tracer every 3rd round (was 5).

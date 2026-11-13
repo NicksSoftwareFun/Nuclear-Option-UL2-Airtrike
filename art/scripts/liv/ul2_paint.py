@@ -38,12 +38,11 @@ if LIV == 'steel':
     up = N[:, 2]
     # mirror cues baked in: bright sky on upward faces, a sharp dark horizon line just below the side equator,
     # warm dark ground reflection on the belly, and a soft sun glint band on the upper flanks
-    sky = np.where(up > 0, 0.30 * np.sqrt(np.clip(up, 0, 1)), 0.0)
-    hor = -0.42 * np.exp(-((up + 0.06) / 0.10) ** 2)
-    gnd = np.where(up < -0.12, -0.30 - 0.10 * np.clip(-up - 0.12, 0, 1), 0.0)
-    glint = 0.22 * np.exp(-((up - 0.45) / 0.08) ** 2) * (vnoise(P, 0.6, 14) > -0.2)
-    col *= (1 + sky + hor + gnd + glint)[:, None]
-    col = np.where(up[:, None] > -0.05, col * np.array([0.97, 1.0, 1.04], np.float32), col * np.array([1.04, 1.0, 0.93], np.float32))
+    # 0.15.28 (Nick 05:29: artifact on the tail): no horizon line or glint bands any more (they wandered across the flat fin
+    # with tiny normal changes); a smooth sky-to-ground gradient only
+    col *= (1 + 0.22 * np.clip(up, -1, 1))[:, None]
+    tw = np.clip(0.5 + up * 1.5, 0, 1)[:, None]                                    # cool above, warm below, smoothly
+    col = col * (tw * np.array([0.97, 1.0, 1.04], np.float32) + (1 - tw) * np.array([1.04, 1.0, 0.93], np.float32))
 elif LIV == 'tiger':
     # black with orange tiger stripes (Nick 04:29): wavy, tapering, forked bands running round the aircraft, slanted back
     col = np.tile(np.array([20, 20, 21], np.float32) / 255, (len(P), 1))

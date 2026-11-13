@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.27")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.28")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -86,7 +86,7 @@ namespace UL2Airtrike
         readonly List<KeyValuePair<Component, Transform>> blades = new List<KeyValuePair<Component, Transform>>();
         float rpm; bool ready; int tries;
         // 0.15.26 (Nick 04:56/04:59): rotor blur disc and blade strikes (stock SwashRotor way: a line along each blade)
-        Renderer blurDisc; MaterialPropertyBlock blurMpb; bool struck; readonly Vector3[] bladeDir = new Vector3[2];
+        readonly List<GameObject> rblur = new List<GameObject>(); bool rblurOn; bool struck; readonly Vector3[] bladeDir = new Vector3[2];
         readonly HashSet<Collider> ownCols = new HashSet<Collider>(); float colScanT;
         const float ROTOR_R = 4.6f; readonly Component[,] wingParts = new Component[2, 3];
         // cockpit gauges (all values the game already has; oil and volts have no game signal and follow engine rpm)
@@ -172,6 +172,7 @@ namespace UL2Airtrike
                 if ((scanT -= dt) <= 0f) { scanT = 1f; ScanKits(); }
                 PropWatch(dt);
                 Spinner(dt);
+                LiverySync(dt);
                 HudGauge(dt, engOn);
                 if (alt < 40f) LeanLog(dt);
                 Harnesses();
@@ -557,21 +558,39 @@ namespace UL2Airtrike
             sSpine.localRotation = rSpine;
             sHead.localRotation = rHead * Quaternion.Euler(hpitch, hyaw, 0f);
         }
-        // blur disc fades in from 150 rpm; the spinning blade copies go at 260 rpm (no tearing, and paused screenshots keep it)
+        // 0.15.28: the stock attack helicopter's blurred blade segments replace the blade copies above 230 rpm (stock
+        // SwashRotor swaps at 60 % of its rotor speed); unlike stock the swap ignores game speed, so paused shots keep the blur
         void RotorBlur(bool headOn)
         {
-            if (blurDisc == null) return;
-            float k = headOn && !struck ? Mathf.Clamp01((rpm - 150f) / 110f) : 0f;
-            if (k <= 0f) { if (blurDisc.enabled) blurDisc.enabled = false; }
-            else
-            {
-                if (!blurDisc.enabled) blurDisc.enabled = true;
-                if (blurMpb == null) blurMpb = new MaterialPropertyBlock();
-                blurMpb.SetColor("_BaseColor", new Color(1f, 1f, 1f, k)); blurDisc.SetPropertyBlock(blurMpb);
-            }
-            bool showBlades = k < 1f;
-            foreach (var b in blades) if (b.Value != null && b.Value.gameObject.activeSelf != showBlades) b.Value.gameObject.SetActive(showBlades);
+            bool fast = headOn && !struck && rpm > 230f;
+            if (fast == rblurOn) return; rblurOn = fast;
+            foreach (var g in rblur) if (g != null) g.SetActive(fast);
+            foreach (var b in blades) if (b.Value != null) b.Value.gameObject.SetActive(!fast);
         }
+        // the game paints liveries only into the airframe parts; the side gun housing rides on the gun mount, so it copies
+        // the airframe skin's livery texture and gloss (one property block, checked twice a second)
+        Renderer liverySrc; readonly List<Renderer> liveryDst = new List<Renderer>(); float liveryT; Texture liveryTex; MaterialPropertyBlock liveryMpb;
+        void LiverySync(float dt)
+        {
+            if ((liveryT -= dt) > 0f) return; liveryT = 0.5f;
+            try
+            {
+                if (liverySrc == null) foreach (var c in partList) { if (c == null) continue; if (c.name == "cockpit_F") { liverySrc = c.GetComponent<Renderer>(); break; } }
+                if (liverySrc == null) return;
+                liveryDst.RemoveAll(r => r == null);
+                var roots = new List<Transform> { transform.root }; foreach (var c in partList) if (c != null && !roots.Contains(c.transform.root)) roots.Add(c.transform.root);
+                foreach (var rt in roots) foreach (var r in rt.GetComponentsInChildren<Renderer>(true))
+                    if (r.name == "housing" && !liveryDst.Contains(r)) { liveryDst.Add(r); liveryTex = null; }
+                var m = liverySrc.sharedMaterial; if (m == null || !m.HasProperty("_Livery")) return;
+                var tex = m.GetTexture("_Livery"); if (tex == liveryTex || liveryDst.Count == 0) return;
+                liveryTex = tex; if (liveryMpb == null) liveryMpb = new MaterialPropertyBlock();
+                liveryMpb.SetTexture("_Livery", tex); if (m.HasProperty("_Glossiness")) liveryMpb.SetFloat("_Glossiness", m.GetFloat("_Glossiness"));
+                foreach (var r in liveryDst) r.SetPropertyBlock(liveryMpb, 0);
+                Plugin.Log.LogInfo("UL-2 gun housing livery " + (tex != null ? tex.name : "none") + " on " + liveryDst.Count);
+            }
+            catch (Exception e) { if (!livErr) { livErr = true; Plugin.Log.LogWarning("UL-2 livery sync: " + e.Message); } }
+        }
+        bool livErr;
         // a blade that meets the ground or anything solid while turning breaks at that point, both blades lose that segment
         // and everything outboard (stock SwashRotor.BreakSegments), the rotor stops and the stock rotor strike dust plays
         void RotorStrike()
@@ -693,8 +712,8 @@ namespace UL2Airtrike
                     bladeDir[s == "L" ? 0 : 1] = spin.InverseTransformDirection(dw.normalized);
                 }
             }
-            var bdt = spin.Find("spin_disc"); blurDisc = bdt != null ? bdt.GetComponent<Renderer>() : null;
-            Plugin.Log.LogInfo("UL-2 rotor blur disc " + (blurDisc != null) + ", blade strike lines " + (bladeDir[0] != Vector3.zero) + "/" + (bladeDir[1] != Vector3.zero));
+            rblur.Clear(); foreach (Transform ch in spin) if (ch.name.StartsWith("UL2_rblur_")) rblur.Add(ch.gameObject);
+            Plugin.Log.LogInfo("UL-2 rotor blur segments " + rblur.Count + ", blade strike lines " + (bladeDir[0] != Vector3.zero) + "/" + (bladeDir[1] != Vector3.zero));
             ready = true; spawnT = Time.time;
             // 0.15.5 diagnostics: log every part that breaks off, and when (tail / rotor blade reports)
             var ev = tPart.GetEvent("onPartDetached");

@@ -583,7 +583,36 @@ public static partial class UL2Builder
             log.AppendLine("rotor audio: " + (clip != null ? clip.name : "NO CLIP") + ", source copied " + (srcA != null));
         }
         // 0.15.26 (Nick 04:59): blur disc on the spinning frame; the plugin fades it in with rotor rpm and hides the blades
-        { var bd = Visual("spin_disc", "x_rotordisc", spin); var bdr = bd.GetComponent<MeshRenderer>(); bdr.sharedMaterial = MAT["UL2_rotorblur"]; bdr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; bdr.enabled = false; }
+        // 0.15.28 (Nick 05:14/05:29: own blur materials never showed in game; two blurred blades, not a disc): the stock
+        // attack helicopter's own blurred blade segments and material (stock SwashRotor fast meshes), two blades' worth
+        // scaled 0.6 to our 0.55-4.6 m blades; the plugin swaps them for the blade copies at speed like the stock rotor
+        {
+            var oldD = Find(spin, "spin_disc"); if (oldD) Object.DestroyImmediate(oldD.gameObject);
+            var ah = AssetDatabase.LoadAssetAtPath<GameObject>(PH + "GameObject/AttackHelo1_PLACEHOLDER.prefab");
+            var sr = ah.GetComponentsInChildren<MonoBehaviour>(true).First(c => c != null && c.GetType().Name == "SwashRotor");
+            var sso = new SerializedObject(sr); var sg = sso.FindProperty("segments");
+            var h0 = (sg.GetArrayElementAtIndex(0).FindPropertyRelative("transform").objectReferenceValue as Transform);
+            const float BS = 0.6f;
+            int nb = 0;
+            foreach (var sd in new[] { "L", "R" })
+            {
+                var dv = P("blade_" + sd + "_tip") - P("rotorCentre"); dv.y = 0f; dv.Normalize();
+                for (int i = 0; i < sg.arraySize; i++)
+                {
+                    var e = sg.GetArrayElementAtIndex(i); var st = e.FindPropertyRelative("transform").objectReferenceValue as Transform;
+                    var fm = e.FindPropertyRelative("fastMesh").objectReferenceValue as Mesh; var fmat = e.FindPropertyRelative("fastMaterial").objectReferenceValue as Material;
+                    float r = 0.55f + BS * Vector3.Distance(st.position, h0.position);
+                    var bt = Find(spin, "UL2_rblur_" + sd + i) ?? New("UL2_rblur_" + sd + i, spin);
+                    bt.localPosition = dv * r + Vector3.up * (0.05f + Mathf.Max(0f, r - 0.6f) * Mathf.Tan(1.5f * Mathf.Deg2Rad));
+                    bt.localRotation = Quaternion.LookRotation(dv, Vector3.up); bt.localScale = Vector3.one * BS;
+                    var mf = bt.GetComponent<MeshFilter>(); if (mf == null) mf = bt.gameObject.AddComponent<MeshFilter>(); mf.sharedMesh = fm;
+                    var mr = bt.GetComponent<MeshRenderer>(); if (mr == null) mr = bt.gameObject.AddComponent<MeshRenderer>();
+                    mr.sharedMaterial = fmat; mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    bt.gameObject.SetActive(false); nb++;
+                }
+            }
+            log.AppendLine("rotor blur: " + nb + " stock blurred blade segments");
+        }
         // 0.15.9 (Nick 23:10): the hub bar / blade grips (rotorHead mesh) spin with the blades; the part keeps its collider
         Visual("spin_hub", "rotorHead", spin);
         { var hr = Need("rotorHead").GetComponent<MeshRenderer>(); if (hr) hr.enabled = false; }
@@ -635,18 +664,24 @@ public static partial class UL2Builder
             for (int i = 0; i < 4; i++) dm.GetArrayElementAtIndex(i).objectReferenceValue = M["x_propstub"];
             dm.GetArrayElementAtIndex(4).objectReferenceValue = M["x_propblade"];
             pso.ApplyModifiedPropertiesWithoutUndo();
-            // our own blur disc in the stock disc slot (the stock code swaps propDisc's mesh by blur level; index 0 = none)
-            var pdm = pso.FindProperty("propDiscMeshes"); pdm.arraySize = 3;
-            pdm.GetArrayElementAtIndex(0).objectReferenceValue = null;
-            pdm.GetArrayElementAtIndex(1).objectReferenceValue = M["x_propdisc"]; pdm.GetArrayElementAtIndex(2).objectReferenceValue = M["x_propdisc"];
-            var bbm = pso.FindProperty("propBlurBaseMaterial"); if (bbm != null) bbm.objectReferenceValue = MAT["UL2_propblur"];
+            // 0.15.28: the stock Cricket blur disc meshes and material (own materials never showed in game), scaled to our prop
+            // (stock disc 2.52 m across, ours 2.06 m) on a holder, since the stock code resets the disc's own scale every frame
+            var coin = AssetDatabase.LoadAssetAtPath<GameObject>(PH + "GameObject/COIN_PLACEHOLDER.prefab");
+            var ccsp = coin.GetComponentsInChildren<MonoBehaviour>(true).First(c => c != null && c.GetType().Name == "ConstantSpeedProp");
+            var cpd = coin.GetComponentsInChildren<Transform>(true).First(t => t.name == "propDisc");
+            var cdm = new SerializedObject(ccsp).FindProperty("propDiscMeshes");
+            var pdm = pso.FindProperty("propDiscMeshes"); pdm.arraySize = cdm.arraySize;
+            for (int i = 0; i < cdm.arraySize; i++) pdm.GetArrayElementAtIndex(i).objectReferenceValue = cdm.GetArrayElementAtIndex(i).objectReferenceValue;
             pso.ApplyModifiedPropertiesWithoutUndo();
             if (pd)
             {
-                pd.position = P("x_propdisc"); pd.rotation = Quaternion.identity; pd.localScale = Vector3.one;
+                var holder = Find(hv, "UL2_propDiscHolder") ?? New("UL2_propDiscHolder", hv);
+                holder.position = P("x_propdisc"); holder.rotation = Quaternion.identity; holder.localScale = Vector3.one * (2.06f / 2.52f);
+                pd.SetParent(holder, false); pd.localPosition = Vector3.zero; pd.localRotation = cpd.localRotation; pd.localScale = Vector3.one;
+                var pmr = pd.GetComponent<MeshRenderer>(); if (pmr) pmr.sharedMaterial = cpd.GetComponent<MeshRenderer>().sharedMaterial;
                 var pmf = pd.GetComponent<MeshFilter>(); if (pmf) pmf.sharedMesh = null;
-                var pmr = pd.GetComponent<MeshRenderer>(); if (pmr) { pmr.sharedMaterial = MAT["UL2_propblur"]; pmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; }
             }
+            var bbm = (SerializedProperty)null;
             // spinner with the white spiral, on the hub part (not the stock spinning hub): the plugin turns it at a capped rate
             var sp = Visual("UL2_spinner", "x_spinner", ph);
             log.AppendLine("prop blades wired: " + bl.arraySize + " slots on 3 renderers, damage meshes stub x4, own blur disc " + (pd != null) + ", base mat slot " + (bbm != null));
@@ -817,8 +852,8 @@ public static partial class UL2Builder
             for (var t = r.transform; t != null && owner == null; t = t.parent)
                 foreach (var c in parts) if (c.transform == t) { owner = c; break; }
             if (owner == null) { log.AppendLine("skin renderer without part: " + r.name); continue; }
-            if (owner.transform == r.transform) continue;
             var so = new SerializedObject(owner); var p = so.FindProperty("damageMaterial.renderers");
+            if (owner.transform == r.transform && p.arraySize == 0) continue;   // empty list = the part's own renderer
             if (p.arraySize == 0) { var own = owner.GetComponent<Renderer>(); if (own != null) { p.arraySize = 1; p.GetArrayElementAtIndex(0).objectReferenceValue = own; listed.Add(own); } }
             p.arraySize++; p.GetArrayElementAtIndex(p.arraySize - 1).objectReferenceValue = r; so.ApplyModifiedPropertiesWithoutUndo();
             listed.Add(r); added++;
@@ -1275,7 +1310,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.27\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.28\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
