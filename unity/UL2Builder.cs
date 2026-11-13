@@ -1325,8 +1325,9 @@ public static partial class UL2Builder
         so.FindProperty("aircraftGLimit").floatValue = 3.5f;
         so.FindProperty("PIDReferenceAirspeed").floatValue = 40f;
         so.FindProperty("maxSpeed").floatValue = 50f;
-        so.FindProperty("takeoffSpeed").floatValue = 20f;
-        so.FindProperty("takeoffDistance").floatValue = 150f;
+        so.FindProperty("takeoffSpeed").floatValue = 30f;          // 0.15.34: the AI rotates at 0.7x = 76 km/h (was 50)
+        so.FindProperty("takeoffDistance").floatValue = 250f;
+        so.FindProperty("minimumRadarAlt").floatValue = 40f;       // 0.15.34: AI cruise floor, low-level flyer
         so.FindProperty("verticalLanding").boolValue = false;
         so.FindProperty("turningRadius").floatValue = 300f;
         so.FindProperty("cornerSpeed").floatValue = 35f;
@@ -1419,7 +1420,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.33\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.34\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

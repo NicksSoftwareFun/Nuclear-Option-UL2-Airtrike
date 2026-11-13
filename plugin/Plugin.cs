@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.33")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.34")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -36,6 +36,10 @@ namespace UL2Airtrike
                 // prop RPM loop below full throttle (Nick 22:09): log what the strike detector touches
                 var trig = AccessTools.Method(AccessTools.TypeByName("PropStrikeDetector"), "OnTriggerStay");
                 if (trig != null) h.Patch(trig, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreStrike)));
+                // 0.15.34 AI pitch limiter: applied just before the game filters the AI's inputs, so the tail surfaces and
+                // our rotor head both see the limited pitch
+                var filt = AccessTools.Method(ac, "FilterInputs");
+                if (filt != null) h.Patch(filt, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreFilter)));
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
         }
@@ -65,6 +69,15 @@ namespace UL2Airtrike
                 if (__instance == null || other == null || !OurDetectors.Contains(__instance.GetInstanceID())) return;
                 if (Time.time - strikeLogT < 0.5f) return; strikeLogT = Time.time;
                 Log.LogInfo("UL-2 prop strike detector touched " + other.name + " (" + other.transform.root.name + ", layer " + other.gameObject.layer + ", trigger " + other.isTrigger + ")");
+            }
+            catch { }
+        }
+        static void PreFilter(Component __instance)
+        {
+            try
+            {
+                if (__instance == null || !__instance.name.StartsWith("UL2Airtrike")) return;
+                var rs = __instance.GetComponent<RotorSpinner>(); if (rs != null) rs.AiFilter();
             }
             catch { }
         }
@@ -257,7 +270,7 @@ namespace UL2Airtrike
                 string o = "";
                 foreach (var c in partList) { if (c == null) continue; if (c.name == "mast" || c.name == "rotorHead" || c.name == "engine_core" || c.name == "tailboom_R" || c.name.StartsWith("nacelle")) { var q = Quaternion.Inverse(transform.rotation) * c.transform.rotation; var e = q.eulerAngles; o += $" {c.name} p{Wrap(e.x):0.0} r{Wrap(e.z):0.0}"; } }
                 var re = transform.rotation.eulerAngles;
-                Plugin.Log.LogInfo($"UL-2 flight: {logSpd * 3.6f:0} km/h climb {logVy:0.0} m/s alt {alt:0.0} | rotor {rpm:0} rpm lift {rotorK:0.00} incidence {inc:0.0} body aoa {bodyAoA:0.0} stick {pitchIn:0.00} thr {thr:0.00} prop thrust {logThrust:0} N jump {logF:0.00} W rotor thrust {logT:0.00} W brake {brakeIn:0.0} roll in {rollIn:0.00} | pitch {Wrap(re.x):0.0} roll {Wrap(re.z):0.0} yaw rate {logYaw:0} deg/s |{o}");
+                Plugin.Log.LogInfo($"UL-2 flight: {logSpd * 3.6f:0} km/h climb {logVy:0.0} m/s alt {alt:0.0} | rotor {rpm:0} rpm lift {rotorK:0.00} incidence {inc:0.0} body aoa {bodyAoA:0.0} stick {pitchIn:0.00} thr {thr:0.00} prop thrust {logThrust:0} N jump {logF:0.00} W rotor thrust {logT:0.00} W brake {brakeIn:0.0} roll in {rollIn:0.00}{(aiPilot ? $" AI raw {aiRawLog:0.00} path max {aiGamMax:0.0}" : "")} | pitch {Wrap(re.x):0.0} roll {Wrap(re.z):0.0} yaw rate {logYaw:0} deg/s |{o}");
             }
             catch { }
         }
@@ -358,6 +371,10 @@ namespace UL2Airtrike
                     float v2 = Mathf.Max(spd * spd, 1f), lockDeg = Mathf.Clamp(Mathf.Atan(2.6f * 0.3f * 9.81f / v2) * Mathf.Rad2Deg, 2f, 22f);
                     fLock.SetValue(noseGear, lockDeg);
                 }
+                // 0.15.34 (Nick 21:51-21:52): AI pilots rotate early and pull too hard for a gyro, bleed speed and fall back in.
+                // The stock autopilot has no speed protection in pitch, so for AI pilots only: no pull before 80 km/h, level
+                // (or a gentle dive with height to spare) to build speed under 80 km/h, shallow climbs above, stay low.
+                if (IsAI()) pitchIn = AiPitch(rb, spd, pitchIn);
                 var thrustV = RotorAero(rb, spd, W);
                 thrustV += rotorN * F;
                 if (thrustV.sqrMagnitude > 0f) rb.AddForceAtPosition(thrustV, com, ForceMode.Force);
@@ -387,6 +404,50 @@ namespace UL2Airtrike
                 rb.AddTorque(tq, ForceMode.Force);
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 rotor lift: " + e); pRb = null; }
+        }
+        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax; bool aiPilot;
+        bool IsAI()
+        {
+            if ((aiChk -= Time.fixedDeltaTime) > 0f) return aiPilot; aiChk = 0.5f;
+            try
+            {
+                if (fPilots == null) fPilots = AccessTools.Field(AccessTools.TypeByName("Aircraft"), "pilots");
+                var pl = fPilots?.GetValue(unit) as Array; aiPilot = false;
+                if (pl != null && pl.Length > 0 && pl.GetValue(0) is object p && p != null)
+                {
+                    if (fState == null) fState = AccessTools.Field(p.GetType(), "currentState");
+                    var st = fState?.GetValue(p);
+                    aiPilot = st != null && st.GetType().Name.StartsWith("AI");
+                }
+            }
+            catch { aiPilot = false; }
+            return aiPilot;
+        }
+        // flight path limiter: the AI's pitch is kept at or nose-down of what holds the flight path at or below gammaMax
+        internal void AiFilter()
+        {
+            if (!ready || mInputs == null || pRb == null || !IsAI()) return;
+            var rb = pRb.GetValue(unit) as Rigidbody; if (rb == null || rb.isKinematic) return;
+            var ci = mInputs.Invoke(unit, null); if (ci == null || fPitch == null) return;
+            aiRawLog = (float)fPitch.GetValue(ci);
+            float spd = fSpeed != null ? (float)fSpeed.GetValue(unit) : 0f;
+            fPitch.SetValue(ci, AiPitch(rb, spd, (float)fPitch.GetValue(ci)));
+        }
+        float AiPitch(Rigidbody rb, float spd, float raw)
+        {
+            float p = Mathf.Clamp(raw, -1f, 1f);
+            const float V80 = 22.2f;                                   // 80 km/h
+            var v = rb.velocity; float vm = Mathf.Max(v.magnitude, 1f);
+            float gamma = Mathf.Asin(Mathf.Clamp(v.y / vm, -1f, 1f)) * Mathf.Rad2Deg;
+            float upRate = -Vector3.Dot(rb.angularVelocity, transform.right) * Mathf.Rad2Deg;   // nose-up rate, deg/s
+            float gMax;
+            if (alt < 1.5f) { aiGamMax = 0f; return spd < V80 ? Mathf.Max(p, 0f) : Mathf.Max(p, -0.3f); }   // no rotation before 80 km/h
+            if (spd < V80) gMax = -4f * Mathf.InverseLerp(8f, 25f, alt);               // level near the ground, gentle dive with height
+            else gMax = Mathf.Lerp(0f, 6f, Mathf.InverseLerp(V80, 30f, spd));          // shallow climb once speed builds
+            gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(120f, 220f, alt)));   // stay low: no climbing above ~150 m
+            aiGamMax = gMax;
+            float pMin = 0.08f * (gamma - gMax) + 0.02f * upRate;
+            return Mathf.Max(p, Mathf.Clamp(pMin, -0.35f, 0.7f));
         }
         Vector3 rotorN = Vector3.up; float logT, rotorArea = 48f;
         static float Atanh(float x) { return 0.5f * Mathf.Log((1f + x) / (1f - x)); }
