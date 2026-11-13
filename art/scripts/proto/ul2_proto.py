@@ -801,13 +801,13 @@ _BS = [(-0.015, 0.110, 0.054, 0.012), (-0.012, 0.116, 0.060, 0.015), (-0.006, 0.
 body = loft('ctrl2_body', [[CS @ Vector((x, y, z)) for x, y in rrect(w, h, r, 4)] for z, w, h, r in _BS], DARK)
 for sx in (-1, 1):
     # handle: a tapered horn from the bottom corner, curving down and back toward him, rounded end, rubber back
-    hp = crom([(sx * 0.030, -0.004, 0.000), (sx * 0.049, -0.030, -0.008), (sx * 0.057, -0.050, -0.020), (sx * 0.060, -0.066, -0.034)], 4)
-    sc_ = [1.0 - 0.26 * f + 0.32 * max(0.0, 1 - 3.5 * f) ** 2 for f in [i / (len(hp) - 1) for i in range(len(hp))]]   # flared root, tapered tip
+    hp = crom([(sx * 0.030, -0.004, -0.006), (sx * 0.049, -0.030, -0.014), (sx * 0.057, -0.050, -0.025), (sx * 0.060, -0.066, -0.038)], 4)   # root kept below the face plate
+    sc_ = [1.0 - 0.26 * f + 0.20 * max(0.0, 1 - 3.5 * f) ** 2 for f in [i / (len(hp) - 1) for i in range(len(hp))]]   # flared root, tapered tip
     sweep(f'ctrl2_handle{sx}', hp, rrect(0.032, 0.026, 0.0115, 4), MECH, side=(1, 0, 0), M=CS, scale=sc_)
     ball(f'ctrl2_handle_end{sx}', hp[-1], (0.0117, 0.0100, 0.0095), MECH, M=CS, seg=24)
     sweep(f'ctrl2_grip{sx}', [Vector(q) + Vector((0, 0.0, -0.0035)) for q in hp[3:-1]], rrect(0.025, 0.022, 0.009, 4), BLACK_, side=(1, 0, 0), M=CS, scale=sc_[3:-1])
-    sweep(f'ctrl2_bumper{sx}', crom([(sx * 0.016, 0.031, 0.008), (sx * 0.040, 0.032, 0.008), (sx * 0.054, 0.027, 0.008)], 4), rrect(0.008, 0.009, 0.0035, 3), MECH, side=(0, 0, 1), M=CS)
-    sweep(f'ctrl2_trig{sx}', crom([(sx * 0.042, 0.026, -0.004), (sx * 0.042, 0.036, -0.010), (sx * 0.042, 0.034, -0.022)], 5), rrect(0.020, 0.007, 0.003, 3), MECH, side=(1, 0, 0), M=CS)
+    sweep(f'ctrl2_bumper{sx}', crom([(sx * 0.018, 0.0315, 0.002), (sx * 0.040, 0.0320, 0.002), (sx * 0.052, 0.0275, 0.002)], 4), rrect(0.006, 0.008, 0.0028, 3), BLACK_, side=(0, 0, 1), M=CS)
+    sweep(f'ctrl2_trig{sx}', crom([(sx * 0.042, 0.026, -0.004), (sx * 0.042, 0.036, -0.010), (sx * 0.042, 0.034, -0.022)], 5), rrect(0.020, 0.007, 0.003, 3), BLACK_, side=(1, 0, 0), M=CS)
 wells = [revolve(f'ctrl2_wl{k}', CS @ Vector((x, y, 0.009)), CN, [(0, r * K2), (0.03, r * K2), (0.03, 0)], BLACK_, 24)
          for k, (x, y, r) in enumerate(((-0.034, 0.010, 0.0125), (0.018, -0.012, 0.0125), (-0.018, -0.012, 0.0135)))]
 wells += [revolve(f'ctrl2_wb{k}', CS @ Vector((0.040 + dx, 0.010 + dy, 0.009)), CN, [(0, 0.0052 * K2), (0.03, 0.0052 * K2), (0.03, 0)], BLACK_, 16)
