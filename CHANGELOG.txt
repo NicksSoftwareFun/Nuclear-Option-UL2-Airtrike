@@ -2,6 +2,11 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.15 test build: gyro rotor model. Each blade surface has its own lift transform pitched with the rotor head
+  (3 deg neutral, 12 deg stick back, -1 deg pushed, held under the stall); blade lift scales with rotor rpm, which
+  builds with airspeed (40 + 18 rpm per m/s, 380 max) or the pre-rotator. The artificial roll-out lift push is gone
+  and the ground pitch torque is reduced. Flight log every second below 40 m (speed, climb, rotor rpm, lift share,
+  incidence, body AoA, stick, throttle, prop thrust, attitude).
 - 0.15.14 test build: SUB-2000 grip sunk into the frame (no gap at the joint), trigger guard ends buried in the frame and
   grip, trigger is a single smooth curve.
 - 0.15.13 test build: SUB-2000 lower to the Kel-Tec shape - raked grip with straight back strap and flared base,

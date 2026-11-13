@@ -505,6 +505,17 @@ public static partial class UL2Builder
             DoomName("wingtip_" + s); DoomName("flap_" + s);
             var hb = Find(root, "HeatBlur_" + s); if (hb) hb.position = P("exhaust") + new Vector3(sx * 0.15f, 0f, 0f);
         }
+        // 0.15.15 gyro model: each lifting blade part gets its own lift transform (stock liftNormal field, like the Cricket's
+        // cockpit_F_liftNormal). The plugin pitches these with the rotor head (disc tilt = blade incidence), so the rotor makes
+        // lift at a level attitude on the takeoff roll, the way a gyro does, instead of needing the nose rotated 10 degrees
+        foreach (var s in new[] { "L", "R" })
+            for (int k = 1; k <= 3; k++)
+            {
+                var w = Need("wing" + k + "_" + s);
+                var ln = Find(w, w.name + "_liftNormal") ?? New(w.name + "_liftNormal", w);
+                ln.localPosition = Vector3.zero; ln.rotation = Quaternion.identity;
+                Set(C(w, "AeroPart"), "liftNormal", ln);
+            }
         // spinning copy of the blades (turned in game by the plugin); the lifting blade parts keep colliders but hide their mesh
         var spin = Find(Need("rotorHead"), "rotorSpin") ?? New("rotorSpin", Need("rotorHead"));
         spin.position = P("rotorCentre"); spin.rotation = Quaternion.identity;
@@ -1142,7 +1153,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.14\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.15\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
