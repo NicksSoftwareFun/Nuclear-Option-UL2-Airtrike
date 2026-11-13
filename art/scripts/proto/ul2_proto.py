@@ -128,23 +128,29 @@ def pod_ring(y):
         pts.append(Vector((x, y, z)))
     return pts
 def build_pod(ys, name, m=SKIN, cut=True, cap_front=False, cap_back=False):
-    bm = bmesh.new(); rings = [[bm.verts.new(p) for p in pod_ring(y)] for y in ys]
+    # 0.15.12 (Nick 00:02): the opening edge is clean. Ring points above the sill inside the opening are pulled down onto
+    # the sill line on their own side, so the cut follows the sill exactly instead of stepping quad by quad
+    bm = bmesh.new(); rings = []; flat = []
+    for y in ys:
+        r = []; fl = []
+        for p in pod_ring(y):
+            c = cut and OPEN_A <= y <= OPEN_F and p.z > sill(y)
+            if c: p = Vector((math.copysign(side_x(y, sill(y)), p.x if abs(p.x) > 1e-6 else 1.0), y, sill(y)))
+            r.append(bm.verts.new(p)); fl.append(c)
+        rings.append(r); flat.append(fl)
     for i in range(len(rings) - 1):
-        ym = (ys[i] + ys[i + 1]) / 2
         for k in range(NS):
-            q = (rings[i][k], rings[i][(k + 1) % NS], rings[i + 1][(k + 1) % NS], rings[i + 1][k])
-            zc = sum(v.co.z for v in q) / 4
-            if cut and OPEN_A < ym < OPEN_F and zc > sill(ym) - 0.004: continue
-            bm.faces.new(q)
+            k1 = (k + 1) % NS
+            if flat[i][k] and flat[i][k1] and flat[i + 1][k] and flat[i + 1][k1]: continue
+            bm.faces.new((rings[i][k], rings[i][k1], rings[i + 1][k1], rings[i + 1][k]))
     if cap_front: bm.faces.new(rings[0])
     if cap_back: bm.faces.new(rings[-1][::-1])
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5); bmesh.ops.dissolve_degenerate(bm, dist=1e-5, edges=bm.edges)
     o = finish(name, bm, m); s = o.modifiers.new('thick', 'SOLIDIFY'); s.thickness = 0.018; s.offset = -1
     return o
 def frange(a, b, n): return [a + (b - a) * i / n for i in range(n + 1)]
 
 part('cockpit_F', 'UL2Airtrike', (0, 1.20, 0.62))
-ys = sorted(set([round(y, 4) for y in frange(2.58, -0.10, 64)] + [OPEN_F, OPEN_A]), reverse=True)
-build_pod(ys, 'pod_shell')
 # rim along the cut edge
 rim = [Vector((-pod_ring_x, y, sill(y))) for y, pod_ring_x in []]
 def side_x(y, z):
@@ -153,9 +159,9 @@ def pod_x(y, z):                 # skin half width at any height
     hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb)
     if z >= zm: return side_x(y, z)
     s = min(1, (zm - z) / (zm - zb)); return hw * (1 - s ** 2.6) ** (1 / 2.6)
-edge = [Vector((side_x(y, sill(y)) - 0.004, y, sill(y))) for y in frange(OPEN_F - 0.01, OPEN_A + 0.01, 24)]
-sweep('rim_R', edge, circ(0.011, 10), DARK, side=(0, 0, 1))
-sweep('rim_L', [Vector((-p.x, p.y, p.z)) for p in edge], circ(0.011, 10), DARK, side=(0, 0, 1))
+ys = sorted(set([round(y, 4) for y in frange(2.58, -0.10, 64)] + [OPEN_F, OPEN_A]), reverse=True)
+build_pod(ys, 'pod_shell')
+# 0.15.12 (Nick 00:02): the old round rim tubes are gone; the glass base strip caps the wall edge instead (windscreen3)
 # pod floor, ring frames (internal structure), keel shoe
 box('pod_floor', (0, 1.93, 0.43), (0.50, 0.90, 0.025), CPIT)
 for k, y in enumerate((2.55, 1.95, 1.45)):
@@ -198,8 +204,9 @@ def windscreen3(name, y_end=2.03, ph=80, n=28, rows=6):
     """0.15.5 (Nick 21:27: sleeker, more curved, continuous): one wrap-round sheet. Its base runs along the coaming and
     down the cockpit rims; each column is a bulged quadratic curve leaning aft, the top edge falls away to the sides."""
     xf = side_x(OPEN_F, sill(OPEN_F - 0.001)) - 0.006
-    side = [Vector((-(side_x(y, sill(y)) - 0.004), y, sill(y) + 0.011)) for y in frange(y_end, OPEN_F - 0.004, 12)]
-    path = side + [Vector((x, OPEN_F - 0.002, sill(OPEN_F - 0.001) + 0.004)) for x in frange(side[-1].x * 0.9, -side[-1].x * 0.9, 10)] + [Vector((-p.x, p.y, p.z)) for p in reversed(side)]
+    # 0.15.12 (Nick 00:02): the base runs ON the wall top (centre of the 18 mm skin) all the way round, no gaps or clipping
+    side = [Vector((-(side_x(y, sill(y)) - 0.009), y, sill(y) + 0.003)) for y in frange(y_end, OPEN_F - 0.004, 16)]
+    path = side + [Vector((x, OPEN_F - 0.004, sill(OPEN_F - 0.004) + 0.003)) for x in frange(side[-1].x * 0.9, -side[-1].x * 0.9, 10)] + [Vector((-p.x, p.y, p.z)) for p in reversed(side)]
     L = [0.0]
     for p0, p1 in zip(path, path[1:]): L.append(L[-1] + (p1 - p0).length)
     def at(d):
@@ -218,7 +225,7 @@ def windscreen3(name, y_end=2.03, ph=80, n=28, rows=6):
         for j in range(rows): bm.faces.new((grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]))
     edges = [[grid[i][j].co.copy() for j in range(rows + 1)] for i in (0, n)]
     o = finish(name, bm, GLASS); sm = o.modifiers.new('thick', 'SOLIDIFY'); sm.thickness = 0.008
-    sweep(name + '_base', base_c, rect(0.012, 0.008), DARK, side=(0, 0, 1))
+    sweep(name + '_base', base_c, rect(0.012, 0.026), DARK, side=(0, 0, 1))
     sweep(name + '_top', top_c, rect(0.007, 0.006), DARK, side=(0, 0, 1))
     for k, e in enumerate(edges): sweep(f'{name}_edge{k}', e, rect(0.007, 0.006), DARK, side=(1, 0, 0))
 windscreen3('windscreen')
@@ -293,7 +300,7 @@ box('stick_castle', (-0.026, -0.006, 0.128), (0.006, 0.014, 0.014), MECH, M=GG, 
 box('stick_pinky', (0, 0.030, 0.012), (0.026, 0.010, 0.016), MECH, rot=(R(10), 0, 0), M=GG, bevel=0.002)
 part('cockpit_F')
 box('stick_boot', (0, 1.95, 0.47), (0.10, 0.10, 0.05), DARK, bevel=0.015)
-box('lconsole_body', (-0.32, 1.82, 1.04), (0.09, 0.40, 0.22), CPIT, bevel=0.01)
+box('lconsole_body', (-0.315, 1.86, 1.04), (0.08, 0.32, 0.22), CPIT, bevel=0.01)
 box('throttle_box', (-0.32, 1.74, 1.175), (0.07, 0.20, 0.05), MECH, bevel=0.008)
 box('throttle_slot', (-0.32, 1.74, 1.201), (0.014, 0.17, 0.004), DARK)
 for k, yy in enumerate((1.66, 1.82)): box(f'throttle_mark{k}', (-0.29, yy, 1.201), (0.012, 0.006, 0.003), MECH)
@@ -352,11 +359,25 @@ box('lconsole', (-0.32, 1.93, 1.155), (0.08, 0.16, 0.012), DARK, bevel=0.003)
 for k in range(4):
     tube(f'lconsole_sw{k}', (-0.32, 1.87 + 0.03 * k, 1.16), (-0.32, 1.875 + 0.03 * k, 1.19), 0.0035, MECH, 5)
 box('fuel_selector', (-0.32, 1.99, 1.17), (0.03, 0.03, 0.012), MECH, bevel=0.004)
-box('rconsole', (0.32, 1.82, 1.04), (0.09, 0.40, 0.22), CPIT, bevel=0.01)
+box('rconsole', (0.315, 1.86, 1.04), (0.08, 0.32, 0.22), CPIT, bevel=0.01)
 box('radio_head', (0.32, 1.78, 1.165), (0.07, 0.14, 0.03), DARK, bevel=0.004)
 for k in range(2): revolve(f'radio_knob{k}', (0.32, 1.74 + 0.08 * k, 1.18), (0, 0, 1), [(0, 0.012), (0.014, 0.012), (0.016, 0)], MECH, 10)
 for k in range(3): tube(f'rconsole_sw{k}', (0.32, 1.90 + 0.03 * k, 1.15), (0.32, 1.905 + 0.03 * k, 1.18), 0.0035, MECH, 5)
 # pilot seat on the pod floor / keel
+# 0.15.11 (Nick 23:50): slots, pockets and holes are cut INTO the part (boolean difference); the cut walls and floor
+# take the cutter's material, so a pocket reads dark instead of standing proud as a coloured bump
+def recess(target, cutters, smooth=False):
+    objs = PARTS[CUR[0]]['objs']; cc = bpy.data.collections.new(f'{target.name}_cut')
+    for c in cutters:
+        objs.remove(c); coll('WORK').objects.unlink(c); cc.objects.link(c)
+    mo = target.modifiers.new('cut', 'BOOLEAN'); mo.operation = 'DIFFERENCE'; mo.operand_type = 'COLLECTION'; mo.collection = cc
+    mo.solver = 'EXACT'; mo.material_mode = 'TRANSFER'
+    dg = bpy.context.evaluated_depsgraph_get(); dg.update()
+    me = bpy.data.meshes.new_from_object(target.evaluated_get(dg)); old = target.data
+    target.modifiers.clear(); target.data = me; bpy.data.meshes.remove(old)
+    for c in list(cc.objects): bpy.data.objects.remove(c, do_unlink=True)
+    bpy.data.collections.remove(cc)
+    for pl in me.polygons: pl.use_smooth = smooth
 def rifle_on_seat(tag, P, side=-1):
     # Kel-Tec SUB-2000 (Gen 3), folded, clamped upright to the outboard side of the seat back (Nick 2026-11-12 22:15).
     # Drawn from his reference photos in gun-side pixels (1695 px = 413 mm folded length): u runs receiver -> buttstock,
@@ -371,20 +392,6 @@ def rifle_on_seat(tag, P, side=-1):
     def BX(nm, x0, y0, x1, y1, w, m, wc=0.0):
         (u0, v0), (u1, v1) = uv(x0, y0), uv(x1, y1)
         return box(f'{tag}_sub_{nm}', ((u0 + u1) / 2, (v0 + v1) / 2, wc), (abs(u1 - u0), abs(v1 - v0), w), m, M=G)
-    # 0.15.11 (Nick 23:50): slots, pockets and holes are cut INTO the part (boolean difference); the cut walls and floor
-    # take the cutter's material, so a pocket reads dark instead of standing proud as a coloured bump
-    def recess(target, cutters):
-        objs = PARTS[CUR[0]]['objs']; cc = bpy.data.collections.new(f'{target.name}_cut')
-        for c in cutters:
-            objs.remove(c); coll('WORK').objects.unlink(c); cc.objects.link(c)
-        mo = target.modifiers.new('cut', 'BOOLEAN'); mo.operation = 'DIFFERENCE'; mo.operand_type = 'COLLECTION'; mo.collection = cc
-        mo.solver = 'EXACT'; mo.material_mode = 'TRANSFER'
-        dg = bpy.context.evaluated_depsgraph_get(); dg.update()
-        me = bpy.data.meshes.new_from_object(target.evaluated_get(dg)); old = target.data
-        target.modifiers.clear(); target.data = me; bpy.data.meshes.remove(old)
-        for c in list(cc.objects): bpy.data.objects.remove(c, do_unlink=True)
-        bpy.data.collections.remove(cc)
-        for pl in me.polygons: pl.use_smooth = False
     def L(x, y, w=0.0): u, v = uv(x, y); return G @ Vector((u, v, w))
     AX = G.to_3x3() @ Vector((1, 0, 0)); AW = G.to_3x3() @ Vector((0, 0, 1))
     HG = 0.042; FR = 0.034; ST = 0.032
@@ -401,9 +408,8 @@ def rifle_on_seat(tag, P, side=-1):
     # barrel past the handguard, knurled thread protector, black front block that locks into the stock when folded
     tube(f'{tag}_sub_barrel', L(1575, 405), L(1795, 405), 0.0078, BLACK_, 12)
     th = tube(f'{tag}_sub_thread', L(1790, 405), L(1845, 405), 0.0092, MECH, 12)
-    recess(th, [revolve(f'{tag}_sub_muzzle', L(1820, 405), AX, [(0, 0.0045), (0.04, 0.0045), (0.04, 0)], DARK, 10)])
+    recess(th, [revolve(f'{tag}_sub_muzzle', L(1845, 405) - AX * 0.010, AX, [(0, 0.0047), (0.03, 0.0047), (0.03, 0)], BLACK_, 12)])   # 10 mm deep bore at the tip
     BX('frontpost', 1770, 262, 1800, 305, 0.006, MECH)
-    PL('frontblock', [(1740, 320), (1790, 300), (1835, 310), (1840, 645), (1740, 645)], 0.030, BLACK_, bev=0.002)
     # black hinge / chamber block at the receiver end
     hb = PL('hinge', [(30, 330), (45, 245), (150, 232), (200, 265), (200, 660), (30, 660)], 0.036, BLACK_, bev=0.002)
     recess(hb, [revolve(f'{tag}_sub_bore', L(10, 410), AX, [(0, 0.0055), (0.030, 0.0055), (0.030, 0)], DARK, 12)])
@@ -417,17 +423,36 @@ def rifle_on_seat(tag, P, side=-1):
     tube(f'{tag}_sub_band2', L(1320, 765), L(1350, 765), 0.0162, MECH, 16)
     # lower frame with pistol grip (magazine well), magazine base plate
     PL('frame', [(95, 660), (150, 600), (225, 555), (300, 600), (330, 650), (760, 690), (770, 845), (650, 862), (440, 1002), (95, 1002)], FR, FDE_)
-    PL('grip', [(440, 990), (655, 852), (657, 1000), (640, 1290), (475, 1295), (452, 1050)], FR, FDE_)
+    # 0.15.12 (Nick 00:07: grip, guard and trigger too blocky): the grip is a lofted, rounded shape with a palm swell on the
+    # back strap and three finger grooves on the front; the guard is a round-section loop; the trigger is a curved blade
+    PL('grip_top', [(440, 1000), (655, 852), (657, 1010), (446, 1010)], FR, FDE_)
+    def gx(pts, y):
+        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+            if y0 <= y <= y1: return x0 + (x1 - x0) * (y - y0) / (y1 - y0)
+        return pts[-1][0]
+    rings = []; NR = 22
+    for j in range(15):
+        y = 995 + (1292 - 995) * j / 14; t = (y - 995) / 297
+        xf = gx([(440, 990), (452, 1050), (475, 1300)], y) + 9 * max(0.0, math.sin(math.pi * (y - 1035) / 75)) * (1035 <= y <= 1260)   # finger grooves
+        xb = gx([(657, 990), (654, 1060), (640, 1300)], y) + 10 * math.sin(math.pi * min(1, t * 1.15))                        # palm swell
+        hl, cu = (xb - xf) / 2, (xf + xb) / 2; ring = []
+        for k in range(NR):
+            q = 2 * math.pi * k / NR; c, sn = math.cos(q), math.sin(q)
+            ux = cu + hl * math.copysign(abs(c) ** (2 / 2.6), c)
+            ww = FR / 2 * (0.82 + 0.18 * (ux - xf) / max(1, xb - xf)) * math.copysign(abs(sn) ** (2 / 2.6), sn)
+            ring.append(L(ux, y, ww))
+        rings.append(ring)
+    gp = loft(f'{tag}_sub_grip', rings, FDE_)
+    # black grip panels sunk 1 to 2 mm into both grip sides
+    recess(gp, [BX(f'gripinsert_{sw}', 492, 1045, 618, 1262, 0.008, BLACK_, wc=sw * (FR / 2 * 0.86 + 0.004)) for sw in (-1, 1)], smooth=True)
     PL('frame_low', [(95, 995), (262, 995), (262, 1060), (130, 1060), (95, 1020)], FR, FDE_)
     BX('magbase', 470, 1288, 615, 1352, 0.030, BLACK_)
     BX('magbody', 482, 1262, 603, 1290, 0.024, MECH)
-    for sw in (-1, 1): PL(f'gripinsert_{sw}', [(470, 1030), (640, 1020), (632, 1270), (480, 1272)], 0.002, BLACK_, w0=sw * (FR / 2 + 0.0005), bev=0.0)
-    for i in range(2):
-        for j in range(4):
-            for sw in (-1, 1): BX(f'grip{i}{j}_{sw}', 490 + 62 * i, 1040 + 60 * j, 535 + 62 * i, 1085 + 60 * j, 0.004, FDE_, wc=sw * (FR / 2 + 0.002))
-    # trigger, guard loop, buttons and frame screws
-    PL('trigger', [(212, 1000), (240, 1000), (250, 1050), (238, 1095), (226, 1060)], 0.008, MECH, bev=0.0)
-    sweep(f'{tag}_sub_guard', crom([L(*q) for q in ((130, 1045), (150, 1150), (300, 1140), (448, 1110))], 4), rect(0.010, 0.006), BLACK_, side=tuple(AW), smooth=False)
+    tg = [(232, 998), (224, 1028), (225, 1058), (234, 1082), (248, 1098)]
+    sweep(f'{tag}_sub_trigger', crom([L(*q) for q in tg], 4), [(0.0032 * math.cos(2 * math.pi * k / 12), 0.0022 * math.sin(2 * math.pi * k / 12)) for k in range(12)],
+          MECH, side=tuple(AW), scale=[1.15 - 0.25 * i / 16 for i in range(17)])
+    sweep(f'{tag}_sub_guard', crom([L(*q) for q in ((150, 1040), (158, 1100), (195, 1135), (300, 1142), (400, 1125), (458, 1080))], 5),
+          [(0.0060 * math.cos(2 * math.pi * k / 12), 0.0034 * math.sin(2 * math.pi * k / 12)) for k in range(12)], BLACK_, side=tuple(AW))
     for k, (x, y, r) in enumerate(((385, 885, 0.0055), (195, 750, 0.004), (180, 965, 0.004), (330, 810, 0.004), (625, 940, 0.004), (690, 800, 0.004), (430, 1080, 0.004))):
         revolve(f'{tag}_sub_pin{k}', L(x, y, -0.021), AW, [(0, r), (0.042, r), (0.042, 0)], MECH if k % 2 == 0 else BLACK_, 10)
     # charging handle under the tube
@@ -629,7 +654,7 @@ for P, nm in ((Q2, 'seat2'),):
     for sx in (-1, 1):
         tube(f'{nm}_diag{sx}', (sx * 0.29, P.y + 0.30, RAIL_Z + 0.02) if nm == 'seat2' else (sx * 0.29, P.y + 0.32, RAIL_Z + 0.02), (sx * 0.17, P.y - 0.12, P.z - 0.18), 0.012, FRAME, 8)
     box(f'{nm}_crossbar', (0, P.y + 0.05, P.z - 0.163), (0.36, 0.03, 0.03), FRAME)
-# gunner MFD post and hand grips
+# gunner MFD post
 tube('mfd2_post', (0.08, 0.98, 0.80), (0, 0.98, 1.24), 0.017, FRAME, 8)
 GM = Matrix.Translation((0, 0.99, 1.33)) @ Matrix.Rotation(R(-12), 4, 'X')
 box('mfd2', (0, 0, 0), (0.25, 0.04, 0.20), DARK, M=GM, bevel=0.008)
@@ -638,13 +663,60 @@ box('inst2', (0, 0, -0.145), (0.25, 0.04, 0.08), DARK, M=GM, bevel=0.006)
 part('x_inst2', 'cockpit_R', tuple(GM @ Vector((0, 0, -0.145)))); screen('inst2_screen', 0.22, 0.055, GM @ Matrix.Translation((0, 0, -0.145)), -0.024); part('cockpit_R')
 for sx in (-1, 1):
     for k in range(4): box(f'mfd2_btn{sx}{k}', (sx * 0.108, -0.022, 0.055 - 0.037 * k), (0.016, 0.008, 0.016), MECH, M=GM)
-    pipe(f'grip2_arm{sx}', [(sx * 0.05, 0.97, 1.20), (sx * 0.15, 0.84, 1.36), (sx * 0.20, 0.72, 1.45)], 0.014, FRAME, 4, segs=8)
-    tube(f'grip2{sx}', (sx * 0.20, 0.68, 1.42), (sx * 0.20, 0.64, 1.55), 0.018, DARK, 10)
-    box(f'grip2_trigger{sx}', (sx * 0.20, 0.68, 1.52), (0.02, 0.025, 0.035), MECH)
-box('grip2_bar', (0, 0.70, 1.45), (0.40, 0.025, 0.025), FRAME)
-# gunner detail: arming box on the grip bar, intercom box and cord on the MFD post
-box('grip2_armbox', (0, 0.70, 1.435), (0.10, 0.04, 0.03), DARK, bevel=0.004)
-for k in range(3): tube(f'grip2_sw{k}', (-0.03 + 0.03 * k, 0.70, 1.45), (-0.03 + 0.03 * k, 0.705, 1.47), 0.003, MECH, 5)
+# 0.15.12 (Nick 00:05): the copilot works the targeting pod and weapons with a game controller style handset on a post
+# between his knees, both hands on it; a smaller set of flight controls (side stick, throttle, pedals) backs him up
+CM = Matrix.Translation((0, 0.565, 1.425)) @ Matrix.Rotation(R(32), 4, 'X')     # face tilted back toward him
+pipe('ctrl2_post', [(0, 0.86, 0.75), (0, 0.83, 1.05), (0, 0.73, 1.29), (0, 0.62, 1.385)], 0.016, FRAME, 5, segs=10)
+box('ctrl2_foot', (0, 0.86, 0.755), (0.10, 0.08, 0.02), FRAME, bevel=0.004)
+part('x_ctrl2', 'cockpit_R', tuple(CM.translation))
+box('ctrl2_cradle', (0, 0.012, -0.030), (0.05, 0.05, 0.03), DARK, M=CM, bevel=0.006)
+body = box('ctrl2_body', (0, 0, 0), (0.118, 0.062, 0.030), DARK, M=CM, bevel=0.012)
+for sx in (-1, 1):   # handles swept back and down under each palm
+    ball(f'ctrl2_handle{sx}', (0, 0, 0), (0.026, 0.050, 0.022), DARK,
+         M=CM @ Matrix.Translation((sx * 0.052, -0.028, -0.006)) @ Matrix.Rotation(R(-sx * 18), 4, 'Z') @ Matrix.Rotation(R(14), 4, 'X'), seg=18)
+    box(f'ctrl2_bumper{sx}', (sx * 0.042, 0.031, 0.008), (0.034, 0.010, 0.010), MECH, M=CM, bevel=0.003)          # shoulder buttons
+    box(f'ctrl2_trig{sx}', (sx * 0.042, 0.030, -0.009), (0.028, 0.014, 0.014), MECH, M=CM, bevel=0.004)           # triggers
+# wells cut into the face for the sticks, the d-pad and the four buttons; the parts sit down inside them
+wells = [revolve(f'ctrl2_wl{k}', CM @ Vector((x, y, 0.009)), CM.to_3x3() @ Vector((0, 0, 1)), [(0, r), (0.02, r), (0.02, 0)], BLACK_, 16)
+         for k, (x, y, r) in enumerate(((-0.034, 0.010, 0.0125), (0.018, -0.012, 0.0125), (-0.018, -0.012, 0.0135)))]
+wells += [revolve(f'ctrl2_wb{k}', CM @ Vector((0.040 + dx, 0.010 + dy, 0.009)), CM.to_3x3() @ Vector((0, 0, 1)), [(0, 0.0052), (0.02, 0.0052), (0.02, 0)], BLACK_, 12)
+          for k, (dx, dy) in enumerate(((0, 0.009), (0.009, 0), (0, -0.009), (-0.009, 0)))]
+wells += [box('ctrl2_wscr', (0, 0.016, 0.013), (0.022, 0.010, 0.006), BLACK_, M=CM)]                          # status window
+recess(body, wells)
+for k, (x, y) in enumerate(((-0.034, 0.010), (0.018, -0.012))):   # thumbsticks: stem, dished cap
+    tube(f'ctrl2_stem{k}', CM @ Vector((x, y, 0.004)), CM @ Vector((x, y, 0.017)), 0.004, MECH, 8)
+    revolve(f'ctrl2_cap{k}', CM @ Vector((x, y, 0.017)), CM.to_3x3() @ Vector((0, 0, 1)), [(0, 0.0105), (0.004, 0.0105), (0.0045, 0.008), (0.0025, 0.0)], BLACK_, 16)
+for k in range(2):                                                # d-pad cross
+    box(f'ctrl2_dpad{k}', (-0.018, -0.012, 0.010), (0.020 if k == 0 else 0.007, 0.007 if k == 0 else 0.020, 0.005), MECH, M=CM, bevel=0.0015)
+for k, (dx, dy) in enumerate(((0, 0.009), (0.009, 0), (0, -0.009), (-0.009, 0))):
+    revolve(f'ctrl2_btn{k}', CM @ Vector((0.040 + dx, 0.010 + dy, 0.006)), CM.to_3x3() @ Vector((0, 0, 1)), [(0, 0.0042), (0.0055, 0.0042), (0.0065, 0.003), (0.0068, 0)], MECH if k % 2 else BLACK_, 12)
+box('ctrl2_cable', (0, 0.0, -0.028), (0.008, 0.008, 0.02), BLACK_, M=CM)
+part('cockpit_R')
+# backup flight controls: short side stick on a right console, throttle lever on a left one
+for sx in (-1, 1):
+    box(f'con2{sx}', (sx * 0.285, 0.70, 1.075), (0.07, 0.22, 0.035), DARK, bevel=0.005)
+    box(f'con2_brk{sx}', (sx * 0.322, 0.70, 1.03), (0.012, 0.16, 0.07), FRAME)
+part('x_stick2', 'cockpit_R', (0.285, 0.71, 1.093))
+revolve('stick2_boot', (0.285, 0.71, 1.092), (0, 0, 1), [(0, 0.022), (0.012, 0.016), (0.022, 0.008), (0.024, 0)], BLACK_, 12)
+tube('stick2_shaft', (0.285, 0.71, 1.10), (0.285, 0.715, 1.15), 0.0065, MECH, 8)
+ball('stick2_grip', (0.285, 0.718, 1.178), (0.017, 0.020, 0.034), DARK, rot=(R(-10), 0, 0), seg=14)
+box('stick2_trig', (0.285, 0.738, 1.175), (0.008, 0.010, 0.014), MECH)
+part('cockpit_R')
+box('thr2_quad', (-0.285, 0.70, 1.098), (0.026, 0.12, 0.012), MECH)
+part('x_thr2', 'cockpit_R', (-0.285, 0.70, 1.10))
+box('thr2_lever', (-0.285, 0.0, 1.135), (0.010, 0.012, 0.07), MECH, M=Matrix.Translation((0, 0.70, 0)))
+box('thr2_knob', (-0.285, 0.70, 1.178), (0.030, 0.024, 0.022), DARK, bevel=0.007)
+part('cockpit_R')
+# small rudder pedals ahead of his boots on a cross bar
+tube('ped2_bar', (-0.29, 1.14, 0.765), (0.29, 1.14, 0.765), 0.012, FRAME, 8)
+for sx in (-1, 1):
+    sd = 'L' if sx < 0 else 'R'
+    part(f'x_pedal2_{sd}', 'cockpit_R', (sx * 0.19, 1.14, 0.765))
+    tube(f'ped2_arm{sx}', (sx * 0.19, 1.14, 0.765), (sx * 0.19, 1.155, 0.83), 0.008, MECH, 8)
+    box(f'ped2_pad{sx}', (sx * 0.19, 1.165, 0.87), (0.065, 0.012, 0.085), DARK, rot=(R(-18), 0, 0), bevel=0.003)
+    for k in range(3): box(f'ped2_rib{sx}{k}', (sx * 0.19, 1.157 - 0.004 * (k - 1), 0.845 + 0.024 * k), (0.058, 0.004, 0.006), MECH, rot=(R(-18), 0, 0))
+    part('cockpit_R')
+# intercom box and cord on the MFD post
 box('ics_box', (0.04, 0.97, 1.05), (0.05, 0.035, 0.07), DARK, bevel=0.004)
 revolve('ics_knob', (0.04, 0.95, 1.07), (0, -1, 0), [(0, 0.01), (0.01, 0.01), (0.012, 0)], MECH, 8)
 # ammo box at the gunner's feet (right), feeds the side gun

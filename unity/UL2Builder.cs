@@ -418,6 +418,17 @@ public static partial class UL2Builder
             var pd = Find(cf, "UL2_pedal_" + sd) ?? New("UL2_pedal_" + sd, cf);
             pd.position = P("x_pedal_" + sd); pd.rotation = Quaternion.identity; SetMesh(pd, "x_pedal_" + sd);
         }
+        // 0.15.12 (Nick 00:05): copilot game controller, backup side stick, throttle and small pedals under cockpit_R;
+        // the plugin moves the stick, throttle and pedals with the inputs and puts his hands on the controller
+        {
+            var cr2 = Need("cockpit_R");
+            foreach (var nm in new[] { "ctrl2", "stick2", "thr2", "pedal2_L", "pedal2_R" })
+            {
+                if (!L.ContainsKey("x_" + nm)) { log.AppendLine("missing x_" + nm); continue; }
+                var t = Find(cr2, "UL2_" + nm) ?? New("UL2_" + nm, cr2);
+                t.position = P("x_" + nm); t.rotation = Quaternion.identity; SetMesh(t, "x_" + nm);
+            }
+        }
         // 5-point harnesses: own objects on the exterior renderer list, so the cockpit view hides them with the pilots (stock)
         {
             var hs = new List<Object>();
@@ -435,7 +446,7 @@ public static partial class UL2Builder
         // layer (the stock targetScreen's) and is listed in Aircraft.cockpitRenderers, or the cockpit view never draws it
         {
             int lay = Need("targetScreen").gameObject.layer; var add = new List<Object>();
-            string[] pre = { "UL2_gface_", "UL2_gauge_", "UL2_pedal_", "UL2_mfd2", "UL2_inst2" };
+            string[] pre = { "UL2_gface_", "UL2_gauge_", "UL2_pedal_", "UL2_mfd2", "UL2_inst2", "UL2_ctrl2", "UL2_stick2", "UL2_thr2", "UL2_pedal2_" };
             foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => pre.Any(x => t.name.StartsWith(x))).ToList())
                 foreach (var tt in t.GetComponentsInChildren<Transform>(true)) { tt.gameObject.layer = lay; var r = tt.GetComponent<MeshRenderer>(); if (r && !add.Contains(r)) add.Add(r); }
             var acx = C(root, "Aircraft"); var so = new SerializedObject(acx); var cr = so.FindProperty("cockpitRenderers"); var keep = new List<Object>();
@@ -1131,7 +1142,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.11\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.12\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

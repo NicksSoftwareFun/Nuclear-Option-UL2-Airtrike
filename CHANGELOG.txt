@@ -2,6 +2,11 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.12 test build: SUB-2000 grip reshaped (rounded section, palm swell, finger grooves, sunk grip panels), round
+  trigger guard and curved trigger; front block removed from the muzzle, shallow bore at the tip. Cockpit opening cut
+  cleanly along the sill, old rim tubes removed, windscreen base strip seated on the wall edge all round, side consoles
+  kept inside the skin. Copilot station: game controller style handset on a post (targeting pod and weapons) with his
+  hands on it, small backup side stick, throttle and rudder pedals that follow the inputs.
 - 0.15.11 test build: SUB-2000 slots, pockets and holes cut into the model (waffle pockets, M-LOK and rail slots,
   through-holes in the stock, bore, muzzle, rear sight aperture, sling cup) instead of raised colour patches.
 - 0.15.10 test build: SUB-2000 detail - black rail with steel slots, dark waffle pockets, black grip inserts and butt

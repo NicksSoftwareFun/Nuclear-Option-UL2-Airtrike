@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
@@ -12,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.11")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.12")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -99,6 +100,11 @@ namespace UL2Airtrike
         readonly List<Component> partList = new List<Component>(); float scanT, offGround, dbgT;
 
         static FieldInfo fFa; bool autoArmed = true, autoSpin;
+        // 0.15.12 (Nick 00:05): copilot backup controls follow the inputs; his hands rest on the game controller (two-bone IK)
+        Transform ctrl2, stick2, thr2, cop; Quaternion stick2Rest, thr2Rest; float stick2X, stick2Z, thr2A;
+        readonly Dictionary<string, Transform> pedals2 = new Dictionary<string, Transform>();
+        readonly Dictionary<string, Quaternion> pedal2Rest = new Dictionary<string, Quaternion>();
+        readonly Transform[][] arms = new Transform[2][]; bool armsLogged;
         void Update()
         {
             try
@@ -331,6 +337,47 @@ namespace UL2Airtrike
                 if (h.activeSelf != show) h.SetActive(show);
             }
         }
+        static Transform Deep(Transform r, string n) { foreach (var x in r.GetComponentsInChildren<Transform>(true)) if (x.name == n) return x; return null; }
+        // copilot backup stick (pitch / roll), throttle lever (25 deg aft at idle, 25 forward at full) and pedals (rock on the bar)
+        void CopilotControls(float dt)
+        {
+            float k = 1f - Mathf.Exp(-dt * 12f);
+            stick2X = Mathf.Lerp(stick2X, 12f * Mathf.Clamp(pitchIn, -1f, 1f), k); stick2Z = Mathf.Lerp(stick2Z, -12f * Mathf.Clamp(rollIn, -1f, 1f), k);
+            thr2A = Mathf.Lerp(thr2A, -25f + 50f * thr, k);
+            if (stick2 != null) stick2.localRotation = stick2Rest * Quaternion.Euler(stick2X, 0f, stick2Z);
+            if (thr2 != null) thr2.localRotation = thr2Rest * Quaternion.Euler(thr2A, 0f, 0f);
+            foreach (var kv in pedals2)
+                if (kv.Value != null) kv.Value.localRotation = pedal2Rest[kv.Key] * Quaternion.Euler((kv.Key == "R" ? 1f : -1f) * 250f * pedalPos, 0f, 0f);
+        }
+        // after the animator: wrists to the controller handles, elbows down and out, hands along the grips
+        void LateUpdate()
+        {
+            if (!ready || ctrl2 == null || cop == null || !cop.gameObject.activeInHierarchy) return;
+            try
+            {
+                for (int i = 0; i < 2; i++)
+                {
+                    var b = arms[i]; if (b == null || b[0] == null || b[1] == null || b[2] == null) continue;
+                    float sx = i == 0 ? -1f : 1f;
+                    Vector3 tgt = ctrl2.TransformPoint(new Vector3(sx * 0.055f, -0.036f, -0.066f));
+                    Vector3 pole = ctrl2.TransformDirection(new Vector3(sx * 0.7f, -1f, -0.3f));
+                    Vector3 hdir = ctrl2.TransformDirection(new Vector3(-sx * 0.3f, 0.615f, 0.795f)).normalized;
+                    Vector3 a = b[0].position, e = b[1].position, w = b[2].position;
+                    float l1 = (e - a).magnitude, l2 = (w - e).magnitude, d = Mathf.Clamp((tgt - a).magnitude, 0.05f, (l1 + l2) * 0.999f);
+                    Vector3 dir = (tgt - a).normalized, bend = Vector3.ProjectOnPlane(pole, dir).normalized;
+                    float ca = Mathf.Clamp((l1 * l1 + d * d - l2 * l2) / (2f * l1 * d), -1f, 1f), sa = Mathf.Sqrt(1f - ca * ca);
+                    Vector3 elbow = a + dir * (l1 * ca) + bend * (l1 * sa);
+                    b[0].rotation = Quaternion.FromToRotation(e - a, elbow - a) * b[0].rotation;
+                    e = b[1].position; w = b[2].position;
+                    b[1].rotation = Quaternion.FromToRotation(w - e, a + dir * d - e) * b[1].rotation;
+                    var fin = b[2].childCount > 0 ? b[2].GetChild(0) : null;
+                    Vector3 cur = fin != null ? fin.position - b[2].position : b[2].position - b[1].position;
+                    if (cur.sqrMagnitude > 1e-8f) b[2].rotation = Quaternion.FromToRotation(cur, hdir) * b[2].rotation;
+                }
+                if (!armsLogged) { armsLogged = true; Plugin.Log.LogInfo("UL-2 copilot hands on the controller, wrist miss L " + (arms[0] != null ? (arms[0][2].position - ctrl2.TransformPoint(new Vector3(-0.055f, -0.036f, -0.066f))).magnitude.ToString("0.000") : "-") + " m"); }
+            }
+            catch (Exception ex) { Plugin.Log.LogError("UL-2 copilot hands: " + ex); ctrl2 = null; }
+        }
         // right rudder pushes the right pedal forward and the left one back, 6 cm each way (P220 numbers)
         void Pedals(float dt)
         {
@@ -344,7 +391,7 @@ namespace UL2Airtrike
         }
         void Gauges(float spd, float dt)
         {
-            Pedals(dt);
+            Pedals(dt); CopilotControls(dt);
             if (gauges.Count == 0 || dt <= 0f) return;
             float y = transform.position.y;
             if (haveY) vs = Mathf.Lerp(vs, (y - lastY) / dt, 1f - Mathf.Exp(-dt * 2f));
@@ -412,9 +459,23 @@ namespace UL2Airtrike
                     else if (t.name == "UL2_sold_head") { sHead = t; rHead = t.localRotation; }
                     else if (t.name.StartsWith("UL2_gauge_")) { gauges[t.name.Substring(10)] = t; rest[t.name.Substring(10)] = t.localRotation; }
                     else if (t.name.StartsWith("UL2_pedal_")) { pedals[t.name.Substring(10)] = t; pedalRest[t.name.Substring(10)] = t.localPosition; }
+                    else if (t.name.StartsWith("UL2_pedal2_")) { pedals2[t.name.Substring(11)] = t; pedal2Rest[t.name.Substring(11)] = t.localRotation; }
+                    else if (t.name == "UL2_ctrl2") ctrl2 = t;
+                    else if (t.name == "UL2_stick2") { stick2 = t; stick2Rest = t.localRotation; }
+                    else if (t.name == "UL2_thr2") { thr2 = t; thr2Rest = t.localRotation; }
+                    else if (t.name == "copilot" && cop == null) cop = t;
                 }
                 if (engine == null && tEng != null) { var e = c.GetComponentInChildren(tEng, true); if (e != null) engine = e; }
             }
+            if (cop == null) foreach (var t in GetComponentsInChildren<Transform>(true)) if (t.name == "copilot") { cop = t; break; }
+            if (cop != null)
+                for (int i = 0; i < 2; i++)
+                {
+                    string sd = i == 0 ? "L" : "R";
+                    arms[i] = new[] { Deep(cop, "upperarm_" + sd), Deep(cop, "forearm_" + sd), Deep(cop, "hand_" + sd) };
+                    if (arms[i].Any(b => b == null)) arms[i] = null;
+                }
+            Plugin.Log.LogInfo("UL-2 copilot controls: controller " + (ctrl2 != null) + " stick " + (stick2 != null) + " throttle " + (thr2 != null) + " pedals " + pedals2.Count + " arms " + (arms[0] != null) + "/" + (arms[1] != null));
             spin = headPart.transform.Find("rotorSpin");
             if (spin == null) return;
             partList.Clear(); partList.AddRange(parts.Values);
