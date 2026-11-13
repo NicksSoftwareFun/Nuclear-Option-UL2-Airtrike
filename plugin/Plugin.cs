@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.17")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.18")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -92,10 +92,10 @@ namespace UL2Airtrike
         Transform sSpine, sHead; Quaternion rSpine, rHead; float t0 = UnityEngine.Random.value * 100f;
         Component engine; static MethodInfo mRpm, mFuel; static FieldInfo fAlt; float lastY, vs; bool haveY;
         // pre-rotator, jump launch and rotor tilt (Nick 2026-11-12): inputs from the stock ControlInputs
-        static MethodInfo mInputs; static FieldInfo fThr, fPitch, fRoll, fAxis, fYaw; static PropertyInfo pRb;
+        static MethodInfo mInputs; static FieldInfo fThr, fPitch, fRoll, fAxis, fYaw, fBrake; static PropertyInfo pRb;
         // rudder pedals (P220 / PB-22 way): UL2_pedal_L/R slide fore and aft on their floor rails with the yaw input
         readonly Dictionary<string, Transform> pedals = new Dictionary<string, Transform>();
-        readonly Dictionary<string, Vector3> pedalRest = new Dictionary<string, Vector3>(); float yawIn, pedalPos;
+        readonly Dictionary<string, Vector3> pedalRest = new Dictionary<string, Vector3>(); float yawIn, pedalPos, brakeIn;
         Transform tilt; float tiltX, tiltZ, thr, pitchIn, rollIn, axis, prevAxis, alt, er, jumpT = -1f, jumpE, massSum, massT;
         readonly List<Component> partList = new List<Component>(); float scanT, offGround, dbgT;
 
@@ -140,7 +140,8 @@ namespace UL2Airtrike
                 // axis were held and launches the jump on its own at 430 rpm; armed again once the throttle comes back
                 bool fa = false; try { if (fFa == null) fFa = AccessTools.Field(unit.GetType(), "flightAssist"); if (fFa != null) fa = (bool)fFa.GetValue(unit); } catch { }
                 if (thr < 0.9f || !ground) autoArmed = ground && thr < 0.9f;
-                bool autoJ = fa && ground && engOn && thr > 0.98f && autoArmed && axis < 0.05f;
+                bool braking = brakeIn > 0.2f;   // 0.15.18 (Nick 03:36): no hop in place on the brakes
+                bool autoJ = fa && ground && engOn && thr > 0.98f && autoArmed && axis < 0.05f && !braking;
                 autoSpin = autoJ;
                 if (headOn && clutch && engOn && jumpT < 0f)
                 {
@@ -148,6 +149,7 @@ namespace UL2Airtrike
                     if (autoJ) { pre = Mathf.Max(pre, 450f); if (rpm > 250f) upRate = 20f; }
                     if (autoJ && rpm >= 430f) { autoArmed = false; jumpT = 0f; jumpE = Mathf.Clamp01((rpm - 300f) / 150f); Plugin.Log.LogInfo("UL-2 auto jump launch (flight assist), rotor " + Mathf.RoundToInt(rpm) + " rpm"); }
                     if (axis > 0.05f) { pre = Mathf.Max(pre, 250f + 200f * axis); if (rpm > 250f) upRate = 20f; }
+                    if (braking) pre = Mathf.Min(pre, 380f);
                     target = Mathf.Max(target, pre);
                     // jump: axis released after a spin-up past 400 rpm -> blades to flying pitch, stored energy becomes lift
                     if (prevAxis > 0.5f && axis < 0.2f && rpm > 400f) { jumpT = 0f; jumpE = Mathf.Clamp01((rpm - 300f) / 150f); Plugin.Log.LogInfo("UL-2 jump launch, rotor " + Mathf.RoundToInt(rpm) + " rpm"); }
@@ -190,11 +192,12 @@ namespace UL2Airtrike
             {
                 if (mInputs == null) return;
                 var ci = mInputs.Invoke(unit, null); if (ci == null) return;
-                if (fThr == null) { var t = ci.GetType(); fThr = AccessTools.Field(t, "throttle"); fPitch = AccessTools.Field(t, "pitch"); fRoll = AccessTools.Field(t, "roll"); fAxis = AccessTools.Field(t, "customAxis1"); fYaw = AccessTools.Field(t, "yaw"); Plugin.Log.LogInfo("UL-2 inputs " + t.Name + " throttle " + (fThr != null) + " customAxis1 " + (fAxis != null)); }
+                if (fThr == null) { var t = ci.GetType(); fThr = AccessTools.Field(t, "throttle"); fPitch = AccessTools.Field(t, "pitch"); fRoll = AccessTools.Field(t, "roll"); fAxis = AccessTools.Field(t, "customAxis1"); fYaw = AccessTools.Field(t, "yaw"); fBrake = AccessTools.Field(t, "brake"); Plugin.Log.LogInfo("UL-2 inputs " + t.Name + " throttle " + (fThr != null) + " customAxis1 " + (fAxis != null)); }
                 thr = Mathf.Clamp01(fThr != null ? (float)fThr.GetValue(ci) : 0f);
                 pitchIn = fPitch != null ? (float)fPitch.GetValue(ci) : 0f; rollIn = fRoll != null ? (float)fRoll.GetValue(ci) : 0f;
                 // the axis reads 0..~0.45 on Nick's binding (log 21:53): 0.4 and up counts as full
                 axis = Mathf.Clamp01((fAxis != null ? (float)fAxis.GetValue(ci) : 0f) / 0.4f);
+                brakeIn = fBrake != null ? Mathf.Clamp01((float)fBrake.GetValue(ci)) : 0f;
                 yawIn = fYaw != null ? Mathf.Clamp((float)fYaw.GetValue(ci), -1f, 1f) : 0f; if (float.IsNaN(yawIn)) yawIn = 0f;
             }
             catch (Exception e) { if (!inErr) { inErr = true; Plugin.Log.LogWarning("UL-2 inputs: " + e.Message); } }
@@ -243,7 +246,7 @@ namespace UL2Airtrike
                 string o = "";
                 foreach (var c in partList) { if (c == null) continue; if (c.name == "mast" || c.name == "rotorHead" || c.name == "engine_core" || c.name == "tailboom_R" || c.name.StartsWith("nacelle")) { var q = Quaternion.Inverse(transform.rotation) * c.transform.rotation; var e = q.eulerAngles; o += $" {c.name} p{Wrap(e.x):0.0} r{Wrap(e.z):0.0}"; } }
                 var re = transform.rotation.eulerAngles;
-                Plugin.Log.LogInfo($"UL-2 flight: {logSpd * 3.6f:0} km/h climb {logVy:0.0} m/s alt {alt:0.0} | rotor {rpm:0} rpm lift {rotorK:0.00} incidence {inc:0.0} body aoa {bodyAoA:0.0} stick {pitchIn:0.00} thr {thr:0.00} prop thrust {logThrust:0} N jump {logF:0.00} W rotor thrust {logT:0.00} W | pitch {Wrap(re.x):0.0} roll {Wrap(re.z):0.0} yaw rate {logYaw:0} deg/s |{o}");
+                Plugin.Log.LogInfo($"UL-2 flight: {logSpd * 3.6f:0} km/h climb {logVy:0.0} m/s alt {alt:0.0} | rotor {rpm:0} rpm lift {rotorK:0.00} incidence {inc:0.0} body aoa {bodyAoA:0.0} stick {pitchIn:0.00} thr {thr:0.00} prop thrust {logThrust:0} N jump {logF:0.00} W rotor thrust {logT:0.00} W brake {brakeIn:0.0} roll in {rollIn:0.00} | pitch {Wrap(re.x):0.0} roll {Wrap(re.z):0.0} yaw rate {logYaw:0} deg/s |{o}");
             }
             catch { }
         }
@@ -314,9 +317,12 @@ namespace UL2Airtrike
                 float K = alt < 2f ? 1800f : Mathf.Lerp(2500f, 1200f, Mathf.InverseLerp(15f, 35f, spd));
                 var wl = transform.InverseTransformDirection(rb.angularVelocity);
                 var tq = Vector3.zero;
-                if (rs > 0.05f) tq += transform.right * (Mathf.Clamp(pitchIn, -1f, 1f) * K * rs) - transform.forward * (Mathf.Clamp(rollIn, -1f, 1f) * 0.6f * K * rs);
+                if (rs > 0.05f) tq += transform.right * (Mathf.Clamp(pitchIn, -1f, 1f) * K * rs) - transform.forward * (Mathf.Clamp(rollIn, -1f, 1f) * 2400f * rs);
+                // 0.15.18 (Nick 03:35: drifts left, little right roll): the body hangs under the rotor, so it rolls back level
+                // on its own; the stick now has the authority to hold about 50 deg of bank either way
+                if (alt >= 1.5f) tq += transform.forward * (-Mathf.Sin(Wrap(transform.rotation.eulerAngles.z) * Mathf.Deg2Rad) * 2600f * rotorK);
                 float damp = 2500f * Mathf.Max(rotorK, 0.3f);
-                tq -= transform.right * (wl.x * damp) + transform.forward * (wl.z * damp);
+                tq -= transform.right * (wl.x * damp) + transform.forward * (wl.z * 1500f * Mathf.Max(rotorK, 0.3f));
                 // on the wheels: the wide gear keeps it upright against prop torque and the side load as the rotor unloads them
                 if (alt < 1.5f)
                 {
@@ -327,7 +333,8 @@ namespace UL2Airtrike
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 rotor lift: " + e); pRb = null; }
         }
-        Vector3 rotorN = Vector3.up; float logT;
+        Vector3 rotorN = Vector3.up; float logT, rotorArea = 48f;
+        static float Atanh(float x) { return 0.5f * Mathf.Log((1f + x) / (1f - x)); }
         // 0.15.16 rotor thrust from the plugin (the blade surfaces keep a token area so damage still works): thrust is normal to
         // the tilted disc, Cl rises with disc angle of attack and flattens instead of stalling, and scales with rotor rpm.
         Vector3 RotorAero(Rigidbody rb, float spd, float W)
@@ -335,7 +342,11 @@ namespace UL2Airtrike
             var v = transform.InverseTransformDirection(rb.velocity);
             bodyAoA = v.sqrMagnitude > 1f ? Mathf.Atan2(-v.y, Mathf.Max(v.z, 0.1f)) * Mathf.Rad2Deg : 0f;
             float pull = Mathf.Clamp01(-pitchIn), push = Mathf.Clamp01(pitchIn);
-            float cmd = INC0 + INC_PULL * pull - INC_PUSH * push;
+            float cap = Mathf.Max(rotorK * 0.5f * 1.225f * rb.velocity.sqrMagnitude * rotorArea * 1.6f, 1f);
+            float perDeg = cap * 1.15f / 12f / Mathf.Max(W, 1f);           // weight fraction per degree of disc angle near 0
+            float aLevel = 12f * Atanh(Mathf.Min(W / (cap * 1.15f), 0.95f));
+            float neutral = Mathf.Min(INC0, aLevel + 1.3f);                 // trims itself level at speed (body sits ~-1.3 deg)
+            float cmd = neutral + Mathf.Min(INC_PULL, 1.5f / perDeg) * pull - Mathf.Min(INC_PUSH, 1.0f / perDeg) * push;
             inc = Mathf.MoveTowards(inc, Mathf.Clamp(cmd, -6f, 14f), 20f * Time.fixedDeltaTime);
             float k = Mathf.Clamp01((rpm - 100f) / 200f); rotorK = k * k;
             float area = 0f;
@@ -350,11 +361,12 @@ namespace UL2Airtrike
             try { if (prop != null) { mThrust = mThrust ?? AccessTools.Method(prop.GetType(), "GetThrust"); logThrust = (float)mThrust.Invoke(prop, null); } } catch { }
             float lat = 4f * Mathf.Clamp(rollIn, -1f, 1f);
             rotorN = (Quaternion.AngleAxis(-inc + INC0, transform.right) * Quaternion.AngleAxis(-lat, transform.forward)) * transform.up;
+            rotorArea = Mathf.Max(area, 1f);
             if (area <= 0f || rb.velocity.sqrMagnitude < 1f) return Vector3.zero;
             float a = bodyAoA + inc;                                      // disc angle of attack, deg
             // 0.15.17 (Nick 03:27 log: lifted off but bled speed and sank, disc at 10-20 deg): effective lifting area 1.6x the
             // blade surfaces (a full 8.4 m disc), so cruise needs a few degrees of disc angle, not 10+, and induced drag drops
-            float cl = a >= 0f ? 1.15f * (float)Math.Tanh(a / 12f) : (spd > 8f ? Mathf.Max(-0.25f, a / 15f) : 0f);
+            float cl = a >= 0f ? 1.15f * (float)Math.Tanh(a / 12f) : (spd > 8f ? Mathf.Max(-0.08f, a / 15f) : 0f);
             float q = 0.5f * 1.225f * rb.velocity.sqrMagnitude;
             float T = Mathf.Min(rotorK * cl * q * area * 1.6f, 2.5f * W);
             var dir = -rb.velocity.normalized;
