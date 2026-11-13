@@ -101,6 +101,13 @@ POD = [  # y, half width, bottom z, top z
     # side walls carried aft past seat 2 as an open fairing round the copilot's legs, closing in a boat tail (Nick 2026-11-12 11:28)
     (1.00, 0.366, 0.405, 1.250), (0.60, 0.362, 0.415, 1.250), (0.35, 0.350, 0.430, 1.220), (0.20, 0.322, 0.452, 1.150),
     (0.08, 0.266, 0.492, 0.990), (-0.02, 0.180, 0.548, 0.925), (-0.08, 0.090, 0.610, 0.860), (-0.10, 0.025, 0.660, 0.800)]
+# 0.15.31 (Nick 15:13): fair the nose-to-windscreen top line. The top slope dipped at y 2.80 then steepened again (an
+# S-bend that showed as an odd curve in the stainless livery). Rows between 2.92 and 2.20 now follow one Hermite curve
+# with the slope easing steadily from the nose cone to the windscreen base.
+def _herm(y, y0=2.92, z0=0.866, s0=1.0, y1=2.20, z1=1.46, s1=0.30):
+    L = y0 - y1; u = (y0 - y) / L
+    return (2*u**3 - 3*u**2 + 1) * z0 + (u**3 - 2*u**2 + u) * L * s0 + (-2*u**3 + 3*u**2) * z1 + (u**3 - u**2) * L * s1
+POD = [(r[0], r[1], r[2], _herm(r[0])) if 2.20 < r[0] < 2.92 else r for r in POD]
 def pod_at(y):
     for a, b in zip(POD, POD[1:]):
         if a[0] >= y >= b[0]:
@@ -113,10 +120,12 @@ def sill(y):                     # opening edge height (0.15.5: the coaming runs
         if a[0] >= y >= b[0]: t = (a[0] - y) / (a[0] - b[0]); return a[1] + (b[1] - a[1]) * t
     return 1.460 if y > 2.22 else 0.800
 NS = 40
+def _sstep(a, b, y): t = min(1, max(0, (y - a) / (b - a))); return t * t * (3 - 2 * t)
 def e_top(y):                    # upper superellipse exponent: square shoulders round the instrument panel
-    if 1.70 <= y <= 2.45: return 4.0
-    if 2.45 < y < 2.70: return 4.0 + (2.1 - 4.0) * (y - 2.45) / 0.25
-    if 1.40 < y < 1.70: return 2.1 + (4.0 - 2.1) * (y - 1.40) / 0.30
+    # 0.15.31 (Nick 15:13): eased over a longer run so the shoulder doesn't crease behind the nose cone
+    if 1.70 <= y <= 2.30: return 4.0
+    if 2.30 < y < 2.95: return 4.0 + (2.1 - 4.0) * _sstep(2.30, 2.95, y)
+    if 1.40 < y < 1.70: return 2.1 + (4.0 - 2.1) * _sstep(1.40, 1.70, y)
     return 2.1
 def pod_ring(y):
     hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb); pts = []
@@ -225,11 +234,31 @@ def windscreen3(name, y_end=2.03, ph=80, n=28, rows=6):
         grid.append(col); base_c.append(B); top_c.append(T)
     for i in range(n):
         for j in range(rows): bm.faces.new((grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]))
-    edges = [[grid[i][j].co.copy() for j in range(rows + 1)] for i in (0, n)]
+    G = [[v.co.copy() for v in col] for col in grid]
     o = finish(name, bm, GLASS); sm = o.modifiers.new('thick', 'SOLIDIFY'); sm.thickness = 0.008
-    sweep(name + '_base', base_c, rect(0.012, 0.026), DARK, side=(0, 0, 1))
-    sweep(name + '_top', top_c, rect(0.007, 0.006), DARK, side=(0, 0, 1))
-    for k, e in enumerate(edges): sweep(f'{name}_edge{k}', e, rect(0.007, 0.006), DARK, side=(1, 0, 0))
+    # 0.15.29 (Nick 13:01, gap at both back edges): the frame strips are ribbons that lie ON the glass, built from the
+    # sheet's own grid (no twisting sweep sections). Each straddles its edge: onto the glass, past the edge, and the
+    # base and back edges run on down into the hull wall so no daylight shows between glass, frame and wall.
+    def ribbon(rname, pts, inward, nrm, w_in, w_out, t=0.006):
+        bmr = bmesh.new(); rr = []
+        for p, d, nv in zip(pts, inward, nrm):
+            d = d.normalized(); nv = nv.normalized()
+            rr.append([bmr.verts.new(p + d * a_ + nv * b_) for a_, b_ in ((-w_out, -t), (w_in, -t), (w_in, t + 0.008), (-w_out, t + 0.008))])
+        for q in range(len(rr) - 1):
+            for k in range(4): bmr.faces.new((rr[q][k], rr[q][(k + 1) % 4], rr[q + 1][(k + 1) % 4], rr[q + 1][k]))
+        bmr.faces.new(rr[0]); bmr.faces.new(rr[-1][::-1])
+        return finish(rname, bmr, DARK, False)
+    def nrm_at(i, j):
+        i0, i1 = max(i - 1, 0), min(i + 1, n); j0, j1 = max(j - 1, 0), min(j + 1, rows)
+        return (G[i1][j] - G[i0][j]).cross(G[i][j1] - G[i][j0])
+    # base: along the bottom row, inward = up the sheet; reaches 3 cm below the glass into the wall top
+    ribbon(name + '_base', [G[i][0] for i in range(n + 1)], [G[i][1] - G[i][0] for i in range(n + 1)], [nrm_at(i, 0) for i in range(n + 1)], 0.022, 0.030)
+    ribbon(name + '_top', [G[i][rows] for i in range(n + 1)], [G[i][rows - 1] - G[i][rows] for i in range(n + 1)], [nrm_at(i, rows) for i in range(n + 1)], 0.014, 0.004)
+    for k, (i, i2) in enumerate(((0, 1), (n, n - 1))):
+        col = [G[i][j] for j in range(rows + 1)]
+        # start 3 cm below the bottom so the back edge frame sinks into the wall
+        col[0] = G[i][0] + (G[i][0] - G[i][1]).normalized() * 0.03
+        ribbon(f'{name}_edge{k}', col, [G[i2][j] - G[i][j] for j in range(rows + 1)], [nrm_at(i, j) for j in range(rows + 1)], 0.020, 0.006)
 windscreen3('windscreen')
 # HUD combiner + projector on the glare shield
 box('hud_projector', (0, 2.19, 1.452), (0.10, 0.055, 0.032), DARK, bevel=0.008)
@@ -238,19 +267,48 @@ for sx in (-1, 1): pipe(f'hud_arm{sx}', [(sx * 0.07, 2.19, 1.465), (sx * 0.072, 
 # instrument binnacle (initial): one MFD with side buttons, analog gauges around it
 # 0.15.5 (Nick 21:27): larger portrait MFD in the middle, smaller gauges either side, all inside the cowl skin
 # Nick 22:04: MFD as big as the red box (most of the panel), a Trident-style six-pack: three gauges stacked each side
+# 0.15.11 (Nick 23:50): slots, pockets and holes are cut INTO the part (boolean difference); the cut walls and floor
+# take the cutter's material, so a pocket reads dark instead of standing proud as a coloured bump
+def recess(target, cutters, smooth=False):
+    objs = PARTS[CUR[0]]['objs']; cc = bpy.data.collections.new(f'{target.name}_cut')
+    for c in cutters:
+        objs.remove(c); coll('WORK').objects.unlink(c); cc.objects.link(c)
+    mo = target.modifiers.new('cut', 'BOOLEAN'); mo.operation = 'DIFFERENCE'; mo.operand_type = 'COLLECTION'; mo.collection = cc
+    mo.solver = 'EXACT'; mo.material_mode = 'TRANSFER'
+    dg = bpy.context.evaluated_depsgraph_get(); dg.update()
+    me = bpy.data.meshes.new_from_object(target.evaluated_get(dg)); old = target.data
+    target.modifiers.clear(); target.data = me; bpy.data.meshes.remove(old)
+    for c in list(cc.objects): bpy.data.objects.remove(c, do_unlink=True)
+    bpy.data.collections.remove(cc)
+    for pl in me.polygons: pl.use_smooth = smooth
 PM = Matrix.Translation((0, 2.17, 1.28)) @ Matrix.Rotation(R(-20), 4, 'X')
 # Nick 22:40: the MFD must be SQUARE; smaller gauges make room
 GAUGES = ((0.205, 0.088), (0.205, 0.0), (0.205, -0.088)); GR = 0.030; _GS = GR / 0.036
 GIDS = {-1: ('asi', 'adi', 'alt'), 1: ('eng', 'hdg', 'vsi')}   # 0.15.26: engine rpm replaces the turn coordinator (Nick 04:56)
 box('panel', (0, 0, 0), (0.50, 0.035, 0.30), CPIT, M=PM, bevel=0.012)
-box('mfd', (0, -0.022, 0.0), (0.33, 0.02, 0.29), DARK, M=PM, bevel=0.006)
+MFD_BODY = box('mfd', (0, -0.022, 0.0), (0.33, 0.02, 0.29), DARK, M=PM, bevel=0.006)
+# 0.15.31 (Nick 15:19): MFD bezel buttons: a square well cut into the bezel, a rounded cap standing in it with a raised
+# legend bar, and a thin divider bar between neighbours, like a real MFD bezel key
+_BW = []
+def mfd_button(name, M, body, sx, w=0.017, h=0.015):
+    _BW.append((body, box(name + '_well', (0, 0, 0), (w + 0.004, 0.010, h + 0.004), BLACK_, M=M)))
+    box(name, (0, -0.0005, 0), (w, 0.006, h), MECH, M=M, bevel=0.0028)
+    box(name + '_leg', (0, -0.0037, 0.0), (w * 0.55, 0.0012, 0.0022), FRAME, M=M)
+def mfd_wells():
+    by = {}
+    for b, c in _BW: by.setdefault(b.name, (b, []))[1].append(c)
+    for b, cs in by.values(): recess(b, cs)
+    _BW.clear()
 box('panel_box', (0, 2.25, 1.27), (0.40, 0.08, 0.20), CPIT, bevel=0.01)
 box('panel_pedestal', (0, 2.30, 0.78), (0.12, 0.08, 0.70), CPIT, bevel=0.01)
-part('x_mfd1', 'cockpit_F', tuple(PM.translation)); screen('mfd_screen', 0.25, 0.25, PM, -0.036, rot=True, ucrop=0.5); part('cockpit_F')
+# 0.15.29 (Nick 13:00, picked "wider screen face"): the stock main display is 1.58:1 (canvas u 0..0.79), so the screen is
+# 0.30 x 0.19 and the side button columns move to rows above and below it
+part('x_mfd1', 'cockpit_F', tuple(PM.translation)); screen('mfd_screen', 0.30, 0.19, PM, -0.036, rot=True, ucrop=0.5); part('cockpit_F')
 for sx in (-1, 1):
-    for k in range(6): box(f'mfd_btn{sx}{k}', (sx * 0.147, -0.034, 0.105 - 0.042 * k), (0.016, 0.008, 0.016), MECH, M=PM)
+    for k in range(6): mfd_button(f'mfd_btn{sx}{k}', PM @ Matrix.Translation((-0.105 + 0.042 * k, -0.032, sx * 0.121)), MFD_BODY, sx)
     for k, (gx, gz) in enumerate(GAUGES):
         revolve(f'gauge{sx}{k}', (sx * gx, -0.018, gz), (0, -1, 0), [(0, GR), (0.010, GR), (0.010, GR - 0.005), (0.005, GR - 0.005), (0.005, 0)], DARK, 16, M=PM)
+mfd_wells()
 # exterior detail (pass 2): raised panel seams, side seam, boarding step, antennas
 def seam_ring(y, tag, cut=True):
     pts = pod_ring(y); hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb)
@@ -286,38 +344,86 @@ pipe('stick', [(0, 1.95, 0.45), (0, 1.90, 0.84), (0, 1.80, 1.19)], 0.015, DARK, 
 # fighter style grip (Nick 2026-11-12 20:57): contoured handle, hat switch, trigger in a guard, weapon release,
 # thumb castle switch, pinky lever. Frame GG: z up the grip, +y = finger side (forward)
 GG = Matrix.Translation((0, 1.80, 1.185)) @ Matrix.Rotation(R(12), 4, 'X')
-revolve('stick_collar', (0, 0, -0.005), (0, 0, 1), [(0, 0.024), (0.012, 0.024), (0.016, 0.018), (0.016, 0)], MECH, 14, M=GG)
-ball('stick_grip', (0, 0.002, 0.068), (0.022, 0.027, 0.072), DARK, M=GG, seg=16)
-ball('stick_palm', (0, -0.010, 0.060), (0.020, 0.022, 0.052), DARK, M=GG, seg=14)
-ball('stick_head', (0, 0.006, 0.142), (0.025, 0.033, 0.026), DARK, M=GG, seg=16)
-for k, z in enumerate((0.030, 0.052, 0.074)): tube(f'stick_finger{k}', (-0.017, 0.022, z), (0.017, 0.022, z), 0.006, DARK, 8, M=GG)
-box('stick_trigger', (0, 0.034, 0.112), (0.011, 0.010, 0.028), MECH, rot=(R(-15), 0, 0), M=GG, bevel=0.003)
-pipe('stick_guard', [(0, 0.024, 0.132), (0, 0.054, 0.118), (0, 0.052, 0.094), (0, 0.026, 0.090)], 0.0035, DARK, 4, segs=6, M=GG)
-revolve('stick_hat_base', (0, -0.012, 0.164), (0, -0.25, 1), [(0, 0.011), (0.006, 0.011), (0.006, 0)], MECH, 12, M=GG)
-box('stick_hat', (0, -0.012, 0.173), (0.016, 0.016, 0.006), MECH, M=GG, bevel=0.002)
-box('stick_hat_x', (0, -0.012, 0.173), (0.026, 0.006, 0.004), MECH, M=GG)
-box('stick_hat_y', (0, -0.012, 0.173), (0.006, 0.026, 0.004), MECH, M=GG)
-revolve('stick_release', (-0.012, 0.016, 0.164), (0, 0, 1), [(0, 0.008), (0.005, 0.008), (0.005, 0)], MECH, 10, M=GG)
-box('stick_castle', (-0.026, -0.006, 0.128), (0.006, 0.014, 0.014), MECH, M=GG, bevel=0.002)
-box('stick_pinky', (0, 0.030, 0.012), (0.026, 0.010, 0.016), MECH, rot=(R(10), 0, 0), M=GG, bevel=0.002)
+# 0.15.31 (Nick 15:19): detail pass, no jagged edges. Grip is one lofted shape (finger ridges on the front, palm swell
+# at the back, a forward-hooked head); switches are smooth turned parts with enough segments to read round.
+revolve('stick_collar', (0, 0, -0.006), (0, 0, 1), [(0, 0.022), (0.004, 0.024), (0.010, 0.024), (0.014, 0.019), (0.016, 0.017), (0.016, 0)], MECH, 28, M=GG)
+_GP = [(0.000, 0.016, 0.016, 0.016, 0.000), (0.012, 0.019, 0.020, 0.020, 0.000), (0.030, 0.021, 0.024, 0.025, -0.001),
+       (0.060, 0.022, 0.026, 0.028, -0.001), (0.090, 0.021, 0.026, 0.026, 0.000), (0.110, 0.022, 0.029, 0.024, 0.004),
+       (0.130, 0.025, 0.035, 0.024, 0.006), (0.150, 0.025, 0.036, 0.023, 0.006), (0.163, 0.024, 0.035, 0.022, 0.006),
+       (0.170, 0.021, 0.031, 0.019, 0.006), (0.174, 0.014, 0.022, 0.013, 0.005), (0.1755, 0.005, 0.008, 0.005, 0.004)]
+def _gring(z, wx, wf, wb, cy, n=28):
+    pts = []
+    for k in range(n):
+        a = 2 * math.pi * k / n; c, s = math.cos(a), math.sin(a)
+        e = 2.4; x = wx * math.copysign(abs(c) ** (2 / e), c); w = wf if s > 0 else wb
+        y = cy + w * math.copysign(abs(s) ** (2 / e), s)
+        if s > 0.3 and z < 0.095:   # finger ridges on the front
+            y += s * 0.0028 * sum(math.exp(-((z - fz) / 0.0075) ** 2) for fz in (0.024, 0.046, 0.068)) - s * 0.0012
+        pts.append(GG @ Vector((x, y, z)))
+    return pts
+_rows = []
+for i in range(len(_GP) - 1):
+    for f in (0, 0.5):
+        a, b = _GP[i], _GP[i + 1]; _rows.append(tuple(a[j] + (b[j] - a[j]) * f for j in range(5)))
+_rows.append(_GP[-1])
+loft('stick_grip', [_gring(*r) for r in _rows], DARK)
+# trigger: a curved blade in a round wire guard
+sweep('stick_trigger', crom([(0, 0.029, 0.127), (0, 0.040, 0.121), (0, 0.046, 0.108), (0, 0.043, 0.095)], 6), rrect(0.011, 0.0045, 0.0018, 2), MECH, side=(1, 0, 0), M=GG)
+pipe('stick_guard', [(0, 0.030, 0.137), (0, 0.056, 0.128), (0, 0.062, 0.105), (0, 0.054, 0.087), (0, 0.030, 0.086)], 0.0032, DARK, 8, segs=10, M=GG)
+# four-way trim hat on a turned boss, with ridged directional nubs
+HM = GG @ Matrix.Translation((0, -0.006, 0.170)) @ Matrix.Rotation(R(-10), 4, 'X')
+revolve('stick_hat_base', (0, 0, 0), (0, 0, 1), [(-0.004, 0.0072), (0.000, 0.0072), (0.0015, 0.0066), (0.0020, 0.0055), (0.0020, 0)], MECH, 28, M=HM)
+for k in range(2): box(f'stick_hat{k}', (0, 0, 0.0040), (0.0115 if k == 0 else 0.0036, 0.0036 if k == 0 else 0.0115, 0.004), DARK, M=HM, bevel=0.0012)
+# weapon release: domed button in a raised collar, top left of the head
+revolve('stick_release', (-0.013, 0.018, 0.163), (0, 0.15, 1), [(-0.003, 0.0095), (0.0020, 0.0095), (0.0030, 0.0082), (0.0030, 0.0062), (0.0055, 0.0054), (0.0072, 0.0032), (0.0078, 0)], MECH, 24, M=GG)
+# thumb castle switch on the left of the head: rounded square boss with a small domed rocker
+revolve('stick_castle', (-0.024, -0.004, 0.140), (-1, 0, 0), [(-0.004, 0.0095), (0.002, 0.0095), (0.004, 0.0080), (0.004, 0)], MECH, 24, M=GG)
+ball('stick_castle_cap', (-0.0290, -0.004, 0.140), (0.0035, 0.0062, 0.0062), DARK, M=GG, seg=16)
+# pinky lever: a curved paddle under the grip front
+sweep('stick_pinky', crom([(0, 0.022, 0.020), (0, 0.034, 0.015), (0, 0.040, 0.006), (0, 0.044, 0.004)], 6), rrect(0.024, 0.005, 0.002, 2), MECH, side=(1, 0, 0), M=GG)
+tube('stick_pinky_pivot', GG @ Vector((-0.015, 0.022, 0.020)), GG @ Vector((0.015, 0.022, 0.020)), 0.0032, MECH, 16)
 part('cockpit_F')
-box('stick_boot', (0, 1.95, 0.47), (0.10, 0.10, 0.05), DARK, bevel=0.015)
+_bel = [(0.0, 0.060), (0.006, 0.060), (0.014, 0.046), (0.024, 0.052), (0.034, 0.036), (0.044, 0.042), (0.054, 0.027), (0.063, 0.032), (0.072, 0.020), (0.082, 0.018), (0.090, 0.017)]
+revolve('stick_boot', (0, 1.95, 0.445), (0.0, -0.06, 1), _bel, DARK, 28)
 box('lconsole_body', (-0.315, 1.86, 1.04), (0.08, 0.32, 0.22), CPIT, bevel=0.01)
-box('throttle_box', (-0.32, 1.74, 1.175), (0.07, 0.20, 0.05), MECH, bevel=0.008)
-box('throttle_slot', (-0.32, 1.74, 1.201), (0.014, 0.17, 0.004), DARK)
-for k, yy in enumerate((1.66, 1.82)): box(f'throttle_mark{k}', (-0.29, yy, 1.201), (0.012, 0.006, 0.003), MECH)
+# 0.15.31 (Nick 15:19): throttle quadrant with the slot CUT into the top plate (brush seal strips in it), an idle detent,
+# engraved scale, end caps and a knurled friction wheel; the grip is a lofted handle with smooth turned buttons
+tb = box('throttle_box', (-0.32, 1.74, 1.175), (0.07, 0.22, 0.05), MECH, bevel=0.008)
+recess(tb, [box('throttle_slot_cut', (-0.32, 1.74, 1.205), (0.014, 0.176, 0.03), BLACK_),
+            box('throttle_gate_cut', (-0.3125, 1.665, 1.205), (0.015, 0.010, 0.03), BLACK_)])
+for sx in (-1, 1): box(f'throttle_brush{sx}', (-0.32 + sx * 0.0050, 1.74, 1.2005), (0.0030, 0.172, 0.0016), MECH)
+box('throttle_detent', (-0.32, 1.672, 1.2015), (0.014, 0.0025, 0.003), MECH, bevel=0.0008)
+for k in range(11):
+    yy = 1.66 + 0.016 * k; big = k in (0, 5, 10)
+    box(f'throttle_tick{k}', (-0.296, yy, 1.2002), (0.010 if big else 0.006, 0.0016, 0.0012), FRAME)
+for k, yy in enumerate((1.628, 1.852)): box(f'throttle_cap{k}', (-0.32, yy, 1.178), (0.074, 0.012, 0.056), DARK, bevel=0.005)
+_kn = []
+for i in range(48): _kn.append((0.006 * (i // 2) / 24 - 0.003, 0.0))
+revolve('throttle_friction', (-0.355, 1.80, 1.185), (-1, 0, 0), [(0, 0.0), (0, 0.017), (0.002, 0.019), (0.010, 0.019), (0.012, 0.017), (0.012, 0)], DARK, 32)
+for k in range(16):
+    a = 2 * math.pi * k / 16; d = Vector((0, math.cos(a), math.sin(a)))
+    box(f'throttle_knurl{k}', Vector((-0.361, 1.80, 1.185)) + d * 0.0192, (0.009, 0.0022, 0.0022), DARK, rot=(a, 0, 0))
 part('x_throttle', 'cockpit_F', (-0.32, 1.74, 1.17))
-tube('throttle', (-0.32, 1.74, 1.17), (-0.32, 1.74, 1.29), 0.010, MECH, 8)
-# throttle grip (review 2): a lever head canted 15 deg inboard with a thumb ledge; mic hat on top, two small thumb
-# buttons and a cursor slider on the inboard face, speed brake slider on the front
+tube('throttle', (-0.32, 1.74, 1.17), (-0.32, 1.74, 1.29), 0.0095, MECH, 18)
+revolve('throttle_collar', (-0.32, 1.74, 1.205), (0, 0, 1), [(0, 0.0135), (0.010, 0.0135), (0.013, 0.011), (0.013, 0)], DARK, 20)
 TM = Matrix.Translation((-0.32, 1.74, 1.285)) @ Matrix.Rotation(R(15), 4, 'Y')
-box('throttle_knob', (0, 0, 0.05), (0.04, 0.06, 0.10), DARK, M=TM, bevel=0.012)
-box('throttle_ledge', (0.026, -0.004, 0.022), (0.016, 0.05, 0.008), DARK, M=TM, bevel=0.003)
-box('throttle_mic', (0, 0.01, 0.102), (0.012, 0.012, 0.006), MECH, M=TM, bevel=0.002)
-for k, yy in enumerate((0.014, -0.012)): revolve(f'throttle_btn{k}', (0.0205, yy, 0.078), (1, 0, 0), [(0, 0.005), (0.003, 0.005), (0.003, 0)], MECH, 10, M=TM)
-box('throttle_cursor', (0.0215, 0.0, 0.050), (0.004, 0.018, 0.010), MECH, M=TM, bevel=0.0015)
-box('throttle_spdbrk', (0, 0.031, 0.065), (0.012, 0.004, 0.018), MECH, M=TM, bevel=0.0015)
-box('throttle_friction', (-0.32, 1.74, 1.205), (0.03, 0.03, 0.012), DARK)
+_TP = [(0.000, 0.016, 0.022, 0.006), (0.012, 0.020, 0.028, 0.009), (0.030, 0.021, 0.031, 0.011), (0.060, 0.021, 0.031, 0.011),
+       (0.085, 0.020, 0.030, 0.011), (0.096, 0.017, 0.026, 0.009), (0.102, 0.011, 0.019, 0.006), (0.105, 0.004, 0.008, 0.003)]
+_TPI = []
+for i in range(len(_TP) - 1):
+    for f in (0, 1 / 3, 2 / 3):
+        a, b = _TP[i], _TP[i + 1]; _TPI.append(tuple(a[j] + (b[j] - a[j]) * f for j in range(4)))
+_TPI.append(_TP[-1])
+loft('throttle_knob', [[TM @ Vector((x, y, z)) for x, y in rrect(2 * hx, 2 * hy, r, 5)] for z, hx, hy, r in _TPI], DARK)
+sweep('throttle_ledge', crom([TM @ Vector((0.020, -0.030, 0.020)), TM @ Vector((0.027, -0.012, 0.018)), TM @ Vector((0.028, 0.008, 0.018)), TM @ Vector((0.020, 0.026, 0.020))], 4), rrect(0.020, 0.008, 0.0035, 3), DARK, side=(0, 0, 1))
+revolve('throttle_mic', (0, 0.008, 0.101), (0, 0, 1), [(-0.002, 0.0080), (0.0015, 0.0080), (0.0035, 0.0062), (0.0045, 0.0030), (0.0048, 0)], MECH, 24, M=TM)
+for k in range(4):
+    a = R(45 + 90 * k); ball(f'throttle_mic_nub{k}', (0.0052 * math.cos(a), 0.008 + 0.0052 * math.sin(a), 0.1048), (0.0018, 0.0018, 0.0012), DARK, M=TM, seg=10)
+for k, (yy, zz) in enumerate(((0.016, 0.080), (-0.012, 0.068))):
+    revolve(f'throttle_btn{k}', (0.0205, yy, zz), (1, 0, 0), [(-0.002, 0.0062), (0.0010, 0.0062), (0.0018, 0.0052), (0.0030, 0.0042), (0.0042, 0.0022), (0.0045, 0)], MECH, 20, M=TM)
+revolve('throttle_cursor', (0.0210, 0.002, 0.048), (1, 0, 0), [(-0.002, 0.0072), (0.0010, 0.0072), (0.0020, 0.0060), (0.0020, 0)], MECH, 20, M=TM)
+ball('throttle_cursor_nub', (0.0235, 0.002, 0.048), (0.0028, 0.0040, 0.0040), DARK, M=TM, seg=14)
+sweep('throttle_spdbrk', [TM @ Vector((0, 0.0315, 0.054)), TM @ Vector((0, 0.0335, 0.065)), TM @ Vector((0, 0.0315, 0.076))], rrect(0.013, 0.0045, 0.0018, 2), MECH, side=(1, 0, 0))
 part('cockpit_F')
 for sx in (-1, 1):
     # pedals 0.08 further aft so the stock pilot's boots reach them
@@ -369,20 +475,6 @@ box('radio_head', (0.32, 1.78, 1.165), (0.07, 0.14, 0.03), DARK, bevel=0.004)
 for k in range(2): revolve(f'radio_knob{k}', (0.32, 1.74 + 0.08 * k, 1.18), (0, 0, 1), [(0, 0.012), (0.014, 0.012), (0.016, 0)], MECH, 10)
 for k in range(3): tube(f'rconsole_sw{k}', (0.32, 1.90 + 0.03 * k, 1.15), (0.32, 1.905 + 0.03 * k, 1.18), 0.0035, MECH, 5)
 # pilot seat on the pod floor / keel
-# 0.15.11 (Nick 23:50): slots, pockets and holes are cut INTO the part (boolean difference); the cut walls and floor
-# take the cutter's material, so a pocket reads dark instead of standing proud as a coloured bump
-def recess(target, cutters, smooth=False):
-    objs = PARTS[CUR[0]]['objs']; cc = bpy.data.collections.new(f'{target.name}_cut')
-    for c in cutters:
-        objs.remove(c); coll('WORK').objects.unlink(c); cc.objects.link(c)
-    mo = target.modifiers.new('cut', 'BOOLEAN'); mo.operation = 'DIFFERENCE'; mo.operand_type = 'COLLECTION'; mo.collection = cc
-    mo.solver = 'EXACT'; mo.material_mode = 'TRANSFER'
-    dg = bpy.context.evaluated_depsgraph_get(); dg.update()
-    me = bpy.data.meshes.new_from_object(target.evaluated_get(dg)); old = target.data
-    target.modifiers.clear(); target.data = me; bpy.data.meshes.remove(old)
-    for c in list(cc.objects): bpy.data.objects.remove(c, do_unlink=True)
-    bpy.data.collections.remove(cc)
-    for pl in me.polygons: pl.use_smooth = smooth
 def rifle_on_seat(tag, P, side=-1):
     # Kel-Tec SUB-2000 (Gen 3), folded, clamped upright to the outboard side of the seat back (Nick 2026-11-12 22:15).
     # Drawn from his reference photos in gun-side pixels (1695 px = 413 mm folded length): u runs receiver -> buttstock,
@@ -678,40 +770,49 @@ for P, nm in ((Q2, 'seat2'),):
 # gunner MFD post
 tube('mfd2_post', (0.08, 0.98, 0.80), (0, 0.98, 1.24), 0.017, FRAME, 8)
 GM = Matrix.Translation((0, 0.99, 1.33)) @ Matrix.Rotation(R(-12), 4, 'X')
-box('mfd2', (0, 0, 0), (0.25, 0.04, 0.20), DARK, M=GM, bevel=0.008)
+MFD2_BODY = box('mfd2', (0, 0, 0), (0.25, 0.04, 0.20), DARK, M=GM, bevel=0.008)
 part('x_mfd2', 'cockpit_R', tuple(GM.translation)); screen('mfd2_screen', 0.18, 0.15, GM, -0.024); part('cockpit_R')
 box('inst2', (0, 0, -0.145), (0.25, 0.04, 0.08), DARK, M=GM, bevel=0.006)
 part('x_inst2', 'cockpit_R', tuple(GM @ Vector((0, 0, -0.145)))); screen('inst2_screen', 0.22, 0.055, GM @ Matrix.Translation((0, 0, -0.145)), -0.024); part('cockpit_R')
 for sx in (-1, 1):
-    for k in range(4): box(f'mfd2_btn{sx}{k}', (sx * 0.108, -0.022, 0.055 - 0.037 * k), (0.016, 0.008, 0.016), MECH, M=GM)
+    for k in range(4): mfd_button(f'mfd2_btn{sx}{k}', GM @ Matrix.Translation((sx * 0.108, -0.020, 0.055 - 0.037 * k)), MFD2_BODY, sx, w=0.015, h=0.017)
+mfd_wells()
 # 0.15.12 (Nick 00:05): the copilot works the targeting pod and weapons with a game controller style handset on a post
 # between his knees, both hands on it; a smaller set of flight controls (side stick, throttle, pedals) backs him up
 CM = Matrix.Translation((0, 0.565, 1.425)) @ Matrix.Rotation(R(32), 4, 'X')     # face tilted back toward him
 pipe('ctrl2_post', [(0, 0.86, 0.75), (0, 0.83, 1.05), (0, 0.73, 1.29), (0, 0.62, 1.385)], 0.016, FRAME, 5, segs=10)
 box('ctrl2_foot', (0, 0.86, 0.755), (0.10, 0.08, 0.02), FRAME, bevel=0.004)
 part('x_ctrl2', 'cockpit_R', tuple(CM.translation))
-box('ctrl2_cradle', (0, 0.012, -0.030), (0.05, 0.05, 0.03), DARK, M=CM, bevel=0.006)
-body = box('ctrl2_body', (0, 0, 0), (0.118, 0.062, 0.030), DARK, M=CM, bevel=0.012)
-for sx in (-1, 1):   # handles swept back and down under each palm
-    ball(f'ctrl2_handle{sx}', (0, 0, 0), (0.026, 0.050, 0.022), DARK,
-         M=CM @ Matrix.Translation((sx * 0.052, -0.028, -0.006)) @ Matrix.Rotation(R(-sx * 18), 4, 'Z') @ Matrix.Rotation(R(14), 4, 'X'), seg=18)
-    box(f'ctrl2_bumper{sx}', (sx * 0.042, 0.031, 0.008), (0.034, 0.010, 0.010), MECH, M=CM, bevel=0.003)          # shoulder buttons
-    box(f'ctrl2_trig{sx}', (sx * 0.042, 0.030, -0.009), (0.028, 0.014, 0.014), MECH, M=CM, bevel=0.004)           # triggers
-# wells cut into the face for the sticks, the d-pad and the four buttons; the parts sit down inside them
-wells = [revolve(f'ctrl2_wl{k}', CM @ Vector((x, y, 0.009)), CM.to_3x3() @ Vector((0, 0, 1)), [(0, r), (0.02, r), (0.02, 0)], BLACK_, 16)
+# 0.15.31 (Nick 15:19): in game the handset didn't read (looked like hands clasped together). It is now 1.5x size with
+# long, light grey handles swept back and down toward him, so his hands wrap the handles from behind with the wrists bent
+K2 = 1.5; CS = CM @ Matrix.Diagonal((K2, K2, K2, 1)); CN = CM.to_3x3() @ Vector((0, 0, 1))
+box('ctrl2_cradle', (0, 0.012, -0.030), (0.05, 0.05, 0.03), DARK, M=CS, bevel=0.006)
+_BS = [(-0.015, 0.110, 0.054, 0.012), (-0.012, 0.116, 0.060, 0.015), (-0.006, 0.118, 0.062, 0.016), (0.008, 0.118, 0.062, 0.016),
+       (0.013, 0.115, 0.059, 0.0145), (0.015, 0.110, 0.054, 0.012)]
+body = loft('ctrl2_body', [[CS @ Vector((x, y, z)) for x, y in rrect(w, h, r, 4)] for z, w, h, r in _BS], DARK)
+for sx in (-1, 1):
+    # handle: a tapered horn from the bottom corner, curving down and back toward him, rounded end, rubber back
+    hp = crom([(sx * 0.034, -0.008, 0.000), (sx * 0.052, -0.036, -0.010), (sx * 0.060, -0.058, -0.024), (sx * 0.063, -0.076, -0.040)], 4)
+    sc_ = [1.35 - 0.63 * min(1, 2.2 * i / (len(hp) - 1)) + 0.0 if i < (len(hp) - 1) / 2.2 else 1.0 - 0.28 * i / (len(hp) - 1) for i in range(len(hp))]
+    sweep(f'ctrl2_handle{sx}', hp, rrect(0.034, 0.028, 0.011, 3), MECH, side=(1, 0, 0), M=CS, scale=sc_)
+    ball(f'ctrl2_handle_end{sx}', hp[-1], (0.0124, 0.0105, 0.0102), MECH, M=CS, seg=20)
+    sweep(f'ctrl2_grip{sx}', [Vector(q) + Vector((0, 0.0, -0.004)) for q in hp[2:]], rrect(0.026, 0.024, 0.009, 3), BLACK_, side=(1, 0, 0), M=CS, scale=sc_[2:])
+    sweep(f'ctrl2_bumper{sx}', crom([(sx * 0.016, 0.031, 0.008), (sx * 0.040, 0.032, 0.008), (sx * 0.054, 0.027, 0.008)], 4), rrect(0.008, 0.009, 0.0035, 3), MECH, side=(0, 0, 1), M=CS)
+    box(f'ctrl2_trig{sx}', (sx * 0.042, 0.030, -0.009), (0.028, 0.014, 0.014), MECH, M=CS, bevel=0.004)
+wells = [revolve(f'ctrl2_wl{k}', CS @ Vector((x, y, 0.009)), CN, [(0, r * K2), (0.03, r * K2), (0.03, 0)], BLACK_, 24)
          for k, (x, y, r) in enumerate(((-0.034, 0.010, 0.0125), (0.018, -0.012, 0.0125), (-0.018, -0.012, 0.0135)))]
-wells += [revolve(f'ctrl2_wb{k}', CM @ Vector((0.040 + dx, 0.010 + dy, 0.009)), CM.to_3x3() @ Vector((0, 0, 1)), [(0, 0.0052), (0.02, 0.0052), (0.02, 0)], BLACK_, 12)
+wells += [revolve(f'ctrl2_wb{k}', CS @ Vector((0.040 + dx, 0.010 + dy, 0.009)), CN, [(0, 0.0052 * K2), (0.03, 0.0052 * K2), (0.03, 0)], BLACK_, 16)
           for k, (dx, dy) in enumerate(((0, 0.009), (0.009, 0), (0, -0.009), (-0.009, 0)))]
-wells += [box('ctrl2_wscr', (0, 0.016, 0.013), (0.022, 0.010, 0.006), BLACK_, M=CM)]                          # status window
+wells += [box('ctrl2_wscr', (0, 0.016, 0.013), (0.022, 0.010, 0.006), BLACK_, M=CS)]
 recess(body, wells)
-for k, (x, y) in enumerate(((-0.034, 0.010), (0.018, -0.012))):   # thumbsticks: stem, dished cap
-    tube(f'ctrl2_stem{k}', CM @ Vector((x, y, 0.004)), CM @ Vector((x, y, 0.017)), 0.004, MECH, 8)
-    revolve(f'ctrl2_cap{k}', CM @ Vector((x, y, 0.017)), CM.to_3x3() @ Vector((0, 0, 1)), [(0, 0.0105), (0.004, 0.0105), (0.0045, 0.008), (0.0025, 0.0)], BLACK_, 16)
-for k in range(2):                                                # d-pad cross
-    box(f'ctrl2_dpad{k}', (-0.018, -0.012, 0.010), (0.020 if k == 0 else 0.007, 0.007 if k == 0 else 0.020, 0.005), MECH, M=CM, bevel=0.0015)
+for k, (x, y) in enumerate(((-0.034, 0.010), (0.018, -0.012))):
+    tube(f'ctrl2_stem{k}', CS @ Vector((x, y, 0.004)), CS @ Vector((x, y, 0.017)), 0.004 * K2, MECH, 12)
+    revolve(f'ctrl2_cap{k}', CS @ Vector((x, y, 0.017)), CN, [(0, 0.0105 * K2), (0.004 * K2, 0.0105 * K2), (0.0045 * K2, 0.008 * K2), (0.0025 * K2, 0.0)], BLACK_, 24)
+for k in range(2):
+    box(f'ctrl2_dpad{k}', (-0.018, -0.012, 0.010), (0.020 if k == 0 else 0.007, 0.007 if k == 0 else 0.020, 0.005), MECH, M=CS, bevel=0.002)
 for k, (dx, dy) in enumerate(((0, 0.009), (0.009, 0), (0, -0.009), (-0.009, 0))):
-    revolve(f'ctrl2_btn{k}', CM @ Vector((0.040 + dx, 0.010 + dy, 0.006)), CM.to_3x3() @ Vector((0, 0, 1)), [(0, 0.0042), (0.0055, 0.0042), (0.0065, 0.003), (0.0068, 0)], MECH if k % 2 else BLACK_, 12)
-box('ctrl2_cable', (0, 0.0, -0.028), (0.008, 0.008, 0.02), BLACK_, M=CM)
+    revolve(f'ctrl2_btn{k}', CS @ Vector((0.040 + dx, 0.010 + dy, 0.0105)), CN, [(0, 0.0042 * K2), (0.0055 * K2, 0.0042 * K2), (0.0065 * K2, 0.003 * K2), (0.0068 * K2, 0)], MECH if k % 2 else BLACK_, 16)
+box('ctrl2_cable', (0, 0.0, -0.028), (0.008, 0.008, 0.02), BLACK_, M=CS)
 part('cockpit_R')
 # backup flight controls: short side stick on a right console, throttle lever on a left one
 for sx in (-1, 1):

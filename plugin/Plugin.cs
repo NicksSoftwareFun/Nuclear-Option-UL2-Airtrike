@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.29")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.30")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -494,9 +494,11 @@ namespace UL2Airtrike
                 {
                     var b = arms[i]; if (b == null || b[0] == null || b[1] == null || b[2] == null) continue;
                     float sx = i == 0 ? -1f : 1f;
-                    Vector3 tgt = ctrl2.TransformPoint(new Vector3(sx * 0.055f, -0.036f, -0.066f));
+                    // 0.15.31 (Nick 15:19): bigger handset with long handles; wrists sit behind and below the handles and the
+                    // hands bend up along them, so the grip reads as holding a controller instead of clasped hands
+                    Vector3 tgt = ctrl2.TransformPoint(new Vector3(sx * 0.103f, -0.109f, -0.072f));
                     Vector3 pole = ctrl2.TransformDirection(new Vector3(sx * 0.7f, -1f, -0.3f));
-                    Vector3 hdir = ctrl2.TransformDirection(new Vector3(-sx * 0.3f, 0.615f, 0.795f)).normalized;
+                    Vector3 hdir = ctrl2.TransformDirection(new Vector3(-sx * 0.31f, 0.86f, 0.42f)).normalized;
                     Vector3 a = b[0].position, e = b[1].position, w = b[2].position;
                     float l1 = (e - a).magnitude, l2 = (w - e).magnitude, d = Mathf.Clamp((tgt - a).magnitude, 0.05f, (l1 + l2) * 0.999f);
                     Vector3 dir = (tgt - a).normalized, bend = Vector3.ProjectOnPlane(pole, dir).normalized;
@@ -509,7 +511,7 @@ namespace UL2Airtrike
                     Vector3 cur = fin != null ? fin.position - b[2].position : b[2].position - b[1].position;
                     if (cur.sqrMagnitude > 1e-8f) b[2].rotation = Quaternion.FromToRotation(cur, hdir) * b[2].rotation;
                 }
-                if (!armsLogged) { armsLogged = true; Plugin.Log.LogInfo("UL-2 copilot hands on the controller, wrist miss L " + (arms[0] != null ? (arms[0][2].position - ctrl2.TransformPoint(new Vector3(-0.055f, -0.036f, -0.066f))).magnitude.ToString("0.000") : "-") + " m"); }
+                if (!armsLogged) { armsLogged = true; Plugin.Log.LogInfo("UL-2 copilot hands on the controller, wrist miss L " + (arms[0] != null ? (arms[0][2].position - ctrl2.TransformPoint(new Vector3(-0.103f, -0.109f, -0.072f))).magnitude.ToString("0.000") : "-") + " m"); }
             }
             catch (Exception ex) { Plugin.Log.LogError("UL-2 copilot hands: " + ex); ctrl2 = null; }
         }

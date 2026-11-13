@@ -8,8 +8,10 @@ a = sys.argv[sys.argv.index('--') + 1:]
 bpy.ops.wm.open_mainfile(filepath=a[0]); out = a[1]; only = set(a[2:])
 sc, cam, g = setup(24)
 EYE = Vector((0, 1.315, 1.665))
-def S(name, loc, look, fov=None, lens=40, res=(1600, 900), fp=False, clip=0.05):
+def S(name, loc, look, fov=None, lens=40, res=(1600, 900), fp=False, clip=0.05, solo=False):
     if only and name not in only: return
+    for o in bpy.data.objects:
+        if o.name.startswith('REF_') and not o.name.startswith('REF_pilot'): o.hide_render = solo
     cam.data.clip_start = clip
     for o in bpy.data.objects:
         if o.name.startswith(('x_harness1', 'REF_pilot')): o.hide_render = fp
@@ -22,6 +24,7 @@ def dirn(pitch_down): return EYE + Vector((0, math.cos(math.radians(pitch_down))
 S('fp_level', EYE, dirn(0), fov=50, fp=True)
 S('fp_down10', EYE, dirn(10), fov=50, fp=True)
 S('fp_right', EYE, (0.40, 2.05, 1.40), lens=28, fp=True)   # 0.15.29 glass to hull edge check
+S('fp_left', EYE, (-0.40, 2.05, 1.40), lens=28, fp=True)
 S('fp_right_zoom', EYE, (0.37, 2.05, 1.13), lens=90, fp=True)
 S('ws_corner', (0.75, 1.80, 1.35), (0.38, 2.03, 1.13), lens=110, res=(1200, 900))
 S('ws_corner_in', (0.05, 1.85, 1.40), (0.37, 2.03, 1.13), lens=90, res=(1200, 900))
@@ -46,6 +49,12 @@ S('ws_base_top', (-0.15, 2.75, 2.05), (-0.15, 2.12, 1.38), lens=40, res=(1200, 9
 S('rim_side', (-1.10, 1.30, 1.45), (-0.33, 1.50, 1.02), lens=35, res=(1200, 900))
 S('ws_inside', (0.15, 1.75, 1.62), (-0.30, 2.15, 1.30), lens=30, res=(1200, 900), fp=True)
 S('co_station', (0.60, 0.25, 2.05), (0, 0.50, 1.40), lens=32, res=(1200, 900))
+S('stick_close', (0.24, 1.40, 1.62), (0, 1.70, 1.40), lens=55, res=(1200, 900), fp=True)
+S('thr_close', (-0.04, 1.33, 1.66), (-0.32, 1.62, 1.38), lens=50, res=(1200, 900), fp=True)
+S('mfd_close', (0.0, 1.315, 1.665), (0, 2.05, 1.40), lens=60, res=(1200, 900), fp=True)
+S('co_ctrl_close', (0.35, 0.15, 1.95), (0, 0.445, 1.545), lens=55, res=(1200, 900))
+S('co_ctrl_solo', (0.10, 0.12, 1.92), (0, 0.445, 1.545), lens=60, res=(1200, 900), solo=True)
+S('co_ctrl_solo_side', (0.55, 0.30, 1.70), (0, 0.445, 1.545), lens=60, res=(1200, 900), solo=True)
 S('co_ctrl', (0.30, 0.78, 1.85), (0, 0.445, 1.545), lens=55, res=(1200, 900))
 S('co_side', (-1.1, 0.55, 1.45), (0, 0.65, 1.15), lens=28, res=(1200, 900), clip=0.72)
 S('co_pedals', (0.05, 0.55, 1.25), (0, 1.03, 0.92), lens=30, res=(1200, 900))
