@@ -2,7 +2,7 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
-- 0.15.20: rotor gauge restyled as a copy of the stock throttle gauge (curved arc, carrot = set rpm, coloured bar + readout = actual rpm), moved right; helipad spawns back on; stronger rudder (airflow and prop wash).
+- 0.15.20: rotor gauge restyled as a copy of the stock throttle gauge (curved arc, carrot = set rpm, coloured bar + readout = actual rpm), moved right; helipad spawns back on; stronger rudder (airflow and prop wash); seat 3 heading taken from the barrel direction in the kit frame.
 - 0.15.19: jumps removed. Custom axis = manual rotor rpm (110-450) on the ground; with flight assist on the rotor picks its own rpm (450 at full throttle on the takeoff roll, otherwise follows the throttle). HUD shows MANUAL / AUTO, green from 300 rpm.
 - 0.15.18: no hop in place on the brakes (pre-spin held at 380 rpm, auto jump only when rolling free); body hangs level under the rotor and the stick has real roll authority; pitch stick commands g so it stays smooth at high speed.
 - 0.15.17: rotor lifts like a full 8.4 m disc (less drag, holds level flight and climbs at 70-90 km/h); the jump holds the aircraft up while it builds speed and settles gently instead of dropping.

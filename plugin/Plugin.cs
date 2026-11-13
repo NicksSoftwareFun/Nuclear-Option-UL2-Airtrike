@@ -591,7 +591,7 @@ namespace UL2Airtrike
         static readonly Dictionary<string, Table> tables = new Dictionary<string, Table>();
         static Type tTurret, tAircraft, tDetector; static FieldInfo fElev, fWm, fMag, fVis, fManual; static MethodInfo mGetTarget; static MethodInfo mTargets;
         Table T; Transform[] bones; Behaviour turret; Transform elev; Component aircraft; string kind;
-        float vA = 52f, vE = -40f, side = 1f, t0;
+        float vA = 52f, vE = -40f, side = 1f, t0, logT;
         readonly Dictionary<Component, float> magOrig = new Dictionary<Component, float>(), visOrig = new Dictionary<Component, float>();
 
         static string RS(System.IO.BinaryReader r) { int n = r.ReadInt32(); return System.Text.Encoding.UTF8.GetString(r.ReadBytes(n)); }
@@ -655,7 +655,13 @@ namespace UL2Airtrike
                     bool man = false; object tg = null;
                     try { if (fManual != null) man = (bool)fManual.GetValue(turret); if (mGetTarget != null) tg = mGetTarget.Invoke(turret, null); } catch { }
                     active = turret.enabled && (man || (tg is Component tc && tc != null));
-                    tA = Wrap(turret.transform.localEulerAngles.y); tE = -Wrap(elev.localEulerAngles.x);
+                    // 0.15.20 (Nick 03:55: shooter looks left of his aim): heading and elevation from the barrel's actual world
+                    // direction in this kit's own frame, not the turret's local euler angles (which may sit on a rotated base)
+                    var bd = transform.InverseTransformDirection(elev.forward);
+                    float bA = Mathf.Atan2(bd.x, bd.z) * Mathf.Rad2Deg, bE = Mathf.Asin(Mathf.Clamp(bd.y, -1f, 1f)) * Mathf.Rad2Deg;
+                    float oA = Wrap(turret.transform.localEulerAngles.y), oE = -Wrap(elev.localEulerAngles.x);
+                    if ((logT -= dt) <= 0f) { logT = 5f; Plugin.Log.LogInfo($"UL-2 seat 3 {kind} aim: barrel {bA:0.0}/{bE:0.0} turret euler {oA:0.0}/{oE:0.0} shown {vA:0.0}/{vE:0.0}"); }
+                    tA = bA; tE = bE;
                 }
                 else if (kind == "spot" && aircraft != null && fWm != null && mTargets != null)
                 {
