@@ -189,22 +189,37 @@ n = max(2, int(round(2 * AR / STEP)))
 for i in range(n + 1): alist.append(round(-AR + 2 * AR * i / n, 3))
 table = []
 worst = 0.0
-for E in ELEV:
-    row = []
-    # warm start each row from the reference side, then walk left to right (continuity penalty in the rig)
+# 0.15.35 (Nick 22:11: at the right-side limits the elbow flips through the torso and gun): rows used to be solved on their
+# own, so neighbouring elevations could settle on opposite elbow solutions and the in-game blend swung the arm through
+# the body. Rows now start at the idle elevation and grow outward, each pose held close to both its left neighbour and
+# the same heading one row closer to the idle row.
+order = sorted(range(len(ELEV)), key=lambda i: abs(ELEV[i] - (-10.0)))
+rows, rowel, rowhand = {}, {}, {}
+for ei in order:
+    E = ELEV[ei]
+    near = [j for j in rowel if abs(j - ei) == 1]; ref = min(near, key=lambda j: abs(ELEV[j] + 10.0)) if near else None
+    row = []; els_row = []; hands_row = []
     g._prev_el = {}; g._prev_hand = {}
-    g.pose(*vis(alist[0], E))
+    if ref is None: g.pose(*vis(alist[0], E))
     prev = None
-    for A in alist:
+    for ai, A in enumerate(alist):
+        if ref is not None:
+            up_el, up_h = rowel[ref][ai], rowhand[ref][ai]
+            if prev is not None and ai > 0:
+                g._prev_el = {s_: (prev[s_] + up_el[s_]) / 2 for s_ in 'RL'}; g._prev_hand = {s_: (hands_row[-1][s_] + up_h[s_]) / 2 for s_ in 'RL'}
+            else:
+                g._prev_el = {s_: up_el[s_].copy() for s_ in 'RL'}; g._prev_hand = {s_: up_h[s_].copy() for s_ in 'RL'}
         av, ev = vis(A, E)
         miss = g.pose(av, ev)
         bm = bone_mats()
         row.append([to_u(bm[nn]) for nn in BONES])
-        els = {s_: g._prev_el[s_].copy() for s_ in 'RL'}
+        els = {s_: g._prev_el[s_].copy() for s_ in 'RL'}; hs = {s_: g._prev_hand[s_].copy() for s_ in 'RL'}
         if prev: worst = max(worst, max((els[s_] - prev[s_]).length for s_ in 'RL'))
-        prev = els
+        if ref is not None: worst = max(worst, max((els[s_] - rowel[ref][ai][s_]).length for s_ in 'RL'))
+        prev = els; els_row.append(els); hands_row.append(hs)
         print(f'E {E:5.1f} A {A:7.2f} -> ({av:6.1f},{ev:5.1f}) miss R {miss["R"]:.3f} L {miss["L"]:.3f}', flush=True)
-    table.append(row)
+    rows[ei] = row; rowel[ei] = els_row; rowhand[ei] = hands_row
+table = [rows[i] for i in range(len(ELEV))]
 print('max elbow step between neighbours', round(worst, 3))
 
 out = dict(kind=KIND, bones=BONES, parents=[], arcs=[AFR, AFL, AR], A=alist, E=ELEV, ref=[to_u(REFM[nn]) for nn in BONES],

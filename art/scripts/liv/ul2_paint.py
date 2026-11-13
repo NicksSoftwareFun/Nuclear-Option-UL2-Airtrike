@@ -94,12 +94,41 @@ if LIV == 'tiger':
     for sd in (-1, 1):
         n += stamp(ids('vstab'), '\u2588\u2588\u2588', FONT, (-2.91, 1.397), 0.24, sd, np.array([20, 20, 21], np.float32) / 255)
         n += stamp(ids('cockpit_F', 'nose'), '\u2588\u2588', FONT, (2.30, 0.95), 0.22, sd, np.array([20, 20, 21], np.float32) / 255)
-for sd in (-1, 1): n += stamp(ids('vstab'), '214', FONT, (-2.91, 1.397), 0.19, sd, MARK)          # big tail number, both sides (0.15.29: centred on the fin chord, clear of the leading edge)
+NUM = {'olive': '214', 'steel': '237', 'tiger': '251'}[LIV]     # 0.15.35 (Nick 22:15): 2 = the unit, then the airframe's own two digits
+for sd in (-1, 1): n += stamp(ids('vstab'), NUM, FONT, (-2.91, 1.397), 0.19, sd, MARK)          # big tail number, both sides (0.15.29: centred on the fin chord, clear of the leading edge)
 for sd in (-1, 1): n += stamp(ids('vstabTip'), 'UL-2', FONT_S, (-2.95, 1.967), 0.066, sd, MARK)
-for sd in (-1, 1): n += stamp(ids('cockpit_F', 'nose'), '14', FONT, (2.30, 0.95), 0.18, sd, MARK)  # tactical number on the pod
+for sd in (-1, 1): n += stamp(ids('cockpit_F', 'nose'), NUM[1:], FONT, (2.30, 0.95), 0.18, sd, MARK)  # tactical number on the pod
 for sx in (-1, 1): n += stamp_top(ids('hstab_L' if sx < 0 else 'hstab_R'), 'NO STEP', FONT_S, (sx * 0.28, -2.80), 0.055, STEP)
 for sd in (-1, 1): n += stamp(ids('cockpit_F'), 'RESCUE', FONT_S, (1.28, 0.72), 0.045, sd, np.array([210, 170, 40], np.float32) / 255)
 print('stamped texels', n)
+# ---- 0.15.35 weathering (Nick 22:16): a worked engine. Oil mist and drips settle on the skin around and under the engine
+# (the rear pod, the keel frame, the stub), thrown back and down by the prop wash; exhaust soot fans aft from the stack
+# onto the fin root and inner tailplanes. Plus faint rain runs on the pod sides and boot wear on the cockpit sills.
+# Kept light, like a well used but looked after machine. Applied after the markings so it runs over them.
+ENG = np.array([0.0, -1.48, 1.78], np.float32); EXH = np.array([0.0, -1.75, 1.41], np.float32)
+up = N[:, 2]
+dE = np.linalg.norm((P - ENG) * np.array([1.0, 0.6, 0.7], np.float32), axis=1)
+streak_y = vnoise(P * np.array([5.0, 0.35, 5.0], np.float32), 0.05, 61)                 # runs stretched fore and aft
+patchy = np.clip(0.55 + 0.6 * vnoise(P, 0.18, 62) + 0.35 * streak_y, 0, 1)
+oil = np.exp(-(dE / 0.95) ** 2) * patchy * (0.65 + 0.35 * np.clip(up, 0, 1))
+drip = np.clip(-N[:, 1], 0, 1) * np.exp(-(dE / 1.2) ** 2) * np.clip(vnoise(P * np.array([7, 7, 0.5], np.float32), 0.05, 63) * 1.6, 0, 1)   # aft faces, vertical drips
+oil = np.clip(oil + 0.6 * drip, 0, 1) * 0.42
+dx = EXH[1] - P[:, 1]; behind = dx > 0
+rp = np.hypot(P[:, 0], P[:, 2] - (EXH[2] - 0.06 * dx))
+soot = behind * np.exp(-(rp / (0.10 + 0.10 * dx)) ** 2) * np.exp(-dx / 2.2) * np.clip(0.6 + 0.5 * vnoise(P * np.array([4, 0.4, 4], np.float32), 0.05, 64), 0, 1) * 0.40
+OIL = np.array([38, 30, 22], np.float32) / 255; SOOT = np.array([30, 30, 31], np.float32) / 255
+col = col * (1 - oil[:, None]) + OIL * oil[:, None]
+col = col * (1 - soot[:, None]) + SOOT * soot[:, None]
+PODS = ids('cockpit_F', 'nose', 'gunmount_R')
+side = PODS * (np.abs(N[:, 0]) > 0.5)
+rain = side * np.clip(vnoise(P * np.array([9, 9, 0.7], np.float32), 0.05, 65) * 2.0 - 0.6, 0, 1) * 0.06
+col *= (1 - rain)[:, None]
+sill = PODS * (P[:, 2] > 1.30) * (np.abs(P[:, 0]) > 0.24) * (P[:, 1] > -0.10) * (P[:, 1] < 2.10) * (up > 0.3)
+wear = sill * np.clip((vnoise(P, 0.025, 66) + 0.25 * vnoise(P, 0.12, 67) - 0.15) / 0.12, 0, 1) * 0.35
+WEAR = {'olive': np.array([104, 106, 84], np.float32) / 255, 'steel': np.array([150, 152, 154], np.float32) / 255, 'tiger': np.array([58, 56, 52], np.float32) / 255}[LIV]
+col = col * (1 - wear[:, None]) + WEAR * wear[:, None]
+if LIV == 'olive': col = col * (1 + 0.05 * np.clip(up, 0, 1))[:, None]                 # a touch of sun fade on top
+print('weathering: oil', int((oil > 0.1).sum()), 'soot', int((soot > 0.08).sum()), 'rain', int((rain > 0.02).sum()), 'sill wear', int((wear > 0.1).sum()))
 
 def save_rgb(a, name):
     Image.fromarray((np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8).reshape(S, S, -1)).save(os.path.join(out, name))

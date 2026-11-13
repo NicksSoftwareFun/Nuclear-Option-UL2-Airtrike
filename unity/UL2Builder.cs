@@ -481,6 +481,28 @@ public static partial class UL2Builder
                 t.position = P("x_" + nm); t.rotation = Quaternion.identity; SetMesh(t, "x_" + nm);
             }
         }
+        // 0.15.35 (Nick 22:03/22:04): the handset, stick and throttle are cockpit renderers, which the game switches off outside
+        // the cockpit view, so the copilot's handset vanished in third person and the pilot had nothing to hold. Exterior
+        // copies on the default layer go on the exterior renderer list (the stock cockpit_F_exterior way); the plugin keeps
+        // the stick and throttle copies in step with the real ones and puts the pilots' hands on them.
+        {
+            var ex = new List<Object>();
+            foreach (var sp in new[] { new[] { "UL2_ctrl2", "UL2_ext_ctrl2" }, new[] { "joystick", "UL2_ext_stick" }, new[] { "throttle", "UL2_ext_throttle" } })
+            {
+                var src = Need(sp[0]); var mf = src.GetComponent<MeshFilter>(); var mr = src.GetComponent<MeshRenderer>();
+                if (mf == null || mr == null) { log.AppendLine("exterior copy: no mesh on " + sp[0]); continue; }
+                var t = Find(src.parent, sp[1]) ?? New(sp[1], src.parent);
+                t.localPosition = src.localPosition; t.localRotation = src.localRotation; t.localScale = src.localScale; t.gameObject.layer = 0;
+                var f = t.GetComponent<MeshFilter>(); if (f == null) f = t.gameObject.AddComponent<MeshFilter>();
+                var r = t.GetComponent<MeshRenderer>(); if (r == null) r = t.gameObject.AddComponent<MeshRenderer>();
+                f.sharedMesh = mf.sharedMesh; r.sharedMaterials = mr.sharedMaterials; r.shadowCastingMode = mr.shadowCastingMode; r.enabled = true;
+                ex.Add(r);
+            }
+            var acx = C(root, "Aircraft"); var so = new SerializedObject(acx); var er = so.FindProperty("exteriorRenderers"); var keep = new List<Object>();
+            for (int i = 0; i < er.arraySize; i++) { var o = er.GetArrayElementAtIndex(i).objectReferenceValue; if (o != null && !ex.Contains(o)) keep.Add(o); }
+            keep.AddRange(ex); ObjArray(acx, "exteriorRenderers", keep.ToArray());
+            log.AppendLine("exterior control copies " + ex.Count + ", exteriorRenderers " + keep.Count);
+        }
         // 5-point harnesses: own objects on the exterior renderer list, so the cockpit view hides them with the pilots (stock)
         {
             var hs = new List<Object>();
@@ -1420,7 +1442,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.34\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.35\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

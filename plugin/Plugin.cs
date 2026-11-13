@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.34")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.35")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -131,6 +131,8 @@ namespace UL2Airtrike
         readonly Dictionary<string, Transform> pedals2 = new Dictionary<string, Transform>();
         readonly Dictionary<string, Quaternion> pedal2Rest = new Dictionary<string, Quaternion>();
         readonly Transform[][] arms = new Transform[2][]; bool armsLogged;
+        // 0.15.35 (Nick 22:04): front pilot's right hand on the centre stick, left hand on the throttle (third person)
+        readonly Transform[][] parms = new Transform[2][]; Transform pil, jsT, thT, exStick, exThr; Vector3 jsWrist, thWrist; bool parmsLogged;
         void Update()
         {
             try
@@ -270,7 +272,7 @@ namespace UL2Airtrike
                 string o = "";
                 foreach (var c in partList) { if (c == null) continue; if (c.name == "mast" || c.name == "rotorHead" || c.name == "engine_core" || c.name == "tailboom_R" || c.name.StartsWith("nacelle")) { var q = Quaternion.Inverse(transform.rotation) * c.transform.rotation; var e = q.eulerAngles; o += $" {c.name} p{Wrap(e.x):0.0} r{Wrap(e.z):0.0}"; } }
                 var re = transform.rotation.eulerAngles;
-                Plugin.Log.LogInfo($"UL-2 flight: {logSpd * 3.6f:0} km/h climb {logVy:0.0} m/s alt {alt:0.0} | rotor {rpm:0} rpm lift {rotorK:0.00} incidence {inc:0.0} body aoa {bodyAoA:0.0} stick {pitchIn:0.00} thr {thr:0.00} prop thrust {logThrust:0} N jump {logF:0.00} W rotor thrust {logT:0.00} W brake {brakeIn:0.0} roll in {rollIn:0.00}{(aiPilot ? $" AI raw {aiRawLog:0.00} path max {aiGamMax:0.0}" : "")} | pitch {Wrap(re.x):0.0} roll {Wrap(re.z):0.0} yaw rate {logYaw:0} deg/s |{o}");
+                Plugin.Log.LogInfo($"UL-2 flight: {logSpd * 3.6f:0} km/h climb {logVy:0.0} m/s alt {alt:0.0} | rotor {rpm:0} rpm lift {rotorK:0.00} incidence {inc:0.0} body aoa {bodyAoA:0.0} stick {pitchIn:0.00} thr {thr:0.00} prop thrust {logThrust:0} N jump {logF:0.00} W rotor thrust {logT:0.00} W brake {brakeIn:0.0} roll in {rollIn:0.00}{(aiPilot ? $" AI raw {aiRawLog:0.00} path {aiGamMin:0.0}..{aiGamMax:0.0} obst {aiObst:0}" : "")} | pitch {Wrap(re.x):0.0} roll {Wrap(re.z):0.0} yaw rate {logYaw:0} deg/s |{o}");
             }
             catch { }
         }
@@ -405,7 +407,7 @@ namespace UL2Airtrike
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 rotor lift: " + e); pRb = null; }
         }
-        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax; bool aiPilot;
+        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax, aiGamMin, aiObst = -1f; bool aiPilot;
         bool IsAI()
         {
             if ((aiChk -= Time.fixedDeltaTime) > 0f) return aiPilot; aiChk = 0.5f;
@@ -445,9 +447,24 @@ namespace UL2Airtrike
             if (spd < V80) gMax = -4f * Mathf.InverseLerp(8f, 25f, alt);               // level near the ground, gentle dive with height
             else gMax = Mathf.Lerp(0f, 6f, Mathf.InverseLerp(V80, 30f, spd));          // shallow climb once speed builds
             gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(120f, 220f, alt)));   // stay low: no climbing above ~150 m
-            aiGamMax = gMax;
+            // 0.15.35 (Nick 22:05: lining up a seat 3 gun run it flies into the ground or obstacles): a floor on the flight
+            // path from height above ground, plus a look-ahead along the flight path for terrain, trees and buildings
+            float gMin = Mathf.Clamp(-(alt - 10f) * 0.5f, -15f, 0f);
+            if (alt < 10f) gMin = Mathf.Lerp(4f, 0f, alt / 10f);
+            float look = Mathf.Max(spd * 5f, 40f); Vector3 vd = v / vm, org = rb.worldCenterOfMass + vd * 6f;
+            if (Physics.Raycast(org, vd, out var hit, look, ~0, QueryTriggerInteraction.Ignore) && hit.rigidbody != rb && !hit.transform.IsChildOf(transform.root))
+            {
+                float ttc = hit.distance / vm;                                         // seconds to impact on the current path
+                gMin = Mathf.Max(gMin, Mathf.Lerp(12f, 2f, Mathf.InverseLerp(1.5f, 5f, ttc)));
+                aiObst = hit.distance;
+            }
+            else aiObst = -1f;
+            aiGamMax = gMax; aiGamMin = gMin;
+            if (gMin > gMax) gMax = gMin;                                              // not hitting the ground beats speed
             float pMin = 0.08f * (gamma - gMax) + 0.02f * upRate;
-            return Mathf.Max(p, Mathf.Clamp(pMin, -0.35f, 0.7f));
+            float pMax = 0.10f * (gamma - gMin) + 0.03f * upRate;                      // negative = must pull
+            p = Mathf.Max(p, Mathf.Clamp(pMin, -0.35f, 0.7f));
+            return Mathf.Min(p, Mathf.Clamp(pMax, -0.8f, 1f));
         }
         Vector3 rotorN = Vector3.up; float logT, rotorArea = 48f;
         static float Atanh(float x) { return 0.5f * Mathf.Log((1f + x) / (1f - x)); }
@@ -548,7 +565,25 @@ namespace UL2Airtrike
         // after the animator: wrists to the controller handles, elbows down and out, hands along the grips
         void LateUpdate()
         {
-            if (!ready || ctrl2 == null || cop == null || !cop.gameObject.activeInHierarchy) return;
+            if (!ready) return;
+            try
+            {
+                if (exStick != null && jsT != null) exStick.localRotation = jsT.localRotation;
+                if (exThr != null && thT != null) exThr.localPosition = thT.localPosition;
+            }
+            catch { }
+            if (pil != null && pil.gameObject.activeInHierarchy && jsT != null && thT != null)
+            {
+                try
+                {
+                    // right hand: wrist behind the grip, hand along it; left hand on the throttle knob
+                    if (parms[1] != null) Reach(parms[1], jsT.TransformPoint(jsWrist), transform.TransformDirection(new Vector3(0.7f, -1f, -0.3f)), jsT.TransformDirection(new Vector3(-0.25f, 0.15f, 1f)).normalized);
+                    if (parms[0] != null) Reach(parms[0], thT.TransformPoint(thWrist), transform.TransformDirection(new Vector3(-0.7f, -1f, -0.3f)), thT.TransformDirection(new Vector3(0.25f, 0.15f, 1f)).normalized);
+                    if (!parmsLogged) { parmsLogged = true; Plugin.Log.LogInfo("UL-2 pilot hands on stick and throttle, wrist miss R " + (parms[1] != null ? (parms[1][2].position - jsT.TransformPoint(jsWrist)).magnitude.ToString("0.000") : "-") + " L " + (parms[0] != null ? (parms[0][2].position - thT.TransformPoint(thWrist)).magnitude.ToString("0.000") : "-") + " m"); }
+                }
+                catch (Exception ex) { Plugin.Log.LogError("UL-2 pilot hands: " + ex); pil = null; }
+            }
+            if (ctrl2 == null || cop == null || !cop.gameObject.activeInHierarchy) return;
             try
             {
                 for (int i = 0; i < 2; i++)
@@ -557,24 +592,28 @@ namespace UL2Airtrike
                     float sx = i == 0 ? -1f : 1f;
                     // 0.15.31 (Nick 15:19): bigger handset with long handles; wrists sit behind and below the handles and the
                     // hands bend up along them, so the grip reads as holding a controller instead of clasped hands
-                    Vector3 tgt = ctrl2.TransformPoint(new Vector3(sx * 0.103f, -0.109f, -0.072f));
-                    Vector3 pole = ctrl2.TransformDirection(new Vector3(sx * 0.7f, -1f, -0.3f));
-                    Vector3 hdir = ctrl2.TransformDirection(new Vector3(-sx * 0.31f, 0.86f, 0.42f)).normalized;
-                    Vector3 a = b[0].position, e = b[1].position, w = b[2].position;
-                    float l1 = (e - a).magnitude, l2 = (w - e).magnitude, d = Mathf.Clamp((tgt - a).magnitude, 0.05f, (l1 + l2) * 0.999f);
-                    Vector3 dir = (tgt - a).normalized, bend = Vector3.ProjectOnPlane(pole, dir).normalized;
-                    float ca = Mathf.Clamp((l1 * l1 + d * d - l2 * l2) / (2f * l1 * d), -1f, 1f), sa = Mathf.Sqrt(1f - ca * ca);
-                    Vector3 elbow = a + dir * (l1 * ca) + bend * (l1 * sa);
-                    b[0].rotation = Quaternion.FromToRotation(e - a, elbow - a) * b[0].rotation;
-                    e = b[1].position; w = b[2].position;
-                    b[1].rotation = Quaternion.FromToRotation(w - e, a + dir * d - e) * b[1].rotation;
-                    var fin = b[2].childCount > 0 ? b[2].GetChild(0) : null;
-                    Vector3 cur = fin != null ? fin.position - b[2].position : b[2].position - b[1].position;
-                    if (cur.sqrMagnitude > 1e-8f) b[2].rotation = Quaternion.FromToRotation(cur, hdir) * b[2].rotation;
+                    Reach(b, ctrl2.TransformPoint(new Vector3(sx * 0.103f, -0.109f, -0.072f)), ctrl2.TransformDirection(new Vector3(sx * 0.7f, -1f, -0.3f)),
+                        ctrl2.TransformDirection(new Vector3(-sx * 0.31f, 0.86f, 0.42f)).normalized);
                 }
                 if (!armsLogged) { armsLogged = true; Plugin.Log.LogInfo("UL-2 copilot hands on the controller, wrist miss L " + (arms[0] != null ? (arms[0][2].position - ctrl2.TransformPoint(new Vector3(-0.103f, -0.109f, -0.072f))).magnitude.ToString("0.000") : "-") + " m"); }
             }
             catch (Exception ex) { Plugin.Log.LogError("UL-2 copilot hands: " + ex); ctrl2 = null; }
+        }
+        // two-bone arm IK: shoulder, elbow, wrist; the elbow bends toward the pole and the hand turns to point along hdir
+        static void Reach(Transform[] b, Vector3 tgt, Vector3 pole, Vector3 hdir)
+        {
+            if (b == null || b[0] == null || b[1] == null || b[2] == null) return;
+            Vector3 a = b[0].position, e = b[1].position, w = b[2].position;
+            float l1 = (e - a).magnitude, l2 = (w - e).magnitude, d = Mathf.Clamp((tgt - a).magnitude, 0.05f, (l1 + l2) * 0.999f);
+            Vector3 dir = (tgt - a).normalized, bend = Vector3.ProjectOnPlane(pole, dir).normalized;
+            float ca = Mathf.Clamp((l1 * l1 + d * d - l2 * l2) / (2f * l1 * d), -1f, 1f), sa = Mathf.Sqrt(1f - ca * ca);
+            Vector3 elbow = a + dir * (l1 * ca) + bend * (l1 * sa);
+            b[0].rotation = Quaternion.FromToRotation(e - a, elbow - a) * b[0].rotation;
+            e = b[1].position; w = b[2].position;
+            b[1].rotation = Quaternion.FromToRotation(w - e, a + dir * d - e) * b[1].rotation;
+            var fin = b[2].childCount > 0 ? b[2].GetChild(0) : null;
+            Vector3 cur = fin != null ? fin.position - b[2].position : b[2].position - b[1].position;
+            if (cur.sqrMagnitude > 1e-8f) b[2].rotation = Quaternion.FromToRotation(cur, hdir) * b[2].rotation;
         }
         // right rudder pushes the right pedal forward and the left one back, 6 cm each way (P220 numbers)
         void Pedals(float dt)
@@ -775,6 +814,30 @@ namespace UL2Airtrike
                     arms[i] = new[] { Deep(cop, "upperarm_" + sd), Deep(cop, "forearm_" + sd), Deep(cop, "hand_" + sd) };
                     if (arms[i].Any(b => b == null)) arms[i] = null;
                 }
+            try
+            {
+                foreach (var t in GetComponentsInChildren<Transform>(true))
+                {
+                    if (t.name == "pilot" && pil == null) pil = t;
+                    else if (t.name == "joystick" && jsT == null) jsT = t;
+                    else if (t.name == "throttle" && thT == null && t.parent != null && t.parent.name == "throttleZero") thT = t;
+                    else if (t.name == "UL2_ext_stick") exStick = t;
+                    else if (t.name == "UL2_ext_throttle") exThr = t;
+                }
+                if (pil != null)
+                    for (int i = 0; i < 2; i++)
+                    {
+                        string sd = i == 0 ? "L" : "R";
+                        parms[i] = new[] { Deep(pil, "upperarm_" + sd), Deep(pil, "forearm_" + sd), Deep(pil, "hand_" + sd) };
+                        if (parms[i].Any(b => b == null)) parms[i] = null;
+                    }
+                // wrist points in the stick / throttle frames, from the aircraft-frame grip centres (stick grip 0, 0.193, 1.661;
+                // throttle knob 0.013, 0.163 above the lever root) with the wrist just behind and outboard of each grip
+                if (jsT != null) jsWrist = jsT.InverseTransformPoint(transform.TransformPoint(new Vector3(0.025f, 0.180f, 1.586f)));
+                if (thT != null) thWrist = thT.InverseTransformPoint(thT.position + transform.TransformDirection(new Vector3(-0.007f, 0.153f, -0.070f)));
+                Plugin.Log.LogInfo("UL-2 pilot hands: pilot " + (pil != null) + " stick " + (jsT != null) + " throttle " + (thT != null) + " arms " + (parms[0] != null) + "/" + (parms[1] != null) + " exterior copies " + (exStick != null) + "/" + (exThr != null));
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("UL-2 pilot hands setup: " + ex.Message); }
             var tAero = AccessTools.TypeByName("AeroPart"); mSetArea = mSetArea ?? AccessTools.Method(tAero, "SetWingArea"); mGetArea = mGetArea ?? AccessTools.Method(tAero, "GetWingArea");
             rotorBlades.Clear();
             foreach (var s in new[] { "L", "R" })
