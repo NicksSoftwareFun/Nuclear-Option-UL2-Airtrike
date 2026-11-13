@@ -241,7 +241,7 @@ for sx in (-1, 1): pipe(f'hud_arm{sx}', [(sx * 0.07, 2.19, 1.465), (sx * 0.072, 
 PM = Matrix.Translation((0, 2.17, 1.28)) @ Matrix.Rotation(R(-20), 4, 'X')
 # Nick 22:40: the MFD must be SQUARE; smaller gauges make room
 GAUGES = ((0.205, 0.088), (0.205, 0.0), (0.205, -0.088)); GR = 0.030; _GS = GR / 0.036
-GIDS = {-1: ('asi', 'adi', 'alt'), 1: ('turn', 'hdg', 'vsi')}
+GIDS = {-1: ('asi', 'adi', 'alt'), 1: ('eng', 'hdg', 'vsi')}   # 0.15.26: engine rpm replaces the turn coordinator (Nick 04:56)
 box('panel', (0, 0, 0), (0.50, 0.035, 0.30), CPIT, M=PM, bevel=0.012)
 box('mfd', (0, -0.022, 0.0), (0.33, 0.02, 0.29), DARK, M=PM, bevel=0.006)
 box('panel_box', (0, 2.25, 1.27), (0.40, 0.08, 0.20), CPIT, bevel=0.01)
@@ -340,9 +340,9 @@ for sx in (-1, 1):
         part(f'x_g_{gid}', 'cockpit_F', tuple(NM.translation))
         NM = NM @ Matrix.Scale(_GS, 4)
         if gid == 'adi': box(f'gauge_needle{sx}{k}', (0, 0, 0), (0.044, 0.002, 0.003), MECH, M=NM)          # horizon bar
-        elif gid == 'turn':                                                                                  # little aircraft
-            box(f'gauge_needle{sx}{k}', (0, 0, 0), (0.044, 0.002, 0.0035), MECH, M=NM)
-            box(f'gauge_needle_t{sx}{k}', (0, 0, 0.004), (0.004, 0.002, 0.009), MECH, M=NM)
+        elif gid == 'hdg':                                                                                   # fixed red lubber pointer over the turning card
+            box(f'gauge_needle{sx}{k}', (0, 0, 0.016), (0.0035, 0.002, 0.020), 'UL2_red', M=NM)
+            plate(f'gauge_needle_tri{sx}{k}', [(-0.006, 0.026), (0.006, 0.026), (0, 0.034)], 0.002, 'UL2_red', NM @ Matrix.Rotation(R(90), 4, 'X'))
         else: box(f'gauge_needle{sx}{k}', (0, 0, 0.011), (0.0035, 0.002, 0.024), MECH, M=NM)
         part('cockpit_F')
         # printed dial face (Trident style): its own disc with a picture, just behind the needle
@@ -813,6 +813,22 @@ for sx, tag in ((1, 'R'), (-1, 'L')):
         wing(f'blade_{tag}_{nm}_w', [(bpt(sx, r0) - ch * 0.25, ch, up), (bpt(sx, r1) - ch * 0.25, ch, up)], MECH, t=0.12, n=8)
         if nm == 'root': box(f'blade_{tag}_grip', bpt(sx, 0.60), (0.20, 0.16, 0.045), MECH, bevel=0.005)
         if nm == 'tip': box(f'blade_{tag}_tipcap', bpt(sx, ROTOR_R) - ch * 0.25 + ch * 0.5, (0.02, 0.21, 0.026), DARK)
+part('x_rotordisc', 'rotorHead', HEAD)
+def rotor_disc(name, r0, r1, n=64, rings=6):
+    bm = bmesh.new(); uv = bm.loops.layers.uv.new('UVMap'); RS = [r0 + (r1 - r0) * i / rings for i in range(rings + 1)]
+    for side, dz in ((1, 0.004), (-1, -0.004)):
+        V = [[bm.verts.new(Vector((r * math.cos(2 * math.pi * k / n), r * math.sin(2 * math.pi * k / n), 0)) + bpt(1, r) - Vector((r, 0, 0)) + Vector((0, 0, dz))) for k in range(n)] for r in RS]
+        for i in range(rings):
+            for k in range(n):
+                q = (V[i][k], V[i][(k + 1) % n], V[i + 1][(k + 1) % n], V[i + 1][k])
+                f = bm.faces.new(q if side > 0 else q[::-1])
+                for lp in f.loops:
+                    co = lp.vert.co - HEAD; lp[uv].uv = (0.5 + 0.5 * co.x / r1, 0.5 + 0.5 * co.y / r1)
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me); me.materials.append(mat('UL2_rotorblur')); coll('WORK').objects.link(o)
+    PARTS[CUR[0]]['objs'].append(o); return o
+rotor_disc('rotor_blurdisc', 0.50, ROTOR_R)
+part('rotorHead')
 
 # ================================================================ engine: core + left + right
 part('engine_core', 'mast', (0, -1.78, 1.74))
@@ -839,7 +855,10 @@ for k in range(3):
     for rr, chd, tw in [(0.10, 0.075, 55), (0.22, 0.135, 42), (0.45, 0.145, 28), (0.68, 0.115, 19), (0.82, 0.075, 15), (PROP_R, 0.03, 13)]:
         cdir = (t * math.cos(R(tw)) + Vector((0, 1, 0)) * math.sin(R(tw))); nrm = d.cross(cdir).normalized()
         st.append((PROP + d * rr - cdir * chd * 0.35, cdir * chd, nrm))
-    wing(f'prop_blade{k}', st, DARK, t=0.11)
+    if k == 0:   # 0.15.26: one blade as its own piece, used three times in Unity (the stock prop hides it when blurred)
+        part('x_propblade', 'propHub', PROP); wing('prop_blade0', st, DARK, t=0.11)
+        part('x_propstub', 'propHub', PROP); wing('prop_stub0', st[:3] + [(st[2][0] + d * 0.09 + st[2][1] * 0.3, st[2][1] * 0.45, st[2][2])], DARK, t=0.11)
+        part('propHub')
 for sx, tag in ((1, 'R'), (-1, 'L')):
     part(f'engine_{tag}', 'engine_core', (sx * 0.15, EY, EZ))
     for k, cy in enumerate((EY + 0.13, EY - 0.13)):
@@ -980,7 +999,7 @@ for o in PARTS['gunmount_R']['objs']:
     if o.name.startswith(HOUSING): o.data.transform(HM)
 ENG_K = 1.2; ESP = Vector((0, EY, EZ - 0.29))          # grows up, out and along from the engine bed
 EM = Matrix.Translation(ESP) @ Matrix.Scale(ENG_K, 4) @ Matrix.Translation(-ESP)
-for n in ('engine_core', 'engine_L', 'engine_R', 'propHub'):
+for n in ('engine_core', 'engine_L', 'engine_R', 'propHub', 'x_propblade', 'x_propstub'):
     for o in PARTS[n]['objs']:
         if not o.name.startswith(('eng_mount', 'engine_bed', 'bed_strut')): o.data.transform(EM)
     PARTS[n]['pivot'] = EM @ PARTS[n]['pivot']
@@ -988,7 +1007,7 @@ PROP = EM @ PROP; PROP_R *= ENG_K
 # ---- engine lowered along the mast (Nick 2026-11-12 11:19); the prop keeps ~8 cm over the tail boom. The bed struts
 # stretch down to their fixed frame points and the pre-rotator shaft stretches up to the rotor head.
 DZ_ENG = 0.14
-for n in ('engine_core', 'engine_L', 'engine_R', 'propHub'):
+for n in ('engine_core', 'engine_L', 'engine_R', 'propHub', 'x_propblade', 'x_propstub'):
     for o in PARTS[n]['objs']:
         if o.name.startswith('bed_strut'):
             zs = [v.co.z for v in o.data.vertices]; z0, z1 = min(zs), max(zs)
@@ -1016,7 +1035,7 @@ for o in PARTS['tailboom_R']['objs']:
 print('fin scale %.3f engine top %.3f strobe %s' % (FIN_K, eng_top, tuple(round(c, 3) for c in FM @ Vector((0, -3.20, 1.695)))))
 
 # ================================================================ forward shift of the aft group, main gear; ride height
-AFT = ['mast', 'rotorHead', 'engine_core', 'engine_L', 'engine_R', 'propHub', 'tailboom_F', 'tailboom_R', 'vstab', 'vstabTip', 'rudder', 'rudderTip'] + \
+AFT = ['mast', 'rotorHead', 'engine_core', 'engine_L', 'engine_R', 'propHub', 'x_propblade', 'x_propstub', 'x_rotordisc', 'tailboom_F', 'tailboom_R', 'vstab', 'vstabTip', 'rudder', 'rudderTip'] + \
       [n for n in PARTS if n.startswith(('blade_', 'hstab', 'elevator'))]
 def shift(names, v):
     for n in names:

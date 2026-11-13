@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.25")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.26")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -85,6 +85,10 @@ namespace UL2Airtrike
         Component unit; Transform spin; Component headPart;
         readonly List<KeyValuePair<Component, Transform>> blades = new List<KeyValuePair<Component, Transform>>();
         float rpm; bool ready; int tries;
+        // 0.15.26 (Nick 04:56/04:59): rotor blur disc and blade strikes (stock SwashRotor way: a line along each blade)
+        Renderer blurDisc; MaterialPropertyBlock blurMpb; bool struck; readonly Vector3[] bladeDir = new Vector3[2];
+        readonly HashSet<Collider> ownCols = new HashSet<Collider>(); float colScanT;
+        const float ROTOR_R = 4.6f; readonly Component[,] wingParts = new Component[2, 3];
         // cockpit gauges (all values the game already has; oil and volts have no game signal and follow engine rpm)
         readonly Dictionary<string, Transform> gauges = new Dictionary<string, Transform>();
         readonly Dictionary<string, float> shown = new Dictionary<string, float>();
@@ -132,7 +136,7 @@ namespace UL2Airtrike
                 // autorotation: about 9 rpm per m/s of airspeed, 380 rpm cap (~42 m/s); spins down over a few seconds
                 // 0.15.15: a gyro rotor settles near its flying rpm once air flows up through it; about 18 rpm per m/s from 40,
                 // 380 rpm by 19 m/s. Below 2 m/s it winds down unless the pre-rotator drives it
-                float target = headOn && spd > 2f ? Mathf.Min(380f, 40f + 18f * spd) : 0f;
+                float target = headOn && !struck && spd > 2f ? Mathf.Min(380f, 40f + 18f * spd) : 0f;
                 float upRate = 60f;
                 // pre-rotator (0.15.19, Nick 03:39: no jumps at all). On the ground (and 3 s after liftoff) with the engine running:
                 // - custom axis = manual rotor rpm, 110 at the bottom of its travel to 450 at the top (overrides the assist)
@@ -142,7 +146,7 @@ namespace UL2Airtrike
                 bool fa = false; try { if (fFa == null) fFa = AccessTools.Field(unit.GetType(), "flightAssist"); if (fFa != null) fa = (bool)fFa.GetValue(unit); } catch { }
                 bool manual = axis > 0.05f;
                 autoSpin = !manual && fa && ground && engOn && thr > 0.05f;
-                if (headOn && clutch && engOn)
+                if (headOn && clutch && engOn && !struck)
                 {
                     float pre = 0f;
                     if (manual) pre = 110f + 340f * axis;
@@ -156,6 +160,8 @@ namespace UL2Airtrike
                 rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? upRate : 40f) * dt);
                 spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * dt, 0f);
                 RotorAudio(headOn);
+                RotorBlur(headOn);
+                if (headOn && !struck && rpm > 60f) RotorStrike();
                 // rotor disc tilt with the stick (gyros steer by tilting the head); held back on the ground roll
                 if (tilt != null)
                 {
@@ -503,15 +509,14 @@ namespace UL2Airtrike
             lastY = y; haveY = true;
             float alt = fAlt != null ? Mathf.Max((float)fAlt.GetValue(unit), 0f) * 3.28084f : 0f;
             float fuel = 0f; try { if (mFuel != null) fuel = Mathf.Clamp01((float)mFuel.Invoke(unit, null)); } catch { }
-            Needle("asi", -135f + 270f * Mathf.Clamp01(spd * 1.94384f / 120f), dt);          // 0-120 kt
+            Needle("asi", -135f + 270f * Mathf.Clamp01(spd * 3.6f / 280f), dt);              // 0-280 km/h (0.15.26, yellow 200-240)
             Needle("alt", alt % 1000f / 1000f * 360f, dt);                                  // one turn per 1000 ft
             Needle("vsi", -90f + 135f * Mathf.Clamp(vs / 10f, -1f, 1f), dt);                // +-10 m/s, zero at 9 o'clock
             // six-pack (Nick 22:04, Trident style): attitude horizon bar, turn coordinator, heading
             var e = transform.eulerAngles;
-            Needle("adi", Wrap(e.z), dt);                                                   // horizon rolls against the bank
-            float yr = 0f; try { var rb0 = pRb?.GetValue(unit) as Rigidbody; if (rb0 != null) yr = rb0.angularVelocity.y * Mathf.Rad2Deg; } catch { }
-            Needle("turn", Mathf.Clamp(yr / 3f * 20f, -35f, 35f), dt);                        // standard rate (3 deg/s) on the marks
-            Needle("hdg", e.y, dt);
+            Needle("adi", -Wrap(e.z), dt);                                                  // horizon rolls against the bank (sign fixed 0.15.26, Nick 04:56)
+            Needle("eng", -135f + 270f * Mathf.Clamp01(er * 5800f / 7000f), dt);              // engine rpm 0-7000, 5800 at full power (replaces the turn coordinator)
+            Needle("hdgcard", -e.y, dt);                                                     // compass card turns under the fixed red pointer
             Needle("rotor", -135f + 270f * Mathf.Clamp01(rpm / 450f), dt);                   // rotor rpm, 0-450
             Needle("rpm", -135f + 270f * er, dt);
             Needle("fuel", -120f + 240f * fuel, dt);
@@ -528,6 +533,62 @@ namespace UL2Airtrike
             float hpitch = 10f + 7f * Mathf.Sin(t * 0.47f + 2.1f);                       // positive X = looking down
             sSpine.localRotation = rSpine;
             sHead.localRotation = rHead * Quaternion.Euler(hpitch, hyaw, 0f);
+        }
+        // blur disc fades in from 150 rpm; the spinning blade copies go at 260 rpm (no tearing, and paused screenshots keep it)
+        void RotorBlur(bool headOn)
+        {
+            if (blurDisc == null) return;
+            float k = headOn && !struck ? Mathf.Clamp01((rpm - 150f) / 110f) : 0f;
+            if (k <= 0f) { if (blurDisc.enabled) blurDisc.enabled = false; }
+            else
+            {
+                if (!blurDisc.enabled) blurDisc.enabled = true;
+                if (blurMpb == null) blurMpb = new MaterialPropertyBlock();
+                blurMpb.SetColor("_BaseColor", new Color(1f, 1f, 1f, k)); blurDisc.SetPropertyBlock(blurMpb);
+            }
+            bool showBlades = k < 1f;
+            foreach (var b in blades) if (b.Value != null && b.Value.gameObject.activeSelf != showBlades) b.Value.gameObject.SetActive(showBlades);
+        }
+        // a blade that meets the ground or anything solid while turning breaks at that point, both blades lose that segment
+        // and everything outboard (stock SwashRotor.BreakSegments), the rotor stops and the stock rotor strike dust plays
+        void RotorStrike()
+        {
+            if ((colScanT -= Time.unscaledDeltaTime) <= 0f)
+            {
+                colScanT = 2f; ownCols.Clear();
+                foreach (var c in partList) if (c != null) foreach (var col in c.GetComponentsInChildren<Collider>(true)) ownCols.Add(col);
+                if (unit != null) foreach (var col in unit.GetComponentsInChildren<Collider>(true)) ownCols.Add(col);
+            }
+            for (int s = 0; s < 2; s++)
+            {
+                if (bladeDir[s] == Vector3.zero) continue;
+                Vector3 c0 = spin.position, d = spin.TransformDirection(bladeDir[s]);
+                float best = 99f; RaycastHit bh = default(RaycastHit);
+                foreach (var h in Physics.RaycastAll(c0 + d * 0.6f, d, ROTOR_R - 0.6f, ~((1 << 2) | (1 << 3) | (1 << 5) | (1 << 9) | (1 << 10) | (1 << 13) | (1 << 15)), QueryTriggerInteraction.Ignore))
+                {
+                    if (h.collider == null || ownCols.Contains(h.collider)) continue;
+                    if (h.collider.attachedRigidbody != null && ownCols.Contains(h.collider)) continue;
+                    if (h.distance < best) { best = h.distance; bh = h; }
+                }
+                if (best > 50f) continue;
+                float r = best + 0.6f; int seg = r < 1.9f ? 1 : r < 3.4f ? 2 : 3;
+                struck = true; rpm = 0f;
+                Plugin.Log.LogInfo("UL-2 rotor strike on " + bh.collider.name + " at " + r.ToString("0.00") + " m, breaking segment " + seg);
+                var mBreak = AccessTools.Method(AccessTools.TypeByName("AeroPart"), "BreakJointsToPart");
+                for (int side = 0; side < 2; side++)
+                {
+                    var child = wingParts[side, seg - 1]; var parent = seg == 1 ? headPart : wingParts[side, seg - 2];
+                    if (child != null && parent != null && mBreak != null) try { mBreak.Invoke(child, new object[] { parent }); } catch (Exception e) { Plugin.Log.LogWarning("UL-2 rotor strike break: " + e.Message); }
+                }
+                try
+                {
+                    var tGA = AccessTools.TypeByName("GameAssets"); var gi = tGA == null ? null : AccessTools.Field(tGA, "i")?.GetValue(null) ?? AccessTools.Property(tGA, "i")?.GetValue(null, null);
+                    var pf = gi == null ? null : AccessTools.Field(tGA, "rotorStrike_dirt")?.GetValue(gi) as GameObject;
+                    if (pf != null) Destroy(Instantiate(pf, bh.point, Quaternion.LookRotation(Vector3.up + d * 0.3f)), 20f);
+                }
+                catch { }
+                return;
+            }
         }
         void Needle(string id, float deg, float dt)
         {
@@ -600,8 +661,17 @@ namespace UL2Airtrike
                 {
                     var vis = spin.Find("spin_" + s + "_" + seg[k]);
                     if (vis != null && parts.TryGetValue(wing[k] + s, out var wp)) blades.Add(new KeyValuePair<Component, Transform>(wp, vis));
+                    Component wpk; parts.TryGetValue(wing[k] + s, out wpk); wingParts[s == "L" ? 0 : 1, k] = wpk;
+                }
+                var tipv = spin.Find("spin_" + s + "_tip"); var tmf = tipv != null ? tipv.GetComponent<MeshFilter>() : null;
+                if (tmf != null && tmf.sharedMesh != null)
+                {
+                    var dw = tipv.TransformPoint(tmf.sharedMesh.bounds.center) - spin.position; dw -= Vector3.Project(dw, spin.up);
+                    bladeDir[s == "L" ? 0 : 1] = spin.InverseTransformDirection(dw.normalized);
                 }
             }
+            var bdt = spin.Find("spin_disc"); blurDisc = bdt != null ? bdt.GetComponent<Renderer>() : null;
+            Plugin.Log.LogInfo("UL-2 rotor blur disc " + (blurDisc != null) + ", blade strike lines " + (bladeDir[0] != Vector3.zero) + "/" + (bladeDir[1] != Vector3.zero));
             ready = true; spawnT = Time.time;
             // 0.15.5 diagnostics: log every part that breaks off, and when (tail / rotor blade reports)
             var ev = tPart.GetEvent("onPartDetached");

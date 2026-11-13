@@ -1,6 +1,6 @@
 """Six-pack dial faces for the pilot panel, drawn in the PB-22 Trident style (near-black dials, white ticks and
 numbers, grey labels). Nick 2026-11-12 22:04: standard six-pack copied from the Trident.
-Writes UL2_gf_<id>_img.png (256x256) for asi, adi, alt, turn, hdg, vsi; mirrored left-right like the copilot
+Writes UL2_gf_<id>_img.png (256x256) for asi, adi, alt, eng, hdg, vsi; mirrored left-right like the copilot
 pictures, because the Blender face UVs come out mirrored in Unity.
 Usage: python3 gauge_faces.py <outdir>"""
 import sys, os, math
@@ -43,9 +43,11 @@ def arc(d, a0, a1, col, r=RR * 0.9, w=7):   # clock angles (0 = 12 o'clock)
 
 
 faces = {}
-# airspeed 0-120 kt over -135..+135 (plugin)
-im, d = base(); arc(d, -135 + 270 * 25 / 120, -135 + 270 * 85 / 120, GREEN); arc(d, -135 + 270 * 85 / 120, -135 + 270 * 110 / 120, AMBER)
-ticks(d, -135, 135, 6); numbers(d, -135, 135, [0, 20, 40, 60, 80, 100, 120], 22); text(d, C, C + 52, 'KNOTS', 16, GREY); faces['asi'] = im
+# airspeed 0-280 km/h over -135..+135 (plugin); 0.15.26 (Nick 04:56): green 50-200, yellow 200-240, red line at 240
+def kmh(v): return -135 + 270 * v / 280
+im, d = base(); arc(d, kmh(50), kmh(200), GREEN); arc(d, kmh(200), kmh(240), AMBER)
+a = math.radians(kmh(240)); d.line((C + RR * 0.74 * math.sin(a), C - RR * 0.74 * math.cos(a), C + RR * 0.97 * math.sin(a), C - RR * 0.97 * math.cos(a)), fill=RED, width=6)
+ticks(d, -135, 135, 7, 4); numbers(d, -135, 135, [0, 40, 80, 120, 160, 200, 240, 280], 19); text(d, C, C + 52, 'KM/H', 16, GREY); faces['asi'] = im
 # attitude: sky over ground with a bank scale; the plugin rolls the horizon bar over it
 im, d = base(); d.pieslice((C - RR, C - RR, C + RR, C + RR), 180, 360, fill=SKY); d.pieslice((C - RR, C - RR, C + RR, C + RR), 0, 180, fill=GND)
 d.line((C - RR, C, C + RR, C), fill=WHITE, width=3)
@@ -59,18 +61,14 @@ faces['adi'] = im
 # altimeter: one turn per 1000 ft
 im, d = base(); ticks(d, 0, 324, 9, 5); numbers(d, 0, 324, list(range(10)), 24); text(d, C, C - 40, 'ALT', 16, GREY); text(d, C, C + 44, 'x100 FT', 14, GREY)
 faces['alt'] = im
-# turn coordinator: standard-rate marks at +-20 deg, slip ball
-im, d = base()
-for ang in (-20, 0, 20):
-    a = math.radians(ang - 90 if ang else -90)
-for side in (-1, 1):
-    for ang in (0, 20):
-        a = math.radians(90 + side * ang) if side > 0 else math.radians(-90 - ang)
-        r0 = RR * 0.70; d.line((C + r0 * math.sin(a), C - r0 * math.cos(a), C + RR * 0.95 * math.sin(a), C - RR * 0.95 * math.cos(a)), fill=WHITE, width=5)
-text(d, C - 70, C + 34, 'L', 20); text(d, C + 70, C + 34, 'R', 20); text(d, C, C - 60, 'TURN COORD', 13, GREY); text(d, C, C - 42, '2 MIN', 12, GREY)
-d.rounded_rectangle((C - 60, C + 60, C + 60, C + 84), 12, outline=WHITE, width=2); d.ellipse((C - 10, C + 62, C + 10, C + 82), fill=(10, 10, 10), outline=WHITE)
-faces['turn'] = im
-# heading: fixed card, the needle points at the heading
+# engine rpm (0.15.26, Nick 04:56, replaces the turn coordinator): 0-7000 rpm over -135..+135, green 1400-5500,
+# yellow 5500-5800 (5 min take-off power), red line 5800
+def erpm(v): return -135 + 270 * v / 7000
+im, d = base(); arc(d, erpm(1400), erpm(5500), GREEN); arc(d, erpm(5500), erpm(5800), AMBER)
+a = math.radians(erpm(5800)); d.line((C + RR * 0.74 * math.sin(a), C - RR * 0.74 * math.cos(a), C + RR * 0.97 * math.sin(a), C - RR * 0.97 * math.cos(a)), fill=RED, width=6)
+ticks(d, -135, 135, 7, 2); numbers(d, -135, 135, list(range(8)), 22); text(d, C, C + 46, 'RPM', 16, GREY); text(d, C, C + 64, 'x1000', 13, GREY)
+faces['eng'] = im
+# heading: the card turns under a fixed red lubber pointer (0.15.26, Nick 04:56)
 im, d = base(); ticks(d, 0, 360, 12, 3)
 for k, s in enumerate(['N', '3', '6', 'E', '12', '15', 'S', '21', '24', 'W', '30', '33']):
     a = math.radians(30 * k); text(d, C + RR * 0.58 * math.sin(a), C - RR * 0.58 * math.cos(a), s, 22 if len(s) == 1 else 18, AMBER if s == 'N' else WHITE)

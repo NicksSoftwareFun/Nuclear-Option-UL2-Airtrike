@@ -207,6 +207,25 @@ public static partial class UL2Builder
         if (m.HasProperty("_EmissionMap")) { m.SetTexture("_EmissionMap", tex); m.SetColor("_EmissionColor", new Color(0.5f, 0.5f, 0.5f)); m.EnableKeyword("_EMISSION"); }
         EditorUtility.SetDirty(m); return m;
     }
+    // 0.15.26 (Nick 04:59): rotor blur disc material = a copy of the stock attack helicopter's transparent rotor blur
+    // material (same shader settings) with our own disc texture: a faint dark disc, tip ring and segment rings
+    static Material BlurMat()
+    {
+        string tp = ART + "UL2_rotorblur.png";
+        var ti = (TextureImporter)AssetImporter.GetAtPath(tp);
+        if (ti != null) { ti.sRGBTexture = true; ti.alphaSource = TextureImporterAlphaSource.FromInput; ti.alphaIsTransparency = true; ti.mipmapEnabled = true; ti.wrapMode = TextureWrapMode.Clamp; ti.SaveAndReimport(); }
+        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(tp);
+        string path = ART + "UL2_rotorblur.mat";
+        var src = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/attackHelo1_rotor_blur_PLACEHOLDER.mat");
+        var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (m == null) { m = new Material(src); m.name = "UL2_rotorblur"; AssetDatabase.CreateAsset(m, path); }
+        else { m.shader = src.shader; m.CopyPropertiesFromMaterial(src); m.shaderKeywords = src.shaderKeywords; m.renderQueue = src.renderQueue; }
+        foreach (var t in new[] { "_BaseMap", "_MainTex" }) if (m.HasProperty(t)) m.SetTexture(t, tex);
+        foreach (var t in new[] { "_BumpMap", "_MetallicGlossMap", "_OcclusionMap", "_EmissionMap" }) if (m.HasProperty(t)) m.SetTexture(t, null);
+        m.SetColor("_BaseColor", Color.white); if (m.HasProperty("_Color")) m.SetColor("_Color", Color.white);
+        EditorUtility.SetDirty(m); log.AppendLine("rotor blur material from " + (src ? src.name : "NONE") + ", texture " + (tex != null) + ", queue " + m.renderQueue);
+        return m;
+    }
     static Material LitMat(string name, Color col, float smooth, float metal)
     {
         string path = ART + name + ".mat";
@@ -309,6 +328,8 @@ public static partial class UL2Builder
         MAT["UL2_bronze"] = LitMat("UL2_bronze", new Color32(150, 128, 100, 255), 0.45f, 0.10f);   // FDE cerakote, was bronze
         MAT["UL2_black"] = LitMat("UL2_black", new Color32(34, 34, 33, 255), 0.52f, 0.4f);
         MAT["UL2_fabric"] = LitMat("UL2_fabric", new Color32(166, 134, 94, 255), 0.03f, 0f);
+        MAT["UL2_red"] = LitMat("UL2_red", new Color32(200, 36, 28, 255), 0.4f, 0f);   // compass lubber pointer (Nick 04:56)
+        MAT["UL2_rotorblur"] = BlurMat();
         var glass = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/trainer_glass_PLACEHOLDER.mat");
         MAT["UL2_glass"] = glass != null ? glass : MAT["UL2_screen"];
         try { Mounts(); } catch (System.Exception ex) { log.AppendLine("MOUNTS ERROR " + ex); }
@@ -416,12 +437,18 @@ public static partial class UL2Builder
         {
             var nrm = new Vector3(0f, Mathf.Sin(20f * Mathf.Deg2Rad), -Mathf.Cos(20f * Mathf.Deg2Rad));   // Blender panel tilt -20 deg about X
             int ng = 0;
-            foreach (var id in new[] { "asi", "adi", "alt", "turn", "hdg", "vsi" })   // Trident-style six-pack (Nick 22:04)
+            foreach (var id in new[] { "asi", "adi", "alt", "eng", "hdg", "vsi" })   // Trident-style six-pack (Nick 22:04); engine rpm for the turn coordinator (04:56)
             {
                 if (L.ContainsKey("x_gf_" + id))
                 {   // printed dial face behind the needle
                     var gf = Find(cf, "UL2_gface_" + id) ?? New("UL2_gface_" + id, cf); gf.position = P("x_gf_" + id); gf.rotation = Quaternion.identity;
                     SetMesh(gf, "x_gf_" + id); gf.GetComponent<MeshRenderer>().sharedMaterial = PicMat("UL2_gf_" + id + "_img");
+                    if (id == "hdg")
+                    {   // 0.15.26 (Nick 04:56): the compass card turns (plugin) under the fixed red pointer
+                        var cp = Find(cf, "UL2_gauge_hdgcard") ?? New("UL2_gauge_hdgcard", cf);
+                        gf.SetParent(cf, true); cp.position = P("x_gf_" + id); cp.rotation = Quaternion.LookRotation(nrm, Vector3.up);
+                        gf.SetParent(cp, true);
+                    }
                 }
                 if (!L.ContainsKey("x_g_" + id)) continue;
                 var pv = Find(cf, "UL2_gauge_" + id) ?? New("UL2_gauge_" + id, cf);
@@ -429,6 +456,7 @@ public static partial class UL2Builder
                 var nd = Find(pv, "needle") ?? New("needle", pv);
                 nd.position = pv.position; nd.rotation = Quaternion.identity; SetMesh(nd, "x_g_" + id); ng++;
             }
+            foreach (var old in new[] { "UL2_gauge_turn", "UL2_gface_turn" }) { var o = Find(cf, old); if (o) Object.DestroyImmediate(o.gameObject); }   // turn coordinator gone (0.15.26)
             log.AppendLine("gauges " + ng);
         }
         // rudder pedals: the plugin slides UL2_pedal_L/R fore and aft on their rails with the yaw input (P220 / PB-22 way)
@@ -552,6 +580,8 @@ public static partial class UL2Builder
             au.clip = clip; au.loop = true; au.playOnAwake = false; au.volume = 0f; au.pitch = 0f;
             log.AppendLine("rotor audio: " + (clip != null ? clip.name : "NO CLIP") + ", source copied " + (srcA != null));
         }
+        // 0.15.26 (Nick 04:59): blur disc on the spinning frame; the plugin fades it in with rotor rpm and hides the blades
+        { var bd = Visual("spin_disc", "x_rotordisc", spin); var bdr = bd.GetComponent<MeshRenderer>(); bdr.sharedMaterial = MAT["UL2_rotorblur"]; bdr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; bdr.enabled = false; }
         // 0.15.9 (Nick 23:10): the hub bar / blade grips (rotorHead mesh) spin with the blades; the part keeps its collider
         Visual("spin_hub", "rotorHead", spin);
         { var hr = Need("rotorHead").GetComponent<MeshRenderer>(); if (hr) hr.enabled = false; }
@@ -583,6 +613,28 @@ public static partial class UL2Builder
         var pdc = Find(ph, "propDiscCollider"); if (pdc) { pdc.position = P("propCentre") + new Vector3(0f, 0f, -0.08f); pdc.localScale = new Vector3(0.68f, 0.68f, 0.15f); }
         Lod(ph, "propHub_colmesh");
         var csp = C(ph, "ConstantSpeedProp");
+        // 0.15.26 (Nick 04:59): our three blades as their own renderers on the spinning hub, wired into the stock PropBlade
+        // slots, so the stock prop hides them behind its blur disc when spinning and shows them (broken stubs after a strike)
+        {
+            var pr = new Transform[3];
+            for (int k = 0; k < 3; k++)
+            {
+                pr[k] = Visual("UL2_propblade_" + k, "x_propblade", hv);
+                pr[k].rotation = Quaternion.Euler(0f, 0f, 120f * k);
+            }
+            var pso = new SerializedObject(csp); var bl = pso.FindProperty("blades");
+            for (int i = 0; i < bl.arraySize; i++)
+            {
+                var e = bl.GetArrayElementAtIndex(i); var v = pr[i % 3];
+                e.FindPropertyRelative("renderer").objectReferenceValue = v.GetComponent<MeshRenderer>();
+                e.FindPropertyRelative("bladeMeshFilter").objectReferenceValue = v.GetComponent<MeshFilter>();
+            }
+            var dm = pso.FindProperty("bladeDamageMeshes"); dm.arraySize = 5;
+            for (int i = 0; i < 4; i++) dm.GetArrayElementAtIndex(i).objectReferenceValue = M["x_propstub"];
+            dm.GetArrayElementAtIndex(4).objectReferenceValue = M["x_propblade"];
+            pso.ApplyModifiedPropertiesWithoutUndo();
+            log.AppendLine("prop blades wired: " + bl.arraySize + " slots on 3 renderers, damage meshes stub x4");
+        }
         // Rotax 915-class pusher, uprated to 195 kW so it climbs at 5+ deg nose up (Nick 04:08 11-13)
         Set(csp, "bladeLength", 0.74f); Set(csp, "hubRadius", 0.12f); Set(csp, "nominalPower", 195000f); Set(csp, "momentOfInertia", 8f);
         Set(csp, "propTorqueLimit", 1500f); Set(csp, "hubFriction", 60f); Set(csp, "bladeStrength", 8000f);
@@ -1207,7 +1259,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.25\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.26\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
