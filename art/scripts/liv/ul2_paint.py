@@ -57,7 +57,7 @@ else:
     col = np.tile(OLIVE, (len(P), 1))
     col *= (1 + 0.035 * vnoise(P, 1.2, 3) + 0.02 * vnoise(P, 0.25, 7))[:, None]      # faint mottling of matte paint
 col *= (1 - 0.06 * np.clip((0.75 - P[:, 2]) / 0.3, 0, 1) * ids('cockpit_F', 'nose', 'gunmount_R'))[:, None]   # slightly dusty belly
-MARK = {'olive': WHITE, 'steel': BLACK, 'tiger': ORANGE}[LIV]
+MARK = {'olive': WHITE, 'steel': BLACK, 'tiger': WHITE}[LIV]   # 0.15.29 (Nick 12:29): tiger text white
 STEP = {'olive': BLACK, 'steel': BLACK, 'tiger': WHITE}[LIV]
 smooth = np.full(len(P), 0.28, np.float32)
 
@@ -92,9 +92,9 @@ n = 0
 fin = ids('vstab', 'rudder')
 if LIV == 'tiger':
     for sd in (-1, 1):
-        n += stamp(ids('vstab'), '\u2588\u2588\u2588', FONT, (-2.875, 1.397), 0.26, sd, np.array([20, 20, 21], np.float32) / 255)
+        n += stamp(ids('vstab'), '\u2588\u2588\u2588', FONT, (-2.91, 1.397), 0.24, sd, np.array([20, 20, 21], np.float32) / 255)
         n += stamp(ids('cockpit_F', 'nose'), '\u2588\u2588', FONT, (2.30, 0.95), 0.22, sd, np.array([20, 20, 21], np.float32) / 255)
-for sd in (-1, 1): n += stamp(ids('vstab'), '214', FONT, (-2.875, 1.397), 0.21, sd, MARK)         # big tail number, both sides
+for sd in (-1, 1): n += stamp(ids('vstab'), '214', FONT, (-2.91, 1.397), 0.19, sd, MARK)          # big tail number, both sides (0.15.29: centred on the fin chord, clear of the leading edge)
 for sd in (-1, 1): n += stamp(ids('vstabTip'), 'UL-2', FONT_S, (-2.95, 1.967), 0.066, sd, MARK)
 for sd in (-1, 1): n += stamp(ids('cockpit_F', 'nose'), '14', FONT, (2.30, 0.95), 0.18, sd, MARK)  # tactical number on the pod
 for sx in (-1, 1): n += stamp_top(ids('hstab_L' if sx < 0 else 'hstab_R'), 'NO STEP', FONT_S, (sx * 0.28, -2.80), 0.055, STEP)

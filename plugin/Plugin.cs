@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.28")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.29")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -207,7 +207,7 @@ namespace UL2Airtrike
             }
             catch (Exception e) { if (!inErr) { inErr = true; Plugin.Log.LogWarning("UL-2 inputs: " + e.Message); } }
         }
-        bool inErr;
+        bool inErr; float engDisp;
         // HUD rotor gauge (Nick 22:31/22:35/22:36): the Alkyon-style label from our HUD extras prefab (UL2_rotorGauge),
         // rpm readout and an idle (110) to full (450 rpm) bar, red until the rotor is fast enough to jump (400), then green
         // 0.15.20 (Nick 03:43): styled like the stock throttle gauge: carrot = set rpm, coloured arc bar + readout = actual rpm
@@ -240,8 +240,8 @@ namespace UL2Airtrike
                 var col = rpm >= 300f ? new Color(0.3f, 1f, 0.3f, 1f) : Color.Lerp(new Color(1f, 0.25f, 0.2f, 1f), new Color(1f, 0.6f, 0.1f, 1f), Mathf.Clamp01(rpm / 300f));
                 if (barImg != null) { barImg.fillAmount = f; barImg.color = col; }
                 if (carrotPiv != null) carrotPiv.localEulerAngles = new Vector3(0f, 0f, fs * 26f - 13f);
-                if (readPiv != null) readPiv.localEulerAngles = new Vector3(0f, 0f, f * 26f - 13f);
-                if (hudRead != null) { hudRead.text = Mathf.RoundToInt(rpm) + " RPM"; hudRead.color = col; hudRead.transform.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }
+                if (readPiv != null) { readPiv.localEulerAngles = new Vector3(0f, 0f, f * 26f - 13f); foreach (Transform ch in readPiv) ch.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }   // 0.15.29 (Nick 12:29): readout line stays flat like the throttle one
+                if (hudRead != null) { hudRead.text = Mathf.RoundToInt(rpm) + " RPM"; hudRead.color = col; if (hudRead.transform.parent != readPiv) hudRead.transform.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }
                 if (hudLabel != null) hudLabel.text = axis > 0.05f ? "ROTOR MANUAL" : autoSpin ? "ROTOR AUTO" : "ROTOR";
             }
             catch (Exception e) { if (!hudErr) { hudErr = true; Plugin.Log.LogWarning("UL-2 HUD gauge: " + e.Message); } }
@@ -539,7 +539,10 @@ namespace UL2Airtrike
             // six-pack (Nick 22:04, Trident style): attitude horizon bar, turn coordinator, heading
             var e = transform.eulerAngles;
             Needle("adi", -Wrap(e.z), dt);                                                  // horizon rolls against the bank (sign fixed 0.15.26, Nick 04:56)
-            Needle("eng", -135f + 270f * Mathf.Clamp01(er * 5800f / 7000f), dt);              // engine rpm 0-7000, 5800 at full power (replaces the turn coordinator)
+            // 0.15.29 (Nick 12:29, pinned at max): the game holds this engine at 100 % rpm whenever it runs (the prop governs),
+            // so the dial shows 1400 rpm idle to 5800 at full throttle, with a little lag like a real engine
+            engDisp = Mathf.MoveTowards(engDisp, er > 0.05f ? Mathf.Lerp(1400f, 5800f, thr) * Mathf.Clamp01(er) : 0f, 3000f * dt);
+            Needle("eng", -135f + 270f * Mathf.Clamp01(engDisp / 7000f), dt);
             Needle("hdgcard", -e.y, dt);                                                     // compass card turns under the fixed red pointer
             Needle("rotor", -135f + 270f * Mathf.Clamp01(rpm / 450f), dt);                   // rotor rpm, 0-450
             Needle("rpm", -135f + 270f * er, dt);
@@ -565,7 +568,33 @@ namespace UL2Airtrike
             bool fast = headOn && !struck && rpm > 230f;
             if (fast == rblurOn) return; rblurOn = fast;
             foreach (var g in rblur) if (g != null) g.SetActive(fast);
+            if (rinner != null) rinner.gameObject.SetActive(fast);
             foreach (var b in blades) if (b.Value != null) b.Value.gameObject.SetActive(!fast);
+        }
+        // 0.15.29 (Nick 12:29): blue inner rotor disc. Our own transparent materials never drew in game: they are copies of
+        // the editor stand-ins on the URP Lit shader, which the game does not ship in its transparent form, while the stock
+        // blur pieces get the game's real material. So the disc borrows the live stock blur material at runtime and only
+        // puts our texture on it.
+        Renderer rinner;
+        void InnerDisc(Transform spin)
+        {
+            try
+            {
+                var t = spin.Find("UL2_rinner"); if (t == null) { Plugin.Log.LogInfo("UL-2 inner rotor disc: none"); return; }
+                rinner = t.GetComponent<Renderer>(); var own = rinner != null ? rinner.sharedMaterial : null;
+                Renderer stock = null; foreach (var g in rblur) if (g != null) { stock = g.GetComponent<Renderer>(); if (stock != null) break; }
+                var sm = stock != null ? stock.sharedMaterial : null;
+                Plugin.Log.LogInfo("UL-2 inner rotor disc: own shader " + (own != null && own.shader != null ? own.shader.name + " supported " + own.shader.isSupported : "none")
+                    + " | stock blur shader " + (sm != null && sm.shader != null ? sm.shader.name + " supported " + sm.shader.isSupported + " queue " + sm.renderQueue : "none"));
+                if (own == null || sm == null) return;
+                Texture tex = own.HasProperty("_BaseMap") ? own.GetTexture("_BaseMap") : own.mainTexture;
+                var m = new Material(sm) { name = "UL2_rinner_live" };
+                foreach (var p in new[] { "_BaseMap", "_MainTex" }) if (m.HasProperty(p)) m.SetTexture(p, tex);
+                foreach (var p in new[] { "_BaseColor", "_Color", "_TintColor" }) if (m.HasProperty(p)) m.SetColor(p, Color.white);
+                rinner.sharedMaterial = m; rinner.gameObject.SetActive(false);
+                Plugin.Log.LogInfo("UL-2 inner rotor disc on the live stock blur material, texture " + (tex != null ? tex.name : "none"));
+            }
+            catch (Exception e) { Plugin.Log.LogWarning("UL-2 inner rotor disc: " + e.Message); }
         }
         // the game paints liveries only into the airframe parts; the side gun housing rides on the gun mount, so it copies
         // the airframe skin's livery texture and gloss (one property block, checked twice a second)
@@ -713,6 +742,7 @@ namespace UL2Airtrike
                 }
             }
             rblur.Clear(); foreach (Transform ch in spin) if (ch.name.StartsWith("UL2_rblur_")) rblur.Add(ch.gameObject);
+            InnerDisc(spin);
             Plugin.Log.LogInfo("UL-2 rotor blur segments " + rblur.Count + ", blade strike lines " + (bladeDir[0] != Vector3.zero) + "/" + (bladeDir[1] != Vector3.zero));
             ready = true; spawnT = Time.time;
             // 0.15.5 diagnostics: log every part that breaks off, and when (tail / rotor blade reports)

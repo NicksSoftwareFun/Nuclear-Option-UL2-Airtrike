@@ -341,8 +341,11 @@ for sx in (-1, 1):
         NM = NM @ Matrix.Scale(_GS, 4)
         if gid == 'adi': box(f'gauge_needle{sx}{k}', (0, 0, 0), (0.044, 0.002, 0.003), MECH, M=NM)          # horizon bar
         elif gid == 'hdg':                                                                                   # fixed red lubber pointer over the turning card
-            box(f'gauge_needle{sx}{k}', (0, 0, 0.016), (0.0035, 0.002, 0.020), 'UL2_red', M=NM)
-            plate(f'gauge_needle_tri{sx}{k}', [(-0.006, 0.026), (0.006, 0.026), (0, 0.034)], 0.002, 'UL2_red', NM @ Matrix.Rotation(R(90), 4, 'X'))
+            # 0.15.29 (Nick 12:29): a thin red line with an open window round the heading number under it
+            box(f'gauge_needle{sx}{k}', (0, 0, 0.0085), (0.0012, 0.002, 0.013), 'UL2_red', M=NM)                 # stem
+            for wx in (-1, 1): box(f'gauge_needle_rail{sx}{k}{wx}', (wx * 0.0050, 0, 0.0215), (0.0010, 0.002, 0.0130), 'UL2_red', M=NM)
+            for wz in (0.0155, 0.0275): box(f'gauge_needle_cap{sx}{k}{wz}', (0, 0, wz), (0.0110, 0.002, 0.0010), 'UL2_red', M=NM)
+            plate(f'gauge_needle_tri{sx}{k}', [(-0.0025, 0.028), (0.0025, 0.028), (0, 0.032)], 0.002, 'UL2_red', NM @ Matrix.Rotation(R(90), 4, 'X'))
         else: box(f'gauge_needle{sx}{k}', (0, 0, 0.011), (0.0035, 0.002, 0.024), MECH, M=NM)
         part('cockpit_F')
         # printed dial face (Trident style): its own disc with a picture, just behind the needle
@@ -896,7 +899,17 @@ for k in range(3):
         cdir = (t * math.cos(R(tw)) + Vector((0, 1, 0)) * math.sin(R(tw))); nrm = d.cross(cdir).normalized()
         st.append((PROP + d * rr - cdir * chd * 0.35, cdir * chd, nrm))
     if k == 0:   # 0.15.26: one blade as its own piece, used three times in Unity (the stock prop hides it when blurred)
-        part('x_propblade', 'propHub', PROP); wing('prop_blade0', st, DARK, t=0.11)
+        part('x_propblade', 'propHub', PROP)
+        # 0.15.29 (Nick 12:29): yellow tip and band like the stock prop disc's rings; blade split at the band edges
+        RR = [0.10, 0.22, 0.45, 0.68, 0.82, PROP_R]
+        def st_at(r):
+            for i in range(len(RR) - 1):
+                if RR[i] <= r <= RR[i + 1] + 1e-9:
+                    f = (r - RR[i]) / (RR[i + 1] - RR[i]); return tuple(Vector(st[i][j]).lerp(Vector(st[i + 1][j]), f) for j in range(3))
+        cuts = [0.10, 0.22, 0.45, 0.66, 0.68, 0.71, 0.80, 0.82, PROP_R]
+        for q in range(len(cuts) - 1):
+            r0, r1 = cuts[q], cuts[q + 1]; yel = 0.66 <= r0 < 0.71 or r0 >= 0.80
+            wing(f'prop_blade0_{q}', [st_at(r0), st_at(r1)], 'UL2_yellow' if yel else DARK, t=0.11)
         part('x_propstub', 'propHub', PROP); wing('prop_stub0', st[:3] + [(st[2][0] + d * 0.09 + st[2][1] * 0.3, st[2][1] * 0.45, st[2][2])], DARK, t=0.11)
         part('propHub')
 for sx, tag in ((1, 'R'), (-1, 'L')):
@@ -975,7 +988,11 @@ part('rudderTip', 'vstabTip', (0, -3.392, 1.50))
 wing('rudderTip_w', [((0, -3.392, 1.50), (0, -0.26, 0), X), ((0, -3.392, 1.68), (0, -0.22, 0), X)], SKIN, t=0.09)
 part('tailboom_R')
 for k in range(3): tube(f'rudder_hinge{k}', (0, -3.386, 0.88 + 0.26 * k), (0, -3.386, 0.94 + 0.26 * k), 0.013, MECH, 8)
-for sx in (-1, 1): pipe(f'rudder_cable{sx}', [(sx * 0.03, -1.40, KZ + 0.06), (sx * 0.035, -1.75, 0.58), (sx * 0.04, -2.15, 0.50), (sx * 0.045, -2.50, 0.62), (sx * 0.05, -2.85, 0.88), (sx * 0.05, -3.25, 0.98)], 0.003, MECH, 4, segs=4)
+# 0.15.29 (Nick 12:29): the cables are split at the boom joint, so a broken-off tail no longer drags two lines with it
+for sx in (-1, 1): pipe(f'rudder_cable{sx}', [(sx * 0.04, -2.15, 0.50), (sx * 0.045, -2.50, 0.62), (sx * 0.05, -2.85, 0.88), (sx * 0.05, -3.25, 0.98)], 0.003, MECH, 4, segs=4)
+part('tailboom_F')
+for sx in (-1, 1): pipe(f'rudder_cableF{sx}', [(sx * 0.03, -1.40, KZ + 0.06), (sx * 0.035, -1.75, 0.58), (sx * 0.04, -2.14, 0.50)], 0.003, MECH, 4, segs=4)
+part('tailboom_R')
 
 # ================================================================ main gear: composite bow halves
 for sx, tag in ((1, 'R'), (-1, 'L')):

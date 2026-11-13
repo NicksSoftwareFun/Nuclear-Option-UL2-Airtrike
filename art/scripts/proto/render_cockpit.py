@@ -21,6 +21,11 @@ def S(name, loc, look, fov=None, lens=40, res=(1600, 900), fp=False, clip=0.05):
 def dirn(pitch_down): return EYE + Vector((0, math.cos(math.radians(pitch_down)), -math.sin(math.radians(pitch_down))))
 S('fp_level', EYE, dirn(0), fov=50, fp=True)
 S('fp_down10', EYE, dirn(10), fov=50, fp=True)
+S('fp_right', EYE, (0.40, 2.05, 1.40), lens=28, fp=True)   # 0.15.29 glass to hull edge check
+S('fp_right_zoom', EYE, (0.37, 2.05, 1.13), lens=90, fp=True)
+S('ws_corner', (0.75, 1.80, 1.35), (0.38, 2.03, 1.13), lens=110, res=(1200, 900))
+S('ws_corner_in', (0.05, 1.85, 1.40), (0.37, 2.03, 1.13), lens=90, res=(1200, 900))
+S('ws_side_out', (0.95, 1.75, 1.45), (0.37, 2.10, 1.18), lens=55, res=(1200, 900))
 S('stick_grip', (0.20, 1.50, 1.62), (0, 1.69, 1.39), lens=60, res=(1200, 900), fp=True)
 S('throttle', (-0.10, 1.45, 1.55), (-0.31, 1.62, 1.40), lens=60, res=(1200, 900), fp=True)
 S('pedals', (0.30, 1.75, 1.05), (0, 2.28, 0.62), lens=30, res=(1200, 900), fp=True)

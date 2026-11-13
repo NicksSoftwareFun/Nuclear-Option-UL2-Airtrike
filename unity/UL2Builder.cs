@@ -201,7 +201,7 @@ public static partial class UL2Builder
     static Material PicMat(string name)
     {
         var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(ART + name + ".png");
-        var m = LitMat(name, Color.white, 0.8f, 0f);
+        var m = LitMat(name, Color.white, 0.12f, 0f);   // 0.15.29 (Nick 12:29): was 0.8, the sun behind washed the dials out
         if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
         if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", tex);
         if (m.HasProperty("_EmissionMap")) { m.SetTexture("_EmissionMap", tex); m.SetColor("_EmissionColor", new Color(0.5f, 0.5f, 0.5f)); m.EnableKeyword("_EMISSION"); }
@@ -332,6 +332,7 @@ public static partial class UL2Builder
         MAT["UL2_red"] = LitMat("UL2_red", new Color32(200, 36, 28, 255), 0.4f, 0f);   // compass lubber pointer (Nick 04:56)
         MAT["UL2_rotorblur"] = BlurMat("UL2_rotorblur"); MAT["UL2_propblur"] = BlurMat("UL2_propblur");
         MAT["UL2_white"] = LitMat("UL2_white", new Color32(232, 234, 232, 255), 0.75f, 0f);   // spinner tip and spiral (Nick 05:12)
+        MAT["UL2_yellow"] = LitMat("UL2_yellow", new Color32(236, 190, 30, 255), 0.5f, 0f);   // prop tip and band stripes (Nick 12:29)
         var glass = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/trainer_glass_PLACEHOLDER.mat");
         MAT["UL2_glass"] = glass != null ? glass : MAT["UL2_screen"];
         try { Mounts(); } catch (System.Exception ex) { log.AppendLine("MOUNTS ERROR " + ex); }
@@ -551,6 +552,13 @@ public static partial class UL2Builder
             var av = Find(ail, "aileron_" + s + "_visible"); if (av) { av.position = tipEnd; NoMesh(av); }
             // nav light rides the tail endplate; the Cricket wingtip and flaps go
             var nl = Need("navLight_" + s); nl.SetParent(Need("tailboom_" + (s == "L" ? "L" : "R")), true); nl.position = P("navLight_" + s);
+            // 0.15.29 (Nick 12:29, lights hovering off the tail): the Cricket light sits 15 cm outboard of its pivot and its
+            // lens mesh floats past our end plate; put the glow right on the end plate's outer face and drop the lens
+            { var fx = nl.GetComponentsInChildren<Light>(true).Select(l => l.transform).FirstOrDefault();
+              var want = new Vector3(sx * 1.015f, -0.10f, -2.80f);
+              if (fx != null) nl.position += want - fx.position;
+              var nr = nl.GetComponent<MeshRenderer>(); if (nr != null) nr.enabled = false;
+              log.AppendLine("nav light " + s + " glow at " + (fx != null ? fx.position.ToString("F3") : "none")); }
             DoomName("wingtip_" + s); DoomName("flap_" + s);
             var hb = Find(root, "HeatBlur_" + s); if (hb) hb.position = P("exhaust") + new Vector3(sx * 0.15f, 0f, 0f);
         }
@@ -612,6 +620,35 @@ public static partial class UL2Builder
                 }
             }
             log.AppendLine("rotor blur: " + nb + " stock blurred blade segments");
+            // 0.15.29 (Nick 12:29): blue disc over the inner rotor. The texture ships on our own material; the plugin moves
+            // it onto the live stock blur material at runtime (our transparent copies never draw in game)
+            {
+                string mp = ART + "UL2_rotorinner_mesh.asset";
+                var dm = AssetDatabase.LoadAssetAtPath<Mesh>(mp); bool newM = dm == null; if (newM) dm = new Mesh();
+                const int SEG = 48; const float R0 = 0.16f, R1 = 1.70f;
+                var vv = new List<Vector3>(); var uv = new List<Vector2>(); var tri = new List<int>();
+                for (int side = 0; side < 2; side++)
+                    for (int i = 0; i <= SEG; i++)
+                    {
+                        float a2 = 2f * Mathf.PI * i / SEG, c = Mathf.Cos(a2), sn = Mathf.Sin(a2);
+                        foreach (var rr in new[] { R0, R1 }) { vv.Add(new Vector3(c * rr, 0f, sn * rr)); uv.Add(new Vector2(0.5f + 0.5f * c * rr / R1, 0.5f + 0.5f * sn * rr / R1)); }
+                    }
+                int half = (SEG + 1) * 2;
+                for (int i = 0; i < SEG; i++)
+                {
+                    int q = i * 2; tri.AddRange(new[] { q, q + 2, q + 1, q + 1, q + 2, q + 3 });
+                    int w = half + q; tri.AddRange(new[] { w, w + 1, w + 2, w + 1, w + 3, w + 2 });
+                }
+                dm.Clear(); dm.SetVertices(vv); dm.SetUVs(0, uv); dm.SetTriangles(tri, 0); dm.RecalculateNormals(); dm.RecalculateBounds();
+                if (newM) AssetDatabase.CreateAsset(dm, mp); else EditorUtility.SetDirty(dm);
+                var it = Find(spin, "UL2_rinner") ?? New("UL2_rinner", spin);
+                it.localPosition = Vector3.up * 0.07f; it.localRotation = Quaternion.identity; it.localScale = Vector3.one;
+                var imf = it.GetComponent<MeshFilter>(); if (imf == null) imf = it.gameObject.AddComponent<MeshFilter>(); imf.sharedMesh = dm;
+                var imr = it.GetComponent<MeshRenderer>(); if (imr == null) imr = it.gameObject.AddComponent<MeshRenderer>();
+                imr.sharedMaterial = BlurMat("UL2_rotorinner"); imr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                it.gameObject.SetActive(false);
+                log.AppendLine("inner rotor disc: radius " + R0 + "-" + R1 + " m, texture " + (imr.sharedMaterial.GetTexture("_BaseMap") != null));
+            }
         }
         // 0.15.9 (Nick 23:10): the hub bar / blade grips (rotorHead mesh) spin with the blades; the part keeps its collider
         Visual("spin_hub", "rotorHead", spin);
@@ -1060,8 +1097,12 @@ public static partial class UL2Builder
             var hs = New("housing", br); hs.localPosition = P("gunmount_R") - P("gunPivot"); hs.localRotation = Quaternion.identity;
             hs.gameObject.AddComponent<MeshFilter>().sharedMesh = M["gunmount_R"]; hs.gameObject.AddComponent<MeshRenderer>().sharedMaterials = Mats("gunmount_R");
             Set(tu, "traverseRate", 40f); Set(tu, "elevationRate", 35f);
-            var m = SaveMount(go, "UL2_sidegun", "turret_12.7mm_door", null, "12.7mm Side Gun (600 rounds)");
+            // 0.15.29 (Nick 12:29): no magazine changes, one 300-round belt fired however the pilot wants
+            foreach (var gn in go.GetComponentsInChildren<MonoBehaviour>(true).Where(c => c != null && c.GetType().Name == "Gun"))
+            { Set(gn, "magazineCapacity", 300); Set(gn, "magazines", 1); Set(gn, "reloadTime", 0f); log.AppendLine("side gun belt 300 rounds on " + gn.name); }
+            var m = SaveMount(go, "UL2_sidegun", "turret_12.7mm_door", null, "12.7mm Side Gun (300 rounds)");
             var so = new SerializedObject(m);
+            var amp = so.FindProperty("ammo"); if (amp != null) amp.intValue = 300;
             so.FindProperty("GearSafety").boolValue = false; so.FindProperty("GroundSafety").boolValue = false;
             so.FindProperty("drag").floatValue = 0.05f; so.FindProperty("emptyDrag").floatValue = 0.05f;
             so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
@@ -1174,6 +1215,70 @@ public static partial class UL2Builder
 
     // 0.15.7 (Nick 22:35), restyled 0.15.20: rotor rpm on the HUD the way the Alkyon shows its wing angle. Own copy of the stock
     // COIN HUD extras plus the Alkyon gauge's label (same font/style), and an idle-to-full bar; the plugin fills it in.
+    // ------------------------------------------------------------------ damage paper doll: copy of the Cricket status display with a
+    // stylised UL-2 side view. UI/UL2_status.png is the outline, UI/UL2_status_<part>.png one full-frame fill per part (named exactly as
+    // the part, which is how the stock StatusDisplay ties an image to a part), drawn in UI/order.txt order (same method as the P220).
+    static GameObject StatusDisplayUL2()
+    {
+        string ui = MOD + "UI/", dst = ui + "UL2_StatusDisplay.prefab";
+        string orderPath = System.IO.Path.GetFullPath(ui + "order.txt");
+        if (!System.IO.File.Exists(orderPath)) { log.AppendLine("status display: no UI/order.txt"); return null; }
+        var order = System.IO.File.ReadAllLines(orderPath).Where(l => l.Trim().Length > 0).Select(l => l.Trim()).ToArray();
+        System.Func<string, Sprite> Spr = n =>
+        {
+            string path = ui + n + ".png";
+            var ti = (TextureImporter)AssetImporter.GetAtPath(path);
+            if (ti == null) return null;
+            ti.textureType = TextureImporterType.Sprite; ti.spriteImportMode = SpriteImportMode.Single; ti.alphaIsTransparency = true;
+            ti.mipmapEnabled = false; ti.maxTextureSize = 1024; ti.SaveAndReimport();
+            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        };
+        AssetDatabase.DeleteAsset(dst);
+        if (!AssetDatabase.CopyAsset(PH + "GameObject/StatusDisplay_COIN_PLACEHOLDER.prefab", dst)) { log.AppendLine("status display copy failed"); return null; }
+        var go = PrefabUtility.LoadPrefabContents(dst);
+        try
+        {
+            go.name = "UL2_StatusDisplay";
+            const float S = 280f;
+            var rt0 = (RectTransform)go.transform; rt0.sizeDelta = new Vector2(S, S);
+            var bg = go.GetComponent<UnityEngine.UI.Image>(); bg.sprite = Spr("UL2_status");
+            var sd = go.GetComponents<Component>().First(c => c != null && c.GetType().Name == "StatusDisplay");
+            var so = new SerializedObject(sd);
+            var thr = new Dictionary<string, float>();
+            var arr = so.FindProperty("statusDisplays");
+            for (int i = 0; i < arr.arraySize; i++)
+            {
+                var e = arr.GetArrayElementAtIndex(i); var im = e.FindPropertyRelative("partImage").objectReferenceValue as Component;
+                if (im != null) thr[im.name] = e.FindPropertyRelative("redStatusThreshold").floatValue;
+            }
+            float dflt = thr.Count > 0 ? thr.Values.Average() : 0.5f;
+            foreach (Transform ch in go.transform.Cast<Transform>().ToArray()) if (!ch.name.Contains("FIRE")) Object.DestroyImmediate(ch.gameObject);
+            arr.arraySize = order.Length;
+            for (int i = 0; i < order.Length; i++)
+            {
+                var n = order[i];
+                var c = new GameObject(n, typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image));
+                c.layer = go.layer; var rt = (RectTransform)c.transform; rt.SetParent(go.transform, false);
+                rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f); rt.anchoredPosition = Vector2.zero; rt.sizeDelta = new Vector2(S, S);
+                rt.SetSiblingIndex(i);
+                var im = c.GetComponent<UnityEngine.UI.Image>(); im.sprite = Spr("UL2_status_" + n); im.raycastTarget = false; im.color = new Color(1f, 1f, 0f, 1f);
+                var e = arr.GetArrayElementAtIndex(i);
+                e.FindPropertyRelative("partImage").objectReferenceValue = im;
+                e.FindPropertyRelative("redStatusThreshold").floatValue = thr.ContainsKey(n) ? thr[n] : dflt;
+            }
+            so.ApplyModifiedPropertiesWithoutUndo();
+            // engine fire bar on the engine (pixel centre in the 512 px frame)
+            foreach (var f in go.transform.Cast<Transform>().Where(t => t.name.Contains("FIRE")).ToArray())
+            {
+                var rt = (RectTransform)f; rt.anchoredPosition = new Vector2((182f / 512f - 0.5f) * S, (0.5f - 200f / 512f) * S);
+                rt.localScale = Vector3.one; rt.sizeDelta = new Vector2(30f / 512f * S, 18f / 512f * S); rt.SetAsLastSibling();
+            }
+            PrefabUtility.SaveAsPrefabAsset(go, dst);
+            log.AppendLine("status display: " + order.Length + " parts, default red threshold " + dflt.ToString("F2"));
+        }
+        finally { PrefabUtility.UnloadPrefabContents(go); }
+        return AssetDatabase.LoadAssetAtPath<GameObject>(dst);
+    }
     static GameObject HudExtrasUL2()
     {
         if (!AssetDatabase.IsValidFolder(MOD + "UI")) AssetDatabase.CreateFolder(MOD.TrimEnd('/'), "UI");
@@ -1228,6 +1333,8 @@ public static partial class UL2Builder
         so.FindProperty("shortLandingSpeed").floatValue = 20f;
         so.FindProperty("groundTurningRadius").floatValue = 10f;
         so.FindProperty("HUDExtras").objectReferenceValue = HudExtrasUL2();
+        // 0.15.29 (Nick 12:29): own damage paper doll (UI/UL2_StatusDisplay.prefab, sprites from ui_doll/doll.py)
+        var sdp = StatusDisplayUL2(); if (sdp != null) so.FindProperty("StatusDisplay").objectReferenceValue = sdp;
         so.FindProperty("DefaultFuelLevel").floatValue = 1f;
         so.FindProperty("cruiseThrottle").floatValue = 0.75f;
         var liv = so.FindProperty("liveries"); liv.arraySize = 3;
@@ -1310,7 +1417,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.28\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.29\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
