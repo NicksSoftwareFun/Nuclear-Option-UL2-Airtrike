@@ -242,12 +242,13 @@ public static partial class UL2Builder
         var php = p.FindPropertyRelative("hardpoints"); php.arraySize = 1;
         php.GetArrayElementAtIndex(0).FindPropertyRelative("transform").objectReferenceValue = hp;
         php.GetArrayElementAtIndex(0).FindPropertyRelative("part").objectReferenceValue = C(seat, "AeroPart");
-        var op = p.FindPropertyRelative("weaponOptions"); op.arraySize = 5;
+        var op = p.FindPropertyRelative("weaponOptions"); op.arraySize = 6;
         op.GetArrayElementAtIndex(0).objectReferenceValue = null;
         op.GetArrayElementAtIndex(1).objectReferenceValue = Mount("UL2_s3_mg");
         op.GetArrayElementAtIndex(2).objectReferenceValue = Mount("UL2_s3_gl");
         op.GetArrayElementAtIndex(3).objectReferenceValue = Mount("UL2_s3_spot");
         op.GetArrayElementAtIndex(4).objectReferenceValue = Mount("UL2_s3_ecm");
+        op.GetArrayElementAtIndex(5).objectReferenceValue = Mount("UL2_s3_xbomb");   // 0.15.38 event content
     }
 
     // 0.15.33 (Nick 21:30): the stock ECM jamming pod carried in seat 3. The pod stands nose up, leaned 12 deg back
@@ -295,6 +296,83 @@ public static partial class UL2Builder
             ms.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
         }
         catch (System.Exception ex) { log.AppendLine("SEAT3 ecm ERROR " + ex); }
+        finally { Object.DestroyImmediate(go); }
+    }
+    // 0.15.38 (Nick 23:37): event content (a mount flagged isEventContent, hidden unless the mission allows event content).
+    // The stock GPO-N 1.5kt bomb strapped nose-down in seat 3. Firing it spawns the bomb as usual (it costs a warhead like
+    // the stock bomb, its info is nuclear), but the plugin keeps it on the seat and plays a timer tick; the copy's own fuse
+    // does the rest: arm delay 6 s and an altitude fuse so high that it goes off the moment it arms. It stays intangible
+    // (tangible delay 30 s) so it never strikes its own aircraft, and its parachute never opens (open delay 999 s).
+    // AI never picks it (effectiveness 0).
+    const string XB_NAME = "Expedient 1.5kt Bomb";
+    const string XB_DESC = "Volunteers needed. Single men only. Over 40 preferred.";
+    // pose in seat3_hp space: nose point and lean (deg, tail toward +x); set from the fit Nick picks
+    static readonly Vector3 XB_NOSE = new Vector3(-0.05f, -0.30f, 0.05f);   // Nick 23:42: nose on the seat 3 floor, leaned far right
+    const float XB_LEAN = 62f;   // tail fins stay clear under the rotor disc
+    static void Seat3XBomb()
+    {
+        // 1. the bomb itself: own prefab + definition + info, copied from the stock GPO-N
+        string bp = MNT + "UL2_xbomb.prefab", dp = MNT + "UL2_xbomb_def.asset", ip = MNT + "UL2_xbomb_info.asset";
+        if (AssetDatabase.LoadMainAssetAtPath(bp) == null) { AssetDatabase.CopyAsset(PH + "GameObject/nuclearBomb1_PLACEHOLDER.prefab", bp); AssetDatabase.ImportAsset(bp); }
+        var stockMissile = C(AssetDatabase.LoadAssetAtPath<GameObject>(PH + "GameObject/nuclearBomb1_PLACEHOLDER.prefab").transform, "Missile");
+        var stockDef = new SerializedObject(stockMissile).FindProperty("definition").objectReferenceValue;
+        if (AssetDatabase.LoadMainAssetAtPath(dp) == null) { AssetDatabase.CopyAsset(AssetDatabase.GetAssetPath(stockDef), dp); AssetDatabase.ImportAsset(dp); }
+        if (AssetDatabase.LoadMainAssetAtPath(ip) == null) { AssetDatabase.CopyAsset(PH + "MonoBehaviour/info_nuclearBomb1_PLACEHOLDER.asset", ip); AssetDatabase.ImportAsset(ip); }
+        var def = AssetDatabase.LoadMainAssetAtPath(dp); var info = AssetDatabase.LoadMainAssetAtPath(ip);
+        var tickClip = AssetDatabase.LoadAssetAtPath<AudioClip>(ART + "UL2_tick.wav");
+        var bgo = PrefabUtility.LoadPrefabContents(bp);
+        try
+        {
+            bgo.name = "UL2_xbomb";
+            var ms = new SerializedObject(C(bgo.transform, "Missile"));
+            ms.FindProperty("definition").objectReferenceValue = def; ms.FindProperty("info").objectReferenceValue = info;
+            ms.ApplyModifiedPropertiesWithoutUndo();
+            var sk = new SerializedObject(C(bgo.transform, "OpticalSeekerBomb"));
+            sk.FindProperty("armDelay").floatValue = 6f; sk.FindProperty("altitudeFuseHeight").floatValue = 100000f; sk.FindProperty("tangibleDelay").floatValue = 30f;
+            sk.ApplyModifiedPropertiesWithoutUndo();
+            foreach (var c in bgo.GetComponentsInChildren<Component>(true))
+                if (c != null && c.GetType().Name == "Parachute") { var ps = new SerializedObject(c); var od = ps.FindProperty("openDelayMin"); if (od != null) { od.floatValue = 999f; ps.ApplyModifiedPropertiesWithoutUndo(); } else log.AppendLine("xbomb: no openDelayMin"); }
+            var tk = Find(bgo.transform, "UL2_tick"); if (tk == null) tk = New("UL2_tick", bgo.transform);
+            tk.localPosition = Vector3.zero; tk.localRotation = Quaternion.identity;
+            var src = tk.GetComponent<AudioSource>(); if (src == null) src = tk.gameObject.AddComponent<AudioSource>();
+            src.clip = tickClip; src.playOnAwake = false; src.loop = false; src.spatialBlend = 1f; src.volume = 1f; src.dopplerLevel = 0f;
+            src.rolloffMode = AudioRolloffMode.Logarithmic; src.minDistance = 6f; src.maxDistance = 400f;
+            PrefabUtility.SaveAsPrefabAsset(bgo, bp);
+        }
+        finally { PrefabUtility.UnloadPrefabContents(bgo); }
+        var bomb = AssetDatabase.LoadAssetAtPath<GameObject>(bp);
+        var dso = new SerializedObject(def);
+        dso.FindProperty("jsonKey").stringValue = "UL2_xbomb"; dso.FindProperty("unitName").stringValue = XB_NAME;
+        dso.FindProperty("unitPrefab").objectReferenceValue = bomb;
+        dso.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(def);
+        var iso = new SerializedObject(info);
+        iso.FindProperty("weaponName").stringValue = XB_NAME; iso.FindProperty("shortName").stringValue = "X-BOMB";
+        iso.FindProperty("description").stringValue = XB_DESC;
+        iso.FindProperty("weaponPrefab").objectReferenceValue = bomb;
+        iso.FindProperty("effectiveness.antiSurface").floatValue = 0f; iso.FindProperty("effectiveness.antiAir").floatValue = 0f;
+        iso.FindProperty("useWeaponDoors").boolValue = false;
+        iso.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(info);
+
+        // 2. the seat 3 mount: stock external bomb mount, pylon removed, bomb posed nose-down in the seat
+        var go = CopyPrefab("nuclearBomb1_external", "UL2_s3_xbomb");
+        try
+        {
+            var rt = go.transform;
+            var py = rt.Find("pylon");   // the stock bomb hangs under its pylon: lift it out, then drop the pylon
+            var b = py.Find("bomb"); b.SetParent(rt, false); b.localScale = Vector3.one; b.name = "UL2_xbomb_mounted";   // the stock bomb carries an inverse of the pylon scale
+            Object.DestroyImmediate(py.gameObject);
+            var n = new Vector3(-Mathf.Sin(XB_LEAN * Mathf.Deg2Rad), -Mathf.Cos(XB_LEAN * Mathf.Deg2Rad), 0f);
+            b.localRotation = Quaternion.LookRotation(n, Vector3.forward);
+            b.localPosition = XB_NOSE - n * 1.58f;   // bomb origin sits 1.58 m behind the nose tip (mesh z -2.02..1.58)
+            var mm = C(b, "MountedMissile");
+            var mso = new SerializedObject(mm); mso.FindProperty("info").objectReferenceValue = info; mso.ApplyModifiedPropertiesWithoutUndo();
+            var m = SaveMount(go, "UL2_s3_xbomb", "nuclearBomb1_external", info, XB_NAME);
+            var wso = new SerializedObject(m);
+            wso.FindProperty("isEventContent").boolValue = true;
+            wso.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
+            log.AppendLine("seat3 xbomb: def " + def.name + ", tick " + (tickClip != null) + ", nose " + XB_NOSE + " lean " + XB_LEAN);
+        }
+        catch (System.Exception ex) { log.AppendLine("SEAT3 xbomb ERROR " + ex); }
         finally { Object.DestroyImmediate(go); }
     }
     static KeyValuePair<Mesh, Material[]> EcmKitMesh()

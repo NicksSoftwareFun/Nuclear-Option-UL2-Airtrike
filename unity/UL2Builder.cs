@@ -338,6 +338,7 @@ public static partial class UL2Builder
         try { Mounts(); } catch (System.Exception ex) { log.AppendLine("MOUNTS ERROR " + ex); }
         try { Seat3Mounts(); } catch (System.Exception ex) { log.AppendLine("SEAT3 MOUNTS ERROR " + ex); }
         try { Seat3Ecm(); } catch (System.Exception ex) { log.AppendLine("SEAT3 ECM ERROR " + ex); }
+        try { Seat3XBomb(); } catch (System.Exception ex) { log.AppendLine("SEAT3 XBOMB ERROR " + ex); }
 
         root = PrefabUtility.LoadPrefabContents(SRC).transform;
         root.name = "COIN_PLACEHOLDER";
@@ -1463,7 +1464,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.37\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.38\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

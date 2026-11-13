@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.37")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.38")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -87,9 +87,67 @@ namespace UL2Airtrike
             {
                 if (__instance == null || !__instance.name.StartsWith("UL2Airtrike")) return;
                 if (__instance.GetComponent<RotorSpinner>() == null) __instance.gameObject.AddComponent<RotorSpinner>();
+                if (__instance.GetComponent<XBombHold>() == null) __instance.gameObject.AddComponent<XBombHold>();
             }
             catch (Exception e) { Log.LogError("UL-2 rotor: " + e); }
         }
+    }
+
+    // 0.15.38 (Nick 23:37/23:38): event content "Expedient 1.5kt Bomb" in seat 3. Why a plugin: no stock mount keeps a
+    // fired weapon on the aircraft. When the posed bomb on the seat 3 mount is fired (the stock MountedMissile hides it and
+    // spawns the bomb at its exact pose), the spawned bomb is held kinematic on that pose until its own fuse (bundle copy:
+    // arm 6 s, altitude fuse 100 km = goes off as it arms) detonates it, with a timer tick that speeds up toward the end.
+    // If the airframe loses the seat the bomb is let go and still goes off on time.
+    public class XBombHold : MonoBehaviour
+    {
+        Transform mounted; bool wasActive; float scanT, clock, searchUntil = -1f, nextTick;
+        Rigidbody held; AudioSource tick; float heldT0;
+        static readonly HashSet<int> claimed = new HashSet<int>();
+        void Update()
+        {
+            try
+            {
+                float dt = Time.timeScale > 0f ? Time.unscaledDeltaTime : 0f; clock += dt;
+                if (mounted == null)
+                {
+                    if (clock < scanT) return; scanT = clock + 2f;
+                    foreach (var t in GetComponentsInChildren<Transform>(true)) if (t.name == "UL2_xbomb_mounted") { mounted = t; wasActive = t.gameObject.activeInHierarchy; break; }
+                    return;
+                }
+                bool act = mounted.gameObject.activeInHierarchy;
+                if (wasActive && !act && held == null) searchUntil = clock + 2f;
+                if (!wasActive && act) { held = null; tick = null; }
+                wasActive = act;
+                if (searchUntil > clock && held == null)
+                {
+                    foreach (var rb in FindObjectsOfType<Rigidbody>())
+                    {
+                        if (rb == null || !rb.name.StartsWith("UL2_xbomb") || claimed.Contains(rb.GetInstanceID())) continue;
+                        if ((rb.position - mounted.position).sqrMagnitude > 400f) continue;
+                        held = rb; claimed.Add(rb.GetInstanceID()); heldT0 = clock; nextTick = clock; searchUntil = -1f;
+                        var tt = rb.transform.Find("UL2_tick"); tick = tt != null ? tt.GetComponent<AudioSource>() : null;
+                        Plugin.Log.LogInfo("UL-2 expedient bomb fired: held on seat 3, tick " + (tick != null));
+                        break;
+                    }
+                }
+                if (held != null && tick != null && tick.clip != null && clock >= nextTick)
+                {
+                    float e = clock - heldT0;
+                    tick.PlayOneShot(tick.clip);
+                    nextTick += e < 3f ? 1f : e < 5f ? 0.5f : 0.2f;
+                }
+            }
+            catch (Exception e) { Plugin.Log.LogError("UL-2 xbomb: " + e); enabled = false; }
+        }
+        void Hold()
+        {
+            if (held == null) return;
+            if (mounted == null || !mounted.gameObject.scene.IsValid()) { held.isKinematic = false; held = null; return; }
+            if (!held.isKinematic) held.isKinematic = true;
+            held.transform.SetPositionAndRotation(mounted.position, mounted.rotation);
+        }
+        void FixedUpdate() { try { Hold(); } catch { held = null; } }
+        void LateUpdate() { try { Hold(); } catch { held = null; } }
     }
 
     public class RotorSpinner : MonoBehaviour
