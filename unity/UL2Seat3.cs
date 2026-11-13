@@ -226,10 +226,86 @@ public static partial class UL2Builder
         var php = p.FindPropertyRelative("hardpoints"); php.arraySize = 1;
         php.GetArrayElementAtIndex(0).FindPropertyRelative("transform").objectReferenceValue = hp;
         php.GetArrayElementAtIndex(0).FindPropertyRelative("part").objectReferenceValue = C(seat, "AeroPart");
-        var op = p.FindPropertyRelative("weaponOptions"); op.arraySize = 4;
+        var op = p.FindPropertyRelative("weaponOptions"); op.arraySize = 5;
         op.GetArrayElementAtIndex(0).objectReferenceValue = null;
         op.GetArrayElementAtIndex(1).objectReferenceValue = Mount("UL2_s3_mg");
         op.GetArrayElementAtIndex(2).objectReferenceValue = Mount("UL2_s3_gl");
         op.GetArrayElementAtIndex(3).objectReferenceValue = Mount("UL2_s3_spot");
+        op.GetArrayElementAtIndex(4).objectReferenceValue = Mount("UL2_s3_ecm");
+    }
+
+    // 0.15.33 (Nick 21:30): the stock ECM jamming pod carried in seat 3. The pod stands nose up, leaned 12 deg back
+    // against the mast with its mounting face aft, foot on a rubber chock on a tray across the frame rails, held by two
+    // 6 inch ratchet straps (lower one round the seat back, upper one to D-rings on mast clamps). Two multi-pin cables
+    // run from the pod's pylon face along the left cockpit edge (two zip ties) into receptacles behind the gunner MFD.
+    // Kit mesh: ecm_fit/kitdump.py (seat3_hp local, Unity axes). Pod pose from the same fit (RotX -102, origin below).
+    static void Seat3Ecm()
+    {
+        var go = CopyPrefab("ECMPod1", "UL2_s3_ecm");
+        try
+        {
+            var rt = go.transform;
+            var mf0 = rt.GetComponent<MeshFilter>(); var mr0 = rt.GetComponent<MeshRenderer>();
+            var pod = New("UL2_ecmpod", rt); pod.localPosition = new Vector3(0f, 0.508f, -0.094f); pod.localRotation = Quaternion.Euler(-102f, 0f, 0f);
+            var pmf = pod.gameObject.AddComponent<MeshFilter>(); pmf.sharedMesh = mf0.sharedMesh;
+            var pmr = pod.gameObject.AddComponent<MeshRenderer>(); pmr.sharedMaterials = mr0.sharedMaterials;
+            // anything on the mount that pointed at the root renderer / filter now points at the posed pod
+            int moved = 0;
+            foreach (var c in go.GetComponentsInChildren<Component>(true))
+            {
+                if (c == null || c is Transform || c == mf0 || c == mr0) continue;
+                var so = new SerializedObject(c); var it = so.GetIterator(); bool ch = false;
+                while (it.Next(true))
+                    if (it.propertyType == SerializedPropertyType.ObjectReference)
+                    {
+                        if (it.objectReferenceValue == mr0) { it.objectReferenceValue = pmr; ch = true; moved++; }
+                        else if (it.objectReferenceValue == mf0) { it.objectReferenceValue = pmf; ch = true; moved++; }
+                    }
+                if (ch) so.ApplyModifiedPropertiesWithoutUndo();
+            }
+            Object.DestroyImmediate(mr0); Object.DestroyImmediate(mf0);
+            var bc = rt.GetComponent<BoxCollider>();
+            if (bc != null) { bc.center = new Vector3(0f, 0.497f, 0.143f); bc.size = new Vector3(0.24f, 1.99f, 0.85f); }
+            // straps, tray, chock, D-rings, mast clamps, cables, connectors and zip ties: one static mesh
+            var kit = New("UL2_ecmkit", rt); kit.localPosition = Vector3.zero; kit.localRotation = Quaternion.identity;
+            var kv = EcmKitMesh(); 
+            kit.gameObject.AddComponent<MeshFilter>().sharedMesh = kv.Key;
+            kit.gameObject.AddComponent<MeshRenderer>().sharedMaterials = kv.Value;
+            log.AppendLine("seat3 ecm: pod posed, " + moved + " references moved, kit " + kv.Key.vertexCount + " verts, " + kv.Value.Length + " materials");
+            var m = SaveMount(go, "UL2_s3_ecm", "ECMPod1", null, "Seat 3: ECM Pod");
+            var ms = new SerializedObject(m);
+            ms.FindProperty("emptyMass").floatValue = 162f;   // stock pod 150 kg + straps, tray and cables
+            ms.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
+        }
+        catch (System.Exception ex) { log.AppendLine("SEAT3 ecm ERROR " + ex); }
+        finally { Object.DestroyImmediate(go); }
+    }
+    static KeyValuePair<Mesh, Material[]> EcmKitMesh()
+    {
+        var v = new List<Vector3>(); var n = new List<Vector3>(); var subs = new List<KeyValuePair<string, int[]>>(); var mats = new Dictionary<string, float[]>();
+        using (var r = new BinaryReader(File.OpenRead(S3 + "UL2_s3_ecm_kit.bytes")))
+        {
+            int nv = r.ReadInt32();
+            for (int i = 0; i < nv; i++) v.Add(new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()));
+            for (int i = 0; i < nv; i++) n.Add(new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()));
+            int ns = r.ReadInt32();
+            for (int s = 0; s < ns; s++) { var key = RS(r); int c = r.ReadInt32(); var t = new int[c]; for (int i = 0; i < c; i++) t[i] = r.ReadInt32(); subs.Add(new KeyValuePair<string, int[]>(key, t)); }
+            int nm = r.ReadInt32();
+            for (int k = 0; k < nm; k++) { var key = RS(r); var f = new float[5]; for (int i = 0; i < 5; i++) f[i] = r.ReadSingle(); mats[key] = f; }
+        }
+        string path = ART + "UL2_s3_ecm_kit.asset";
+        var me = AssetDatabase.LoadAssetAtPath<Mesh>(path); bool fresh = me == null; if (fresh) me = new Mesh();
+        me.Clear(); me.name = "UL2_s3_ecm_kit"; me.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        me.SetVertices(v); me.SetNormals(n); me.subMeshCount = subs.Count;
+        for (int s = 0; s < subs.Count; s++) me.SetTriangles(subs[s].Value, s);
+        me.RecalculateBounds();
+        if (fresh) AssetDatabase.CreateAsset(me, path); else EditorUtility.SetDirty(me);
+        var mm = subs.Select(s =>
+        {
+            float[] f; if (!mats.TryGetValue(s.Key, out f)) f = new[] { 0.05f, 0.05f, 0.05f, 0.2f, 0f };
+            var col = new Color(Mathf.LinearToGammaSpace(f[0]), Mathf.LinearToGammaSpace(f[1]), Mathf.LinearToGammaSpace(f[2]), 1f);
+            return LitMat("UL2_ecm_" + s.Key, col, Mathf.Clamp01(f[3]), Mathf.Clamp01(f[4]));
+        }).ToArray();
+        return new KeyValuePair<Mesh, Material[]>(me, mm);
     }
 }
