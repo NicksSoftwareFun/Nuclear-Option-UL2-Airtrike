@@ -432,16 +432,16 @@ def rifle_on_seat(tag, P, side=-1):
         for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
             if y0 <= y <= y1: return x0 + (x1 - x0) * (y - y0) / (y1 - y0)
         return pts[-1][0] if y > pts[-1][1] else pts[0][0]
-    FRONT = [(655, 862), (440, 1002), (470, 1080), (500, 1180), (515, 1292)]
-    BACK = [(702, 862), (694, 1010), (700, 1150), (706, 1230), (710, 1292)]
+    FRONT = [(645, 849), (430, 990), (444, 1010), (470, 1080), (500, 1180), (515, 1292)]
+    BACK = [(702, 849), (694, 1010), (700, 1150), (706, 1230), (710, 1292)]
     def edges(y):
         f = min(1.0, max(0.0, (y - 1262) / 30)); f = f * f * (3 - 2 * f)          # flared base
         return gx(FRONT, y) - 6 * f, gx(BACK, y) + 8 * f
     def wloc(x, y):
-        xf, xb = edges(y); return FR / 2 * (0.82 + 0.18 * (x - xf) / max(1, xb - xf))
+        xf, xb = edges(y); return FR / 2 * (0.80 + 0.17 * (x - xf) / max(1, xb - xf))   # stays just inside the frame faces where it sinks in
     rings = []; NR = 22
-    for j in range(25):
-        y = 864 + (1292 - 864) * j / 24; xf, xb = edges(y)
+    for j in range(26):
+        y = 851 + (1292 - 851) * j / 25; xf, xb = edges(y)
         hl, cu = (xb - xf) / 2, (xf + xb) / 2; ring = []
         for k in range(NR):
             q = 2 * math.pi * k / NR; c, sn = math.cos(q), math.sin(q)
@@ -463,10 +463,11 @@ def rifle_on_seat(tag, P, side=-1):
         d = wloc(489, 1063); BX(f'magrel_{sw}', 479, 1046, 499, 1080, 0.0032, BLACK_, wc=sw * (d - 0.0018 + 0.0013))
     PL('frame_low', [(95, 995), (262, 995), (262, 1060), (130, 1060), (95, 1020)], FR, FDE_)
     PL('magbase', [(508, 1290), (712, 1290), (717, 1302), (714, 1336), (500, 1336), (503, 1302)], 0.030, BLACK_, bev=0.003)
-    tg = [(401, 997), (396, 1030), (384, 1062), (385, 1090), (395, 1106)]
-    sweep(f'{tag}_sub_trigger', crom([L(*q) for q in tg], 4), [(0.0034 * math.cos(2 * math.pi * k / 12), 0.0024 * math.sin(2 * math.pi * k / 12)) for k in range(12)],
+    # one smooth curve (Nick 00:57): quadratic arc from the pivot, bowed back, the tip forward
+    tg = [((1 - t) ** 2 * 398 + 2 * t * (1 - t) * 418 + t * t * 384, (1 - t) ** 2 * 990 + 2 * t * (1 - t) * 1052 + t * t * 1108) for t in (i / 16 for i in range(17))]
+    sweep(f'{tag}_sub_trigger', [L(*q) for q in tg], [(0.0034 * math.cos(2 * math.pi * k / 12), 0.0024 * math.sin(2 * math.pi * k / 12)) for k in range(12)],
           MECH, side=tuple(AW), scale=[1.1 - 0.3 * i / 16 for i in range(17)])
-    gd = ((236, 1000), (226, 1056), (240, 1106), (272, 1128), (349, 1136), (413, 1134), (446, 1118), (466, 1094))
+    gd = ((236, 1000), (226, 1056), (240, 1106), (272, 1128), (349, 1136), (413, 1134), (452, 1116), (486, 1094))   # both ends buried in frame and grip
     sweep(f'{tag}_sub_guard', crom([L(*q) for q in gd], 5), rrect(0.0085, 0.0045, 0.0015), BLACK_, side=tuple(AW))
     for k, (x, y, r) in enumerate(((385, 885, 0.0055), (195, 750, 0.004), (180, 965, 0.004), (330, 810, 0.004), (625, 940, 0.004), (690, 800, 0.004), (696, 1262, 0.004))):
         revolve(f'{tag}_sub_pin{k}', L(x, y, -0.021), AW, [(0, r), (0.042, r), (0.042, 0)], MECH if k % 2 == 0 else BLACK_, 10)
