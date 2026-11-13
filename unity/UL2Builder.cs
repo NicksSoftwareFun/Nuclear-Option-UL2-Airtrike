@@ -383,7 +383,13 @@ public static partial class UL2Builder
             { Set(ck, "throttles.Array.data[0].rotation", true); Set(ck, "throttles.Array.data[0].motion", false); Set(ck, "throttles.Array.data[0].range", 50f); }
             // the MFDs show the targeting ball's camera, the stock way (TargetCam draws onto targetScreen's material)
             var ts = Need("targetScreen"); MoveAlone(ts, P("x_mfd1"));
-            ts.GetComponent<MeshFilter>().sharedMesh = M["x_mfd1"]; var tr = ts.GetComponent<Renderer>(); tr.enabled = true;
+            // 0.15.20 (Nick 03:59: MFD turned 90 deg): the stock targetScreen maps u left->right over the main display
+            // (u 0..0.79) and v bottom->top; the exported quad had u running down the screen. Remap to the stock way, a
+            // centred square of the main display (u 0.145..0.645)
+            var mfd = Object.Instantiate(M["x_mfd1"]); mfd.name = "UL2_mfd1_screen";
+            var uvs = mfd.uv; for (int i = 0; i < uvs.Length; i++) { var o0 = uvs[i]; uvs[i] = new Vector2(0.145f + 0.5f * o0.y, 1f - o0.x / 0.5f); } mfd.uv = uvs;
+            string mfdPath = MOD + "UL2_mfd1_screen.asset"; AssetDatabase.DeleteAsset(mfdPath); AssetDatabase.CreateAsset(mfd, mfdPath);
+            ts.GetComponent<MeshFilter>().sharedMesh = mfd; var tr = ts.GetComponent<Renderer>(); tr.enabled = true;
             // copilot station: static pictures, not live screens (Nick 20:53)
             var cr = Need("cockpit_R");
             foreach (var pic in new[] { "mfd2", "inst2" })
@@ -1134,7 +1140,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.20\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.21\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
