@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.26")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.27")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -171,6 +171,7 @@ namespace UL2Airtrike
                 }
                 if ((scanT -= dt) <= 0f) { scanT = 1f; ScanKits(); }
                 PropWatch(dt);
+                Spinner(dt);
                 HudGauge(dt, engOn);
                 if (alt < 40f) LeanLog(dt);
                 Harnesses();
@@ -282,6 +283,28 @@ namespace UL2Airtrike
             catch (Exception e) { if (!propErr) { propErr = true; Plugin.Log.LogWarning("UL-2 prop watch: " + e.Message); } }
         }
         bool propErr;
+        // 0.15.27 (Nick 05:12): spinner with a white spiral like the P220 fans; it follows the prop but never turns faster on
+        // screen than 4 rev/s, so the spiral reads as turning instead of strobing
+        Transform spinner; Quaternion spinnerRest; float spinnerA, spinnerFind; static FieldInfo fpTurn;
+        void Spinner(float dt)
+        {
+            try
+            {
+                if (spinner == null)
+                {
+                    if ((spinnerFind -= dt) > 0f) return; spinnerFind = 2f;
+                    foreach (var c in partList) { if (c == null) continue; var t = Deep(c.transform, "UL2_spinner"); if (t != null) { spinner = t; spinnerRest = t.localRotation; break; } }
+                    if (spinner == null) return;
+                }
+                if (prop == null || fpRpm == null) return;
+                if (fpTurn == null) fpTurn = AccessTools.Field(prop.GetType(), "turnDirection");
+                float dir = 1f; try { if (fpTurn != null) dir = Convert.ToSingle(fpTurn.GetValue(prop)); } catch { }
+                float revs = Mathf.Min((float)fpRpm.GetValue(prop) / 60f, 4f);
+                spinnerA = Mathf.Repeat(spinnerA - revs * 360f * dir * dt, 360f);
+                spinner.localRotation = spinnerRest * Quaternion.Euler(0f, 0f, spinnerA);
+            }
+            catch { }
+        }
         // extra rotor lift the fixed lifting surfaces can't give: a spun-up rotor on the takeoff roll, and the jump
         Component noseGear; bool noseSearched; static FieldInfo fLock;
         // 0.15.24 (Nick 04:39): rotor swoosh. Stock RotorShaft plays its loop at pitch = rpm/nominal * pitch and volume = rpm/nominal.

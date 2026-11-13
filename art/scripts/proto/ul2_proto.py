@@ -849,7 +849,47 @@ for sx in (-1, 1):
     tube(f'bed_strut_f{sx}', (sx * 0.15, EY + 0.38, EZ - 0.29), (sx * 0.05, -1.40, 0.80), 0.016, FRAME, 8)
     tube(f'bed_strut_r{sx}', (sx * 0.15, EY - 0.18, EZ - 0.29), (sx * 0.03, -1.68, 0.56), 0.016, FRAME, 8)
 part('propHub', 'engine_core', PROP)
-revolve('spinner', PROP + Vector((0, 0.05, 0)), (0, -1, 0), [(0, 0.09), (0.03, 0.10), (0.11, 0.09), (0.19, 0.05), (0.24, 0.0)], DARK, 20)
+# 0.15.27 (Nick 05:12): spinner as its own piece (the plugin turns it at a capped rate) with a white tip and two white
+# spiral stripes like the P220's fan spinners; and our own prop blur disc for the stock prop's disc slot
+revolve('prop_hubplate', PROP + Vector((0, 0.07, 0)), (0, -1, 0), [(0, 0), (0, 0.105), (0.12, 0.105), (0.12, 0)], DARK, 20)   # hub the blades bolt to (keeps the propHub part and its collider)
+part('x_spinner', 'propHub', PROP)
+SPF = [(0, 0.09), (0.03, 0.10), (0.11, 0.09), (0.19, 0.05), (0.24, 0.0)]; SP0 = PROP + Vector((0, 0.05, 0))
+revolve('spinner', SP0, (0, -1, 0), SPF[:4], DARK, 20, cap=False)
+revolve('spinner_tip', SP0, (0, -1, 0), SPF[3:], 'UL2_white', 20, cap=False)
+def spinner_stripes(name):
+    u, v, w = basis((0, -1, 0)); bm = bmesh.new(); N = 16; hw = 0.016
+    def rad(t):
+        for (a0, r0), (a1, r1) in zip(SPF, SPF[1:]):
+            if a0 <= t <= a1: return r0 + (r1 - r0) * (t - a0) / (a1 - a0)
+        return 0.0
+    for sg in (0.0, 180.0):
+        rows = []
+        for k in range(N + 1):
+            t = 0.02 + (0.19 - 0.02) * k / N; a = math.radians(sg + 200.0 * k / N); rr = rad(t) + 0.003
+            rd = v * math.cos(a) + w * math.sin(a); tg = -v * math.sin(a) + w * math.cos(a); c = SP0 + u * t
+            rows.append((bm.verts.new(c + rd * rr - tg * hw), bm.verts.new(c + rd * rr + tg * hw)))
+        for (a0, a1), (b0, b1) in zip(rows, rows[1:]): bm.faces.new((a0, b0, b1, a1))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    for f in bm.faces:
+        if f.normal.dot(f.calc_center_median() - (SP0 + u * u.dot(f.calc_center_median() - SP0))) < 0: f.normal_flip()
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me); me.materials.append(mat('UL2_white')); coll('WORK').objects.link(o)
+    PARTS[CUR[0]]['objs'].append(o); return o
+spinner_stripes('spinner_spiral')
+part('x_propdisc', 'propHub', PROP)
+def prop_disc(name, r0, r1, n=48, rings=4):
+    bm = bmesh.new(); uv = bm.loops.layers.uv.new('UVMap'); RS = [r0 + (r1 - r0) * i / rings for i in range(rings + 1)]
+    for side, dy in ((1, 0.003), (-1, -0.003)):
+        V = [[bm.verts.new(PROP + Vector((r * math.cos(2 * math.pi * k / n), dy, r * math.sin(2 * math.pi * k / n)))) for k in range(n)] for r in RS]
+        for i in range(rings):
+            for k in range(n):
+                q = (V[i][k], V[i][(k + 1) % n], V[i + 1][(k + 1) % n], V[i + 1][k]); f = bm.faces.new(q if side > 0 else q[::-1])
+                for lp in f.loops: co = lp.vert.co - PROP; lp[uv].uv = (0.5 + 0.5 * co.x / r1, 0.5 + 0.5 * co.z / r1)
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me); me.materials.append(mat('UL2_propblur')); coll('WORK').objects.link(o)
+    PARTS[CUR[0]]['objs'].append(o); return o
+prop_disc('prop_blurdisc', 0.09, PROP_R)
+part('propHub')
 for k in range(3):
     a = R(90 + 120 * k); d = Vector((math.cos(a), 0, math.sin(a))); t = Vector((-math.sin(a), 0, math.cos(a))); st = []
     for rr, chd, tw in [(0.10, 0.075, 55), (0.22, 0.135, 42), (0.45, 0.145, 28), (0.68, 0.115, 19), (0.82, 0.075, 15), (PROP_R, 0.03, 13)]:
@@ -999,7 +1039,7 @@ for o in PARTS['gunmount_R']['objs']:
     if o.name.startswith(HOUSING): o.data.transform(HM)
 ENG_K = 1.2; ESP = Vector((0, EY, EZ - 0.29))          # grows up, out and along from the engine bed
 EM = Matrix.Translation(ESP) @ Matrix.Scale(ENG_K, 4) @ Matrix.Translation(-ESP)
-for n in ('engine_core', 'engine_L', 'engine_R', 'propHub', 'x_propblade', 'x_propstub'):
+for n in ('engine_core', 'engine_L', 'engine_R', 'propHub', 'x_propblade', 'x_propstub', 'x_spinner', 'x_propdisc'):
     for o in PARTS[n]['objs']:
         if not o.name.startswith(('eng_mount', 'engine_bed', 'bed_strut')): o.data.transform(EM)
     PARTS[n]['pivot'] = EM @ PARTS[n]['pivot']
@@ -1007,7 +1047,7 @@ PROP = EM @ PROP; PROP_R *= ENG_K
 # ---- engine lowered along the mast (Nick 2026-11-12 11:19); the prop keeps ~8 cm over the tail boom. The bed struts
 # stretch down to their fixed frame points and the pre-rotator shaft stretches up to the rotor head.
 DZ_ENG = 0.14
-for n in ('engine_core', 'engine_L', 'engine_R', 'propHub', 'x_propblade', 'x_propstub'):
+for n in ('engine_core', 'engine_L', 'engine_R', 'propHub', 'x_propblade', 'x_propstub', 'x_spinner', 'x_propdisc'):
     for o in PARTS[n]['objs']:
         if o.name.startswith('bed_strut'):
             zs = [v.co.z for v in o.data.vertices]; z0, z1 = min(zs), max(zs)
@@ -1035,7 +1075,7 @@ for o in PARTS['tailboom_R']['objs']:
 print('fin scale %.3f engine top %.3f strobe %s' % (FIN_K, eng_top, tuple(round(c, 3) for c in FM @ Vector((0, -3.20, 1.695)))))
 
 # ================================================================ forward shift of the aft group, main gear; ride height
-AFT = ['mast', 'rotorHead', 'engine_core', 'engine_L', 'engine_R', 'propHub', 'x_propblade', 'x_propstub', 'x_rotordisc', 'tailboom_F', 'tailboom_R', 'vstab', 'vstabTip', 'rudder', 'rudderTip'] + \
+AFT = ['mast', 'rotorHead', 'engine_core', 'engine_L', 'engine_R', 'propHub', 'x_propblade', 'x_propstub', 'x_rotordisc', 'x_spinner', 'x_propdisc', 'tailboom_F', 'tailboom_R', 'vstab', 'vstabTip', 'rudder', 'rudderTip'] + \
       [n for n in PARTS if n.startswith(('blade_', 'hstab', 'elevator'))]
 def shift(names, v):
     for n in names:

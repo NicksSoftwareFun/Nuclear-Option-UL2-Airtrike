@@ -209,21 +209,22 @@ public static partial class UL2Builder
     }
     // 0.15.26 (Nick 04:59): rotor blur disc material = a copy of the stock attack helicopter's transparent rotor blur
     // material (same shader settings) with our own disc texture: a faint dark disc, tip ring and segment rings
-    static Material BlurMat()
+    static Material BlurMat(string name)
     {
-        string tp = ART + "UL2_rotorblur.png";
+        string tp = ART + name + ".png";
         var ti = (TextureImporter)AssetImporter.GetAtPath(tp);
         if (ti != null) { ti.sRGBTexture = true; ti.alphaSource = TextureImporterAlphaSource.FromInput; ti.alphaIsTransparency = true; ti.mipmapEnabled = true; ti.wrapMode = TextureWrapMode.Clamp; ti.SaveAndReimport(); }
         var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(tp);
-        string path = ART + "UL2_rotorblur.mat";
-        var src = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/attackHelo1_rotor_blur_PLACEHOLDER.mat");
+        string path = ART + name + ".mat";
+        // 0.15.27: base on the stock ducted-fan blur material like the P220 fans (the attack helo one carries a metallic-map keyword)
+        var src = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/UtilityHelo1_fan_blur_PLACEHOLDER.mat");
         var m = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (m == null) { m = new Material(src); m.name = "UL2_rotorblur"; AssetDatabase.CreateAsset(m, path); }
+        if (m == null) { m = new Material(src); m.name = name; AssetDatabase.CreateAsset(m, path); }
         else { m.shader = src.shader; m.CopyPropertiesFromMaterial(src); m.shaderKeywords = src.shaderKeywords; m.renderQueue = src.renderQueue; }
         foreach (var t in new[] { "_BaseMap", "_MainTex" }) if (m.HasProperty(t)) m.SetTexture(t, tex);
         foreach (var t in new[] { "_BumpMap", "_MetallicGlossMap", "_OcclusionMap", "_EmissionMap" }) if (m.HasProperty(t)) m.SetTexture(t, null);
         m.SetColor("_BaseColor", Color.white); if (m.HasProperty("_Color")) m.SetColor("_Color", Color.white);
-        EditorUtility.SetDirty(m); log.AppendLine("rotor blur material from " + (src ? src.name : "NONE") + ", texture " + (tex != null) + ", queue " + m.renderQueue);
+        EditorUtility.SetDirty(m); log.AppendLine(name + " material from " + (src ? src.name : "NONE") + ", texture " + (tex != null) + ", queue " + m.renderQueue);
         return m;
     }
     static Material LitMat(string name, Color col, float smooth, float metal)
@@ -329,7 +330,8 @@ public static partial class UL2Builder
         MAT["UL2_black"] = LitMat("UL2_black", new Color32(34, 34, 33, 255), 0.52f, 0.4f);
         MAT["UL2_fabric"] = LitMat("UL2_fabric", new Color32(166, 134, 94, 255), 0.03f, 0f);
         MAT["UL2_red"] = LitMat("UL2_red", new Color32(200, 36, 28, 255), 0.4f, 0f);   // compass lubber pointer (Nick 04:56)
-        MAT["UL2_rotorblur"] = BlurMat();
+        MAT["UL2_rotorblur"] = BlurMat("UL2_rotorblur"); MAT["UL2_propblur"] = BlurMat("UL2_propblur");
+        MAT["UL2_white"] = LitMat("UL2_white", new Color32(232, 234, 232, 255), 0.75f, 0f);   // spinner tip and spiral (Nick 05:12)
         var glass = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/trainer_glass_PLACEHOLDER.mat");
         MAT["UL2_glass"] = glass != null ? glass : MAT["UL2_screen"];
         try { Mounts(); } catch (System.Exception ex) { log.AppendLine("MOUNTS ERROR " + ex); }
@@ -633,7 +635,21 @@ public static partial class UL2Builder
             for (int i = 0; i < 4; i++) dm.GetArrayElementAtIndex(i).objectReferenceValue = M["x_propstub"];
             dm.GetArrayElementAtIndex(4).objectReferenceValue = M["x_propblade"];
             pso.ApplyModifiedPropertiesWithoutUndo();
-            log.AppendLine("prop blades wired: " + bl.arraySize + " slots on 3 renderers, damage meshes stub x4");
+            // our own blur disc in the stock disc slot (the stock code swaps propDisc's mesh by blur level; index 0 = none)
+            var pdm = pso.FindProperty("propDiscMeshes"); pdm.arraySize = 3;
+            pdm.GetArrayElementAtIndex(0).objectReferenceValue = null;
+            pdm.GetArrayElementAtIndex(1).objectReferenceValue = M["x_propdisc"]; pdm.GetArrayElementAtIndex(2).objectReferenceValue = M["x_propdisc"];
+            var bbm = pso.FindProperty("propBlurBaseMaterial"); if (bbm != null) bbm.objectReferenceValue = MAT["UL2_propblur"];
+            pso.ApplyModifiedPropertiesWithoutUndo();
+            if (pd)
+            {
+                pd.position = P("x_propdisc"); pd.rotation = Quaternion.identity; pd.localScale = Vector3.one;
+                var pmf = pd.GetComponent<MeshFilter>(); if (pmf) pmf.sharedMesh = null;
+                var pmr = pd.GetComponent<MeshRenderer>(); if (pmr) { pmr.sharedMaterial = MAT["UL2_propblur"]; pmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; }
+            }
+            // spinner with the white spiral, on the hub part (not the stock spinning hub): the plugin turns it at a capped rate
+            var sp = Visual("UL2_spinner", "x_spinner", ph);
+            log.AppendLine("prop blades wired: " + bl.arraySize + " slots on 3 renderers, damage meshes stub x4, own blur disc " + (pd != null) + ", base mat slot " + (bbm != null));
         }
         // Rotax 915-class pusher, uprated to 195 kW so it climbs at 5+ deg nose up (Nick 04:08 11-13)
         Set(csp, "bladeLength", 0.74f); Set(csp, "hubRadius", 0.12f); Set(csp, "nominalPower", 195000f); Set(csp, "momentOfInertia", 8f);
@@ -1259,7 +1275,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.26\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.27\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
