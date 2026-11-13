@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.18")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.19")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -134,30 +134,25 @@ namespace UL2Airtrike
                 // 380 rpm by 19 m/s. Below 2 m/s it winds down unless the pre-rotator drives it
                 float target = headOn && spd > 2f ? Mathf.Min(380f, 40f + 18f * spd) : 0f;
                 float upRate = 60f;
-                // pre-rotator: on the ground with the engine running the clutch drives the rotor, 110 rpm at idle throttle
-                // up to 250 rpm at full; the custom axis over-speeds it (blades flat) up to 450 rpm for a jump launch
-                // auto jump (Nick 23:12): with flight assist on, full throttle on the ground spins the rotor up as if the
-                // axis were held and launches the jump on its own at 430 rpm; armed again once the throttle comes back
+                // pre-rotator (0.15.19, Nick 03:39: no jumps at all). On the ground (and 3 s after liftoff) with the engine running:
+                // - custom axis = manual rotor rpm, 110 at the bottom of its travel to 450 at the top (overrides the assist)
+                // - flight assist on, axis untouched = best rpm for the moment: full 450 at full throttle on the takeoff roll,
+                //   otherwise it follows the throttle (110 idle to 300)
+                // - flight assist off, axis untouched = no pre-spin. In the air the rotor autorotates from the airflow.
                 bool fa = false; try { if (fFa == null) fFa = AccessTools.Field(unit.GetType(), "flightAssist"); if (fFa != null) fa = (bool)fFa.GetValue(unit); } catch { }
-                if (thr < 0.9f || !ground) autoArmed = ground && thr < 0.9f;
-                bool braking = brakeIn > 0.2f;   // 0.15.18 (Nick 03:36): no hop in place on the brakes
-                bool autoJ = fa && ground && engOn && thr > 0.98f && autoArmed && axis < 0.05f && !braking;
-                autoSpin = autoJ;
-                if (headOn && clutch && engOn && jumpT < 0f)
+                bool manual = axis > 0.05f;
+                autoSpin = !manual && fa && ground && engOn && thr > 0.05f;
+                if (headOn && clutch && engOn)
                 {
-                    float pre = ground ? Mathf.Lerp(110f, 250f, thr) : 0f;
-                    if (autoJ) { pre = Mathf.Max(pre, 450f); if (rpm > 250f) upRate = 20f; }
-                    if (autoJ && rpm >= 430f) { autoArmed = false; jumpT = 0f; jumpE = Mathf.Clamp01((rpm - 300f) / 150f); Plugin.Log.LogInfo("UL-2 auto jump launch (flight assist), rotor " + Mathf.RoundToInt(rpm) + " rpm"); }
-                    if (axis > 0.05f) { pre = Mathf.Max(pre, 250f + 200f * axis); if (rpm > 250f) upRate = 20f; }
-                    if (braking) pre = Mathf.Min(pre, 380f);
+                    float pre = 0f;
+                    if (manual) pre = 110f + 340f * axis;
+                    else if (fa && ground) pre = thr > 0.95f ? 450f : Mathf.Lerp(110f, 300f, thr);
+                    if (rpm > 250f) upRate = 30f;
                     target = Mathf.Max(target, pre);
-                    // jump: axis released after a spin-up past 400 rpm -> blades to flying pitch, stored energy becomes lift
-                    if (prevAxis > 0.5f && axis < 0.2f && rpm > 400f) { jumpT = 0f; jumpE = Mathf.Clamp01((rpm - 300f) / 150f); Plugin.Log.LogInfo("UL-2 jump launch, rotor " + Mathf.RoundToInt(rpm) + " rpm"); }
                 }
-                if (axis > 0.05f && (dbgT -= dt) <= 0f) { dbgT = 2f; Plugin.Log.LogInfo($"UL-2 pre-rotator axis {axis:0.00} rpm {rpm:0} alt {alt:0.00} engine {er:0.00} thr {thr:0.00} clutch {clutch}"); }
+                if (manual && (dbgT -= dt) <= 0f) { dbgT = 2f; Plugin.Log.LogInfo($"UL-2 pre-rotator axis {axis:0.00} rpm {rpm:0} alt {alt:0.00} engine {er:0.00} thr {thr:0.00} clutch {clutch}"); }
                 prevAxis = axis;
-                if (jumpT >= 0f) { jumpT += dt; target = Mathf.Max(target, 300f); if (jumpT > 10f || (jumpT > 1.5f && logT > 0.95f)) jumpT = -1f; }
-                rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? upRate : (jumpT >= 0f ? 80f : 40f)) * dt);
+                rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? upRate : 40f) * dt);
                 spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * dt, 0f);
                 // rotor disc tilt with the stick (gyros steer by tilting the head); held back on the ground roll
                 if (tilt != null)
@@ -220,18 +215,18 @@ namespace UL2Airtrike
                     var ti = hud.Find("hint"); if (ti != null) hudHint = ti.GetComponent<TMPro.TMP_Text>();
                     Plugin.Log.LogInfo("UL-2 HUD rotor gauge found, bar " + (barFill != null) + " text " + (hudRpm != null));
                 }
-                bool want = axis > 0.05f || jumpT >= 0f || autoSpin;
+                bool want = axis > 0.05f || autoSpin;
                 if (want) hudShow = 3f; else if (hudShow > 0f) hudShow -= dt;
                 bool show = hudShow > 0f;
                 if (hud.gameObject.activeSelf != show) hud.gameObject.SetActive(show);
                 if (!show) return;
-                bool ready = rpm >= 400f;
-                var col = jumpT >= 0f || ready ? new Color(0.3f, 1f, 0.3f, 1f) : new Color(1f, 0.25f, 0.2f, 1f);
+                bool ready = rpm >= 300f;   // full rotor lift available from 300 rpm
+                var col = ready ? new Color(0.3f, 1f, 0.3f, 1f) : new Color(1f, 0.25f, 0.2f, 1f);
                 // vertical bar (0.15.9): only the fill changes colour; the texts keep the HUD colour from their style applier
                 if (barFill != null) barFill.sizeDelta = new Vector2(barFill.sizeDelta.x, 198f * Mathf.Clamp01((rpm - 110f) / 340f));
                 if (fillImg != null) fillImg.color = col;
                 if (hudRpm != null) hudRpm.text = "ROTOR " + Mathf.RoundToInt(rpm) + " RPM";
-                if (hudHint != null) hudHint.text = jumpT >= 0f ? "JUMP" : autoSpin ? "AUTO JUMP" : ready ? "RELEASE TO JUMP" : "";
+                if (hudHint != null) hudHint.text = axis > 0.05f ? "MANUAL" : autoSpin ? "AUTO" : "";
             }
             catch (Exception e) { if (!hudErr) { hudErr = true; Plugin.Log.LogWarning("UL-2 HUD gauge: " + e.Message); } }
         }
@@ -295,18 +290,6 @@ namespace UL2Airtrike
                 foreach (var c in partList) { if (c == null || Detached(c)) continue; var r = c.GetComponent<Rigidbody>(); if (r == null || r.isKinematic) continue; cs += r.worldCenterOfMass * r.mass; cm += r.mass; }
                 if (cm > 0f) com = cs / cm;
                 var thrustV = RotorAero(rb, spd, W);
-                // 0.15.17 jump (Nick 03:27: hop then falls back): a short kick, then the stored rotor energy holds the weight
-                // while the prop builds flying speed, handing over to normal rotor lift; fades out gently from 5 to 10 s
-                if (jumpT >= 0f)
-                {
-                    float Tv = Vector3.Dot(thrustV, Vector3.up);
-                    if (jumpT < 0.7f) F = W * 1.6f * jumpE;
-                    else
-                    {
-                        float hold = W * Mathf.Clamp01(jumpE * 1.5f) * (jumpT < 5f ? 1f : Mathf.Clamp01((10f - jumpT) / 5f)) * 1.03f;
-                        F = Mathf.Max(0f, hold - Tv - massSum * rb.velocity.y * 1.2f);
-                    }
-                }
                 thrustV += rotorN * F;
                 if (thrustV.sqrMagnitude > 0f) rb.AddForceAtPosition(thrustV, com, ForceMode.Force);
                 logSpd = spd; logVy = rb.velocity.y; logYaw = Vector3.Dot(rb.angularVelocity, transform.up) * Mathf.Rad2Deg; logF = W > 0f ? F / W : 0f;
