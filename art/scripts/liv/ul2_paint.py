@@ -22,9 +22,39 @@ src = idx                                       # gutter texels copy their neare
 P = pos[src]; N = nrm[src]; PID = pid[src]
 def ids(*n): return np.isin(PID, [names.index(x) for x in n if x in names])
 
-col = np.tile(OLIVE, (len(P), 1))
-col *= (1 + 0.035 * vnoise(P, 1.2, 3) + 0.02 * vnoise(P, 0.25, 7))[:, None]      # faint mottling of matte paint
+# livery: env UL2_LIVERY = olive (default, writes every map) | steel | tiger (colour map only, like stock extra liveries:
+# LiveryData swaps just the colour texture; normal/metallic/AO/damage maps are shared)
+LIV = os.environ.get('UL2_LIVERY', 'olive')
+ORANGE = np.array([236, 118, 24], np.float32) / 255
+if LIV == 'steel':
+    # polished stainless (Nick 04:29): bright steel, sheets of slightly different tone between the frame seams, fine
+    # polishing streaks along the length, and a painted-in sky/ground reflection so it reads as mirror-bright metal
+    base = np.array([196, 199, 202], np.float32) / 255
+    col = np.tile(base, (len(P), 1))
+    sheet = np.floor((P[:, 1] + 0.10) / 0.55) * 7.3 + np.floor(P[:, 0] * 1.7) * 3.1
+    col *= (1 + 0.035 * np.sin(sheet))[:, None]
+    streak = vnoise(P * np.array([6.0, 0.25, 6.0], np.float32), 0.05, 13)
+    col *= (1 + 0.045 * streak)[:, None]
+    up = N[:, 2]
+    refl = np.where(up > 0, 0.08 * up, 0.0) - 0.20 * np.exp(-((up + 0.08) / 0.18) ** 2) - np.where(up < -0.2, 0.12 * (-up - 0.2), 0.0)
+    col *= (1 + refl)[:, None]
+    col = np.where(up[:, None] > -0.05, col * np.array([0.98, 1.0, 1.03], np.float32), col * np.array([1.02, 1.0, 0.96], np.float32))   # cool sky above, warm ground below
+elif LIV == 'tiger':
+    # black with orange tiger stripes (Nick 04:29): wavy, tapering, forked bands running round the aircraft, slanted back
+    col = np.tile(np.array([20, 20, 21], np.float32) / 255, (len(P), 1))
+    sc = P[:, 1] * 0.94 + P[:, 2] * 0.34 + 0.22 * vnoise(P, 0.9, 51) + 0.06 * vnoise(P, 0.25, 52)
+    ph = (sc / 0.42) % 1.0
+    width = 0.20 + 0.10 * vnoise(P, 0.7, 53) - 0.16 * np.clip(np.abs(P[:, 0]) / 0.9, 0, 1) * (np.abs(N[:, 0]) < 0.5)
+    band = np.abs(ph - 0.5) < width / 2
+    fork = (np.abs(ph - 0.5) < width * 0.12) & (vnoise(P, 0.35, 54) > 0.15)
+    stripe = (band & ~fork & (vnoise(P, 0.5, 55) > -0.45)).astype(np.float32)
+    col = col * (1 - stripe[:, None]) + ORANGE * stripe[:, None] * (1 + 0.04 * vnoise(P, 0.3, 56))[:, None]
+else:
+    col = np.tile(OLIVE, (len(P), 1))
+    col *= (1 + 0.035 * vnoise(P, 1.2, 3) + 0.02 * vnoise(P, 0.25, 7))[:, None]      # faint mottling of matte paint
 col *= (1 - 0.06 * np.clip((0.75 - P[:, 2]) / 0.3, 0, 1) * ids('cockpit_F', 'nose', 'gunmount_R'))[:, None]   # slightly dusty belly
+MARK = {'olive': WHITE, 'steel': BLACK, 'tiger': ORANGE}[LIV]
+STEP = {'olive': BLACK, 'steel': BLACK, 'tiger': WHITE}[LIV]
 smooth = np.full(len(P), 0.28, np.float32)
 
 def text_mask(txt, font, px=400):
@@ -56,10 +86,14 @@ def stamp_top(sel, txt, font, centre, h, colour, up=1):
 
 n = 0
 fin = ids('vstab', 'rudder')
-for sd in (-1, 1): n += stamp(ids('vstab'), '214', FONT, (-2.875, 1.397), 0.21, sd, WHITE)         # big tail number, both sides
-for sd in (-1, 1): n += stamp(ids('vstabTip'), 'UL-2', FONT_S, (-2.95, 1.967), 0.066, sd, WHITE)
-for sd in (-1, 1): n += stamp(ids('cockpit_F', 'nose'), '14', FONT, (2.30, 0.95), 0.18, sd, WHITE)  # tactical number on the pod
-for sx in (-1, 1): n += stamp_top(ids('hstab_L' if sx < 0 else 'hstab_R'), 'NO STEP', FONT_S, (sx * 0.28, -2.80), 0.055, BLACK)
+if LIV == 'tiger':
+    for sd in (-1, 1):
+        n += stamp(ids('vstab'), '\u2588\u2588\u2588', FONT, (-2.875, 1.397), 0.26, sd, np.array([20, 20, 21], np.float32) / 255)
+        n += stamp(ids('cockpit_F', 'nose'), '\u2588\u2588', FONT, (2.30, 0.95), 0.22, sd, np.array([20, 20, 21], np.float32) / 255)
+for sd in (-1, 1): n += stamp(ids('vstab'), '214', FONT, (-2.875, 1.397), 0.21, sd, MARK)         # big tail number, both sides
+for sd in (-1, 1): n += stamp(ids('vstabTip'), 'UL-2', FONT_S, (-2.95, 1.967), 0.066, sd, MARK)
+for sd in (-1, 1): n += stamp(ids('cockpit_F', 'nose'), '14', FONT, (2.30, 0.95), 0.18, sd, MARK)  # tactical number on the pod
+for sx in (-1, 1): n += stamp_top(ids('hstab_L' if sx < 0 else 'hstab_R'), 'NO STEP', FONT_S, (sx * 0.28, -2.80), 0.055, STEP)
 for sd in (-1, 1): n += stamp(ids('cockpit_F'), 'RESCUE', FONT_S, (1.28, 0.72), 0.045, sd, np.array([210, 170, 40], np.float32) / 255)
 print('stamped texels', n)
 
@@ -102,7 +136,7 @@ e = 0.0012
 h0, mk = height(P)
 dT = (height(P + T * e)[0] - height(P - T * e)[0]) / (2 * e); dB = (height(P + B * e)[0] - height(P - B * e)[0]) / (2 * e)
 nt = np.stack([-dT, -dB, np.ones(len(P), np.float32)], 1); nt /= np.linalg.norm(nt, axis=1, keepdims=True)
-save_rgb(nt * 0.5 + 0.5, 'UL2_skin_n.png')
+if LIV == 'olive': save_rgb(nt * 0.5 + 0.5, 'UL2_skin_n.png')
 seam = np.clip(-h0 / 0.0006, 0, 1); fast = np.clip(mk, 0, 1)
 col *= (1 - 0.18 * seam)[:, None]                                         # a little grime in the lines
 lead = np.clip((N[:, 1] - 0.75) / 0.2, 0, 1) * (HS | VS | STUB | POD)    # forward-facing edges
@@ -114,6 +148,9 @@ smooth = smooth + 0.03 * vnoise(P, 0.4, 41) + 0.10 * lead + 0.12 * fast + 0.25 *
 smooth -= 0.06 * np.clip((0.75 - P[:, 2]) / 0.3, 0, 1) * POD             # dusty belly
 smooth = np.clip(smooth, 0.12, 0.6)
 print('surface detail: seam texels', int((seam > 0.3).sum()), 'fastener', int((fast > 0.3).sum()), 'chips', int((chip > 0.3).sum()))
+if LIV != 'olive':
+    if LIV == 'steel': col = col * (1 - 0.7 * chip[:, None]) + col * 0.7 * chip[:, None] / np.maximum(BARE, 1e-3) * BARE   # chips = same steel
+    save_rgb(col, f'UL2_skin_{LIV}_b.png'); print('wrote livery', LIV); sys.exit(0)
 save_rgb(np.stack([metal, np.zeros(len(P)), np.zeros(len(P)), smooth], 1), 'UL2_skin_m.png')
 save_rgb(col, 'UL2_skin_b.png')     # colours are authored as sRGB values
 ao = 0.86 + 0.06 * vnoise(P, 0.6, 11)

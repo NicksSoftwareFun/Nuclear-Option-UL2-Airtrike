@@ -7,7 +7,7 @@ R = math.radians
 
 # ---------------------------------------------------------------- materials (grey until texture passes)
 MATS = {}
-SLOT_GREY = {'UL2_skin': 0.52, 'UL2_frame': 0.62, 'UL2_mech': 0.40, 'UL2_dark': 0.16, 'UL2_tyre': 0.10,
+SLOT_GREY = {'UL2_enginternal': 0.30, 'UL2_skin': 0.52, 'UL2_frame': 0.62, 'UL2_mech': 0.40, 'UL2_dark': 0.16, 'UL2_tyre': 0.10,
              'UL2_seat': 0.30, 'UL2_cockpit': 0.22, 'UL2_glass': None, 'UL2_screen': 0.06, 'UL2_crewref': 0.75}
 # FDE weapon scheme (same colours as the seat 3 guns, look.py): sRGB values
 SLOT_RGB = {'UL2_fde': (176, 150, 110), 'UL2_bronze': (146, 108, 80), 'UL2_black': (34, 34, 33), 'UL2_fabric': (166, 134, 94)}

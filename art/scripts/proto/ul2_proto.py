@@ -161,7 +161,7 @@ def pod_x(y, z):                 # skin half width at any height
     hw, zb, zt = pod_at(y); zm = zb + 0.46 * (zt - zb)
     if z >= zm: return side_x(y, z)
     s = min(1, (zm - z) / (zm - zb)); return hw * (1 - s ** 2.6) ** (1 / 2.6)
-ys = sorted(set([round(y, 4) for y in frange(2.58, -0.10, 64)] + [OPEN_F, OPEN_A]), reverse=True)
+ys = sorted(set([round(y, 4) for y in frange(2.58, -0.10, 44)] + [OPEN_F, OPEN_A]), reverse=True)
 build_pod(ys, 'pod_shell')
 # 0.15.12 (Nick 00:02): the old round rim tubes are gone; the glass base strip caps the wall edge instead (windscreen3)
 # pod floor, ring frames (internal structure), keel shoe
@@ -566,7 +566,7 @@ def tball_pt(d):
     """sphere point in direction d, flattened onto the window plane inside the cap (continuous at the cap edge)"""
     c = d.dot(WD)
     return TP + d * (DW / c if c > math.cos(TW) else TR)
-NU, NV = 48, 24
+NU, NV = 36, 18                                                   # 0.15.24 triangle diet (was 48 x 24)
 dirs = [[Vector((math.sin(math.pi * j / NV) * math.cos(2 * math.pi * i / NU), math.sin(math.pi * j / NV) * math.sin(2 * math.pi * i / NU), math.cos(math.pi * j / NV))) for i in range(NU)] for j in range(NV + 1)]
 for nm, want, m in (('tpod_ball', None, MECH),):
     bm = bmesh.new(); vmap = {}
@@ -738,7 +738,10 @@ for sx in (-1, 1):
 box('ics_box', (0.04, 0.97, 1.05), (0.05, 0.035, 0.07), DARK, bevel=0.004)
 revolve('ics_knob', (0.04, 0.95, 1.07), (0, -1, 0), [(0, 0.01), (0.01, 0.01), (0.012, 0)], MECH, 8)
 # ammo box at the gunner's feet (right), feeds the side gun
-box('ammo_box', (0.30, 0.80, 0.66), (0.11, 0.26, 0.20), MECH, bevel=0.008)
+# ammo box at the gunner's feet: kept inside the hull wall (Nick 04:31: its outer face poked through the skin by the right stub)
+_ax = min(pod_x(yy, zz) for yy in (0.67, 0.80, 0.93) for zz in (0.56, 0.66, 0.76)) - 0.018 - 0.012 - 0.055
+print('ammo box centre x', round(_ax, 3))
+box('ammo_box', (min(0.30, _ax), 0.80, 0.66), (0.11, 0.26, 0.20), MECH, bevel=0.008)
 box('ammo_lid', (0.30, 0.80, 0.765), (0.12, 0.27, 0.014), DARK)
 
 # ================================================================ rear frame section (frame_R) + seat 3 + mast
@@ -854,6 +857,26 @@ revolve('muffler', (-0.20, EY - 0.05, EZ - 0.34), (1, 0, 0), [(0, 0.03), (0.03, 
 part('engine_core')
 revolve('muffler', (-0.20, EY - 0.06, EZ - 0.33), (1, 0, 0), [(0, 0.03), (0.03, 0.07), (0.40, 0.07), (0.43, 0.03), (0.43, 0)], MECH, 14)
 pipe('tailpipe', [(0.23, EY - 0.06, EZ - 0.33), (0.28, EY - 0.16, EZ - 0.36), (0.28, EY - 0.30, EZ - 0.40)], 0.022, MECH, 4, segs=8)
+# the faces where the cylinder banks meet the crankcase (seen only when a bank breaks off) use the stock engine internals
+# material, like stock parts' extra mechanical submesh (Nick 04:29); planar world-scale UVs for the trim sheet
+ENGI = 'UL2_enginternal'
+part('engine_core')     # crankcase: an internals disc under each cylinder root, hidden while the bank is on
+for sx in (-1, 1):
+    for cy in (EY + 0.13, EY - 0.13):
+        tube(f'cyl_socket{sx}{cy:.2f}', (sx * 0.159, cy, EZ), (sx * 0.1615, cy, EZ), 0.086, ENGI, 16)
+for n in ('engine_core', 'engine_L', 'engine_R'):
+    for o in PARTS[n]['objs']:
+        if not o.name.startswith('cyl'): continue
+        me = o.data; wm = o.matrix_world; nm = wm.to_3x3().inverted().transposed()
+        if ENGI not in [mm.name for mm in me.materials]: me.materials.append(mat(ENGI))
+        k = [mm.name for mm in me.materials].index(ENGI); uv = me.uv_layers.active or me.uv_layers.new(); hit = 0
+        for f in me.polygons:
+            c = wm @ f.center; nw = (nm @ f.normal).normalized()
+            if abs(nw.x) > 0.9 and abs(abs(c.x) - 0.16) < 0.015:
+                f.material_index = k; hit += 1
+                for li in f.loop_indices:
+                    v = wm @ me.vertices[me.loops[li].vertex_index].co; uv.data[li].uv = (v.y * 1.5, v.z * 1.5)
+        if hit: print('engine internals', o.name, hit)
 
 # ================================================================ tail boom (dips under the prop) + tail
 part('tailboom_F', 'frame_R', (0, -1.40, KZ))
@@ -1060,6 +1083,15 @@ print('soldier height', hi.z - lo.z, 'depth', hi.y - lo.y)
 
 # ================================================================ join + report
 if '--prejoin' in sys.argv: bpy.ops.wm.save_as_mainfile(filepath=OUT.replace('.blend', '_prejoin.blend'))
+# triangle diet (Nick 04:36), no visible change: merge coplanar triangles left by booleans, bevels and box caps
+# (planar dissolve, 0.5 deg, never across materials or UV seams); curved surfaces keep every edge
+_diet = 0
+for P in PARTS.values():
+    for o in P['objs']:
+        if o.type != 'MESH' or o.name.startswith('REF'): continue
+        d = o.modifiers.new('diet', 'DECIMATE'); d.decimate_type = 'DISSOLVE'; d.angle_limit = R(0.5)
+        d.delimit = {'MATERIAL', 'SEAM', 'SHARP'}; d.use_dissolve_boundaries = False; _diet += 1
+print('planar diet on', _diet, 'objects')
 parts = join_parts('PARTS')
 tot = 0
 for n, o in sorted(parts.items()):

@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.23")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.24")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -155,6 +155,7 @@ namespace UL2Airtrike
                 setRpm = target;
                 rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? upRate : 40f) * dt);
                 spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * dt, 0f);
+                RotorAudio(headOn);
                 // rotor disc tilt with the stick (gyros steer by tilting the head); held back on the ground roll
                 if (tilt != null)
                 {
@@ -277,6 +278,21 @@ namespace UL2Airtrike
         bool propErr;
         // extra rotor lift the fixed lifting surfaces can't give: a spun-up rotor on the takeoff roll, and the jump
         Component noseGear; bool noseSearched; static FieldInfo fLock;
+        // 0.15.24 (Nick 04:39): rotor swoosh. Stock RotorShaft plays its loop at pitch = rpm/nominal * pitch and volume = rpm/nominal.
+        // The clip is the attack helicopter's (4 blades at 280 rpm, pitch 0.7); matched to our 2-blade beat that is 0.7 * rpm / 560.
+        AudioSource rotorAudio; bool audioSearched;
+        void RotorAudio(bool headOn)
+        {
+            if (!audioSearched) { audioSearched = true; foreach (var a in unit.GetComponentsInChildren<AudioSource>(true)) if (a.name == "UL2_rotorAudio") { rotorAudio = a; break; }
+                if (rotorAudio == null) foreach (var c in partList) { if (c == null) continue; var t = c.transform.Find("UL2_rotorAudio"); if (t != null) { rotorAudio = t.GetComponent<AudioSource>(); break; } }
+                Plugin.Log.LogInfo("UL-2 rotor audio " + (rotorAudio != null && rotorAudio.clip != null)); }
+            if (rotorAudio == null || rotorAudio.clip == null) return;
+            float r = headOn ? rpm : 0f;
+            if (r < 5f) { if (rotorAudio.isPlaying) rotorAudio.Stop(); return; }
+            if (!rotorAudio.isPlaying) { rotorAudio.time = UnityEngine.Random.Range(0f, rotorAudio.clip.length * 0.9f); rotorAudio.Play(); }
+            rotorAudio.pitch = 0.7f * r / 560f;
+            rotorAudio.volume = Mathf.Clamp01(r / 450f) * 0.8f;
+        }
         void FixedUpdate()
         {
             try

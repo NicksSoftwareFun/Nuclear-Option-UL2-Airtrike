@@ -297,6 +297,9 @@ public static partial class UL2Builder
         MAT["UL2_frame"] = LitMat("UL2_frame", new Color32(175, 177, 180, 255), 0.4f, 0.2f);
         MAT["UL2_mech"] = LitMat("UL2_mech", new Color32(110, 112, 115, 255), 0.35f, 0.4f);
         MAT["UL2_dark"] = LitMat("UL2_dark", new Color32(42, 44, 47, 255), 0.4f, 0f);
+        // engine internals where a cylinder bank meets the crankcase (Nick 04:29): the stock engine mechanism trim sheet itself,
+        // which Blueprinter swaps for the game's own material (stock parts carry it as their mechanical submesh)
+        MAT["UL2_enginternal"] = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/jet_mechanical_PLACEHOLDER.mat");
         MAT["UL2_tyre"] = LitMat("UL2_tyre", new Color32(22, 22, 22, 255), 0.15f, 0f);
         MAT["UL2_seat"] = LitMat("UL2_seat", new Color32(70, 72, 74, 255), 0.25f, 0f);
         MAT["UL2_cockpit"] = LitMat("UL2_cockpit", new Color32(60, 62, 65, 255), 0.3f, 0f);
@@ -535,6 +538,20 @@ public static partial class UL2Builder
         // spinning copy of the blades (turned in game by the plugin); the lifting blade parts keep colliders but hide their mesh
         var spin = Find(Need("rotorHead"), "rotorSpin") ?? New("rotorSpin", Need("rotorHead"));
         spin.position = P("rotorCentre"); spin.rotation = Quaternion.identity;
+        // 0.15.24 (Nick 04:39): rotor swoosh = the stock single-rotor helicopter's rotor loop on its own AudioSource (same
+        // mixer group, distances and rolloff, copied from the stock source); the plugin sets pitch/volume from the rotor rpm
+        {
+            var ah = AssetDatabase.LoadAssetAtPath<GameObject>(PH + "GameObject/AttackHelo1_PLACEHOLDER.prefab");
+            var rs = ah == null ? null : ah.GetComponentsInChildren<MonoBehaviour>(true).FirstOrDefault(c => c != null && c.GetType().Name == "RotorShaft");
+            var srcA = rs == null ? null : new SerializedObject(rs).FindProperty("rotorSource").objectReferenceValue as AudioSource;
+            var clip = rs == null ? null : new SerializedObject(rs).FindProperty("exteriorSound").objectReferenceValue as AudioClip;
+            var at = Find(Need("rotorHead"), "UL2_rotorAudio") ?? New("UL2_rotorAudio", Need("rotorHead"));
+            at.position = P("rotorCentre");
+            var au = at.GetComponent<AudioSource>(); if (au == null) au = at.gameObject.AddComponent<AudioSource>();
+            if (srcA != null) EditorUtility.CopySerialized(srcA, au);
+            au.clip = clip; au.loop = true; au.playOnAwake = false; au.volume = 0f; au.pitch = 0f;
+            log.AppendLine("rotor audio: " + (clip != null ? clip.name : "NO CLIP") + ", source copied " + (srcA != null));
+        }
         // 0.15.9 (Nick 23:10): the hub bar / blade grips (rotorHead mesh) spin with the blades; the part keeps its collider
         Visual("spin_hub", "rotorHead", spin);
         { var hr = Need("rotorHead").GetComponent<MeshRenderer>(); if (hr) hr.enabled = false; }
@@ -1167,7 +1184,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.23\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.24\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
