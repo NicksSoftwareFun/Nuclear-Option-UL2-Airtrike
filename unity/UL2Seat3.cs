@@ -200,7 +200,7 @@ public static partial class UL2Builder
         so.FindProperty("targetRequirements.maxRange").floatValue = 2100f;
         // .338 Lapua Magnum round (Nick 20:24): faster and slightly more penetrating than 12.7, less damage per hit
         so.FindProperty("muzzleVelocity").floatValue = 950f; so.FindProperty("maxSpeed").floatValue = 950f;
-        so.FindProperty("dragCoef").floatValue = 0.16f; so.FindProperty("pierceDamage").floatValue = 120f;
+        so.FindProperty("dragCoef").floatValue = 0.16f; so.FindProperty("pierceDamage").floatValue = 150f;   // 0.15.36 (Nick 22:44: kills too slowly): 120 -> 150, near the 12.7 (160); armour tier stays 3.3 (12.7 is 3)
         so.FindProperty("armorTierEffectiveness").floatValue = 3.3f; so.FindProperty("massPerRound").floatValue = 0.045f;
         so.FindProperty("costPerRound").floatValue = 0.0000025f;
         so.FindProperty("effectiveness.antiAir").floatValue = 0.10f; so.FindProperty("effectiveness.antiSurface").floatValue = 0.10f;
