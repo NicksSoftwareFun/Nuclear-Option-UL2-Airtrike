@@ -99,9 +99,9 @@ public static partial class UL2Builder
     static void Seat3Mounts()
     {
         var kinds = new[] {
-            new { k = "mg", src = "turret_12.7mm_door", name = "Seat 3: Machine Gunner (6 x 75 rounds)", fwd = 34f, aft = 60f, mass = 115f },
-            new { k = "gl", src = "turret_40mm_grenade", name = "Seat 3: Grenadier (6 x 6 grenades)", fwd = 35f, aft = 80f, mass = 105f },
-            new { k = "spot", src = "turret_12.7mm_door", name = "Seat 3: Spotter", fwd = 20f, aft = 50f, mass = 100f } };
+            new { k = "mg", src = "turret_12.7mm_door", name = "Machine Gunner", fwd = 34f, aft = 60f, mass = 115f },
+            new { k = "gl", src = "turret_40mm_grenade", name = "Grenadier", fwd = 35f, aft = 80f, mass = 105f },
+            new { k = "spot", src = "turret_12.7mm_door", name = "Spotter", fwd = 20f, aft = 50f, mass = 100f } };
         foreach (var K in kinds)
         {
             var go = CopyPrefab(K.src, "UL2_s3_" + K.k);
@@ -166,9 +166,9 @@ public static partial class UL2Builder
         var m = AssetDatabase.LoadMainAssetAtPath(path);
         if (m == null) { AssetDatabase.CopyAsset(src != null ? AssetDatabase.GetAssetPath(src) : PH + "MonoBehaviour/Grenade_40mm_PLACEHOLDER.asset", path); AssetDatabase.ImportAsset(path); m = AssetDatabase.LoadMainAssetAtPath(path); }
         var so = new SerializedObject(m);
-        so.FindProperty("weaponName").stringValue = "40 mm Grenadier (M32-style)";
+        so.FindProperty("weaponName").stringValue = "40 mm Grenadier";
         so.FindProperty("shortName").stringValue = "40mm GL";
-        so.FindProperty("description").stringValue = "Seat 3 grenadier with a six-shot 40 mm revolver grenade launcher, same rounds as the Ibis door launcher.";
+        so.FindProperty("description").stringValue = "A third seat grenadier with a six-shot 40 mm grenade launcher with HEDP ammo.";
         so.FindProperty("weaponIcon").objectReferenceValue = UL2Builder.IconSprite(ART + "Icons/UL2_icon_s3_gl.png");
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
         return m;
@@ -181,12 +181,28 @@ public static partial class UL2Builder
         var so = new SerializedObject(m);
         so.FindProperty("weaponName").stringValue = "Spotter";
         so.FindProperty("shortName").stringValue = "SPOT";
-        so.FindProperty("description").stringValue = "Seat 3 spotter with laser rangefinding binoculars and a radio. Raises the aircraft's visual detection range to 10 km. No weapon.";
+        so.FindProperty("description").stringValue = "A spotter with long range binoculars. Raises the gyrocopter's visual detection range to 10 km.";
         so.FindProperty("targetRequirements.maxRange").floatValue = 10000f;
         so.FindProperty("pierceDamage").floatValue = 0f; so.FindProperty("blastDamage").floatValue = 0f;
         so.FindProperty("effectiveness.antiAir").floatValue = 0f; so.FindProperty("effectiveness.antiSurface").floatValue = 0f;
         so.FindProperty("costPerRound").floatValue = 0f; so.FindProperty("massPerRound").floatValue = 0f;
         so.FindProperty("weaponIcon").objectReferenceValue = UL2Builder.IconSprite(ART + "Icons/UL2_icon_s3_spot.png");
+        so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
+        return m;
+    }
+
+    // 0.15.37 (Nick's names page): loadout-screen text for the seat 3 ECM pod. The stock pod mount carries no info; the
+    // pod has no Weapon, so this info only feeds the loadout screen. No icon, so the screen shows just the text.
+    static Object EcmInfo()
+    {
+        string path = MNT + "UL2_ecm_info.asset";
+        var m = AssetDatabase.LoadMainAssetAtPath(path);
+        if (m == null) { AssetDatabase.CopyAsset(PH + "MonoBehaviour/JammingPod1_PLACEHOLDER.asset", path); AssetDatabase.ImportAsset(path); m = AssetDatabase.LoadMainAssetAtPath(path); }
+        var so = new SerializedObject(m);
+        so.FindProperty("weaponName").stringValue = "Expedient ECM Pod";
+        so.FindProperty("shortName").stringValue = "ECM POD";
+        so.FindProperty("description").stringValue = "An enterprising copilot didn't like the idea of giving up half his armament for a defensive ECM pod, so he tricked the aircraft into thinking a stolen pod strapped to the third seat was a \"center pylon\" and connected it to the engine's alternator. Don't get cocky out there.";
+        so.FindProperty("weaponIcon").objectReferenceValue = null;
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
         return m;
     }
@@ -204,10 +220,10 @@ public static partial class UL2Builder
         so.FindProperty("armorTierEffectiveness").floatValue = 3.3f; so.FindProperty("massPerRound").floatValue = 0.045f;
         so.FindProperty("costPerRound").floatValue = 0.0000025f;
         so.FindProperty("effectiveness.antiAir").floatValue = 0.10f; so.FindProperty("effectiveness.antiSurface").floatValue = 0.10f;
-        so.FindProperty("weaponName").stringValue = "MG 338 (.338 LM)";
-        so.FindProperty("shortName").stringValue = "MG 338";
+        so.FindProperty("weaponName").stringValue = ".338 LM Machine Gun";
+        so.FindProperty("shortName").stringValue = "MG-338";
         so.FindProperty("weaponIcon").objectReferenceValue = UL2Builder.IconSprite(ART + "Icons/UL2_icon_s3_mg.png");
-        so.FindProperty("description").stringValue = "Seat 3 machine gunner with a belt-fed .338 Lapua Magnum machine gun on a support arm, effective to about 2 km.";
+        so.FindProperty("description").stringValue = "A third seat machine gunner with a belt-fed .338 Lapua Magnum machine gun with lightweight polymer case ammunition.";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
         return m;
     }
@@ -219,7 +235,7 @@ public static partial class UL2Builder
         hp.position = P("gunner"); hp.rotation = Quaternion.identity;
         sets.arraySize = 4;
         var p = sets.GetArrayElementAtIndex(3);
-        p.FindPropertyRelative("name").stringValue = "Seat 3 (passenger)";
+        p.FindPropertyRelative("name").stringValue = "Third Seat";
         p.FindPropertyRelative("SymmetryWithPrev").boolValue = false;
         p.FindPropertyRelative("SymmetryName").stringValue = "";
         p.FindPropertyRelative("precludingHardpointSets").arraySize = 0;
@@ -272,9 +288,10 @@ public static partial class UL2Builder
             kit.gameObject.AddComponent<MeshFilter>().sharedMesh = kv.Key;
             kit.gameObject.AddComponent<MeshRenderer>().sharedMaterials = kv.Value;
             log.AppendLine("seat3 ecm: pod posed, " + moved + " references moved, kit " + kv.Key.vertexCount + " verts, " + kv.Value.Length + " materials");
-            var m = SaveMount(go, "UL2_s3_ecm", "ECMPod1", null, "Seat 3: ECM Pod");
+            var m = SaveMount(go, "UL2_s3_ecm", "ECMPod1", null, "Expedient ECM Pod");
             var ms = new SerializedObject(m);
             ms.FindProperty("emptyMass").floatValue = 162f;   // stock pod 150 kg + straps, tray and cables
+            ms.FindProperty("info").objectReferenceValue = EcmInfo();   // 0.15.37: own loadout text (the stock pod has none, so the screen showed the aircraft text)
             ms.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
         }
         catch (System.Exception ex) { log.AppendLine("SEAT3 ecm ERROR " + ex); }

@@ -1034,7 +1034,7 @@ public static partial class UL2Builder
         for (int i = sets.arraySize - 1; i >= 0; i--) if (!keep.Contains(i)) sets.DeleteArrayElementAtIndex(i);
         so.ApplyModifiedPropertiesWithoutUndo();
         so = new SerializedObject(wm); sets = so.FindProperty("hardpointSets");
-        var g = sets.GetArrayElementAtIndex(0); g.FindPropertyRelative("name").stringValue = "Side Gun";
+        var g = sets.GetArrayElementAtIndex(0); g.FindPropertyRelative("name").stringValue = "Forward Gun";
         var hps = g.FindPropertyRelative("hardpoints"); hps.arraySize = 1;
         var gunHp = Find(root, "gunmount_R_hp");
         hps.GetArrayElementAtIndex(0).FindPropertyRelative("transform").objectReferenceValue = gunHp;
@@ -1050,8 +1050,8 @@ public static partial class UL2Builder
         string[] topOpts = { "RocketPod1_single", "AGM1_single", "AAM3_single", "ECMPod1", "ATGM1_quad" };
         string[] underOpts = { "gun_12.7mm_pod", "gun_20mm_pod", "bomb_125_single" };
         var defs = new[] {
-            new { name = "Left Stub (top)", hp = "pylon_fuselage_L", sym = false, symName = "Stub Pylons (top)", opts = topOpts, pre = 3 },
-            new { name = "Right Stub (top)", hp = "pylon_fuselage_R", sym = true, symName = "Stub Pylons (top)", opts = topOpts, pre = 4 },
+            new { name = "Left Stub", hp = "pylon_fuselage_L", sym = false, symName = "Stub Pylons (top)", opts = topOpts, pre = 3 },
+            new { name = "Right Stub", hp = "pylon_fuselage_R", sym = true, symName = "Stub Pylons (top)", opts = topOpts, pre = 4 },
             new { name = "Left Stub (under)", hp = "pylon_under_L", sym = false, symName = "Stub Pylons (under)", opts = underOpts, pre = 1 },
             new { name = "Right Stub (under)", hp = "pylon_under_R", sym = true, symName = "Stub Pylons (under)", opts = underOpts, pre = 2 } };
         for (int i = 0; i < 2; i++)
@@ -1124,7 +1124,7 @@ public static partial class UL2Builder
             // 0.15.29 (Nick 12:29): no magazine changes, one 300-round belt fired however the pilot wants
             foreach (var gn in go.GetComponentsInChildren<MonoBehaviour>(true).Where(c => c != null && c.GetType().Name == "Gun"))
             { Set(gn, "magazineCapacity", 300); Set(gn, "magazines", 1); Set(gn, "reloadTime", 0f); log.AppendLine("side gun belt 300 rounds on " + gn.name); }
-            var m = SaveMount(go, "UL2_sidegun", "turret_12.7mm_door", null, "12.7mm Side Gun (300 rounds)");
+            var m = SaveMount(go, "UL2_sidegun", "turret_12.7mm_door", null, "12.7mm Gun (300 rounds)");
             var so = new SerializedObject(m);
             var amp = so.FindProperty("ammo"); if (amp != null) amp.intValue = 300;
             so.FindProperty("GearSafety").boolValue = false; so.FindProperty("GroundSafety").boolValue = false;
@@ -1166,6 +1166,11 @@ public static partial class UL2Builder
         else if (fuel > 0f) log.AppendLine("no FuelTank on " + n);
     }
     static void J(string part, params object[] pairs) { Joints(part, pairs); }
+    static void Armor(string n, float pierceArmor, float pierceTol, float blastTol)
+    {
+        var ap = C(n == "" ? root : Need(n), "AeroPart");
+        Set(ap, "armorProperties.pierceArmor", pierceArmor); Set(ap, "armorProperties.pierceTolerance", pierceTol); Set(ap, "armorProperties.blastTolerance", blastTol);
+    }
     static void AeroAndDamage()
     {
         // ~680 kg empty with the gun; 60 kg fuel in the frame tank
@@ -1234,6 +1239,22 @@ public static partial class UL2Builder
         foreach (var n in new[] { "tailboom_L", "tailboom_R", "nose", "vstab1_L" }) ObjArray(AP(n), "disintegrationEffects", fragSrc);
         foreach (var n in new[] { "nose", "cockpit_F", "cockpit_R", "mast", "rotorHead", "engine_core", "tailboom_L", "tailboom_R", "nacelle_L", "nacelle_R", "wing1_L", "wing1_R" })
         { Set(AP(n), "impactDamage.threshold", 25f); Set(AP(n), "impactDamage.multiplier", 2f); }
+        // 0.15.37 (Nick 23:17: too durable, the cockpit breaks and the rest stays intact): the armor values came over
+        // unchanged from the Cricket, whose cockpit tub takes about a fifth of the damage of the rest (pierce tolerance
+        // 30-50). The UL-2 is a fibreglass pod on a tube frame, so every part now takes 1.5-2x the Cricket's damage per hit
+        // and the cockpit no more than the frame behind it. Damage per hit = (pierce - pierceArmor) / pierceTolerance
+        // + blast / blastTolerance; a part comes off once its hit points reach 0.
+        Armor("", 10f, 5f, 6f); Armor("cockpit_F", 8f, 6f, 6f); Armor("cockpit_R", 8f, 6f, 6f); Armor("nose", 10f, 4f, 3f);
+        Armor("fuselage", 10f, 4f, 4f); Armor("intake", 10f, 4f, 3f); Armor("gunmount_R", 10f, 5f, 3f);
+        Armor("mast", 10f, 5f, 3f); Armor("rotorHead", 10f, 5f, 3f);
+        Armor("engine_core", 10f, 5f, 3f); Armor("engine_L", 10f, 4f, 3f); Armor("engine_R", 10f, 4f, 3f); Armor("propHub", 10f, 6f, 3f);
+        Armor("nacelle_L", 10f, 4f, 4f); Armor("nacelle_R", 10f, 4f, 4f); Armor("tailboom_L", 10f, 3f, 3f); Armor("tailboom_R", 10f, 3f, 3f);
+        Armor("vstab1_L", 10f, 3f, 3f); Armor("vstab1_R", 10f, 3f, 3f); Armor("rudder_L", 5f, 3f, 3f); Armor("rudder_R", 5f, 3f, 3f);
+        foreach (var s in new[] { "L", "R" })
+        {
+            Armor("wing1_" + s, 10f, 4f, 5f); Armor("wing2_" + s, 10f, 4f, 3f); Armor("wing3_" + s, 10f, 3f, 2f); Armor("aileron_" + s, 5f, 3f, 3f);
+            Armor("hstab_" + s, 10f, 3f, 3f); Armor("hstabTip_" + s, 10f, 3f, 3f); Armor("elevator_" + s, 10f, 3f, 3f); Armor("elevatorTip_" + s, 10f, 3f, 3f);
+        }
         log.AppendLine("aero + joints set");
     }
 
@@ -1363,7 +1384,7 @@ public static partial class UL2Builder
         so.FindProperty("DefaultFuelLevel").floatValue = 1f;
         so.FindProperty("cruiseThrottle").floatValue = 0.75f;
         var liv = so.FindProperty("liveries"); liv.arraySize = 3;
-        string[] livName = { "Army Olive", "Polished Stainless", "Black Tiger" };
+        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger" };
         string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger") };
         for (int i = 0; i < 3; i++)
         {
@@ -1393,7 +1414,7 @@ public static partial class UL2Builder
         so.FindProperty("unitName").stringValue = "UL-2 Airtrike";
         var wt = so.FindProperty("WorkshopTag"); if (wt != null) wt.stringValue = "UL-2 Airtrike";
         so.FindProperty("code").stringValue = "UL-2";
-        so.FindProperty("description").stringValue = "A light three-seat gyroplane for scouting and harassment from rough strips. The pilot lases targets from a small optical ball under the nose, the copilot runs the sensors, and a soldier in the third seat works a 12.7 mm gun in a side mount.";
+        so.FindProperty("description").stringValue = "A light three-seat gyrocopter operated by Reserve Aviation units. Border patrol, armed reconnaissance, and light attack are all missions the UL-2 Airtrike can perform, but Reservists are reluctant to take it into enemy airspace where more sophisticated aircraft hunt. AT-145 racks and a forgiving flight envelope allow the gyrocopter to engage enemy light armor in close combat. A third seat allows for a dedicated spotter or shooter with multiple weapons options.";
         // own map and aircraft selection icon (Nick 04:20): white top-down silhouette, nose up, rotor at 35 deg passing under
         // the body, like the stock icons (art/scripts/icons)
         var mapIco = IconSprite(ART + "Icons/UL2_icon_map.png");
@@ -1442,7 +1463,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.36\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.37\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
