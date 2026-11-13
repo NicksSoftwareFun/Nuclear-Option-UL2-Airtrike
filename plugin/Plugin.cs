@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.16")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.17")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -154,7 +154,7 @@ namespace UL2Airtrike
                 }
                 if (axis > 0.05f && (dbgT -= dt) <= 0f) { dbgT = 2f; Plugin.Log.LogInfo($"UL-2 pre-rotator axis {axis:0.00} rpm {rpm:0} alt {alt:0.00} engine {er:0.00} thr {thr:0.00} clutch {clutch}"); }
                 prevAxis = axis;
-                if (jumpT >= 0f) { jumpT += dt; target = Mathf.Max(target, 300f); if (jumpT > 2.0f) jumpT = -1f; }
+                if (jumpT >= 0f) { jumpT += dt; target = Mathf.Max(target, 300f); if (jumpT > 10f || (jumpT > 1.5f && logT > 0.95f)) jumpT = -1f; }
                 rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? upRate : (jumpT >= 0f ? 80f : 40f)) * dt);
                 spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * dt, 0f);
                 // rotor disc tilt with the stick (gyros steer by tilting the head); held back on the ground roll
@@ -292,7 +292,18 @@ namespace UL2Airtrike
                 foreach (var c in partList) { if (c == null || Detached(c)) continue; var r = c.GetComponent<Rigidbody>(); if (r == null || r.isKinematic) continue; cs += r.worldCenterOfMass * r.mass; cm += r.mass; }
                 if (cm > 0f) com = cs / cm;
                 var thrustV = RotorAero(rb, spd, W);
-                if (jumpT >= 0f) F += W * 2.0f * jumpE * Mathf.Clamp01(1f - jumpT / 2.0f);
+                // 0.15.17 jump (Nick 03:27: hop then falls back): a short kick, then the stored rotor energy holds the weight
+                // while the prop builds flying speed, handing over to normal rotor lift; fades out gently from 5 to 10 s
+                if (jumpT >= 0f)
+                {
+                    float Tv = Vector3.Dot(thrustV, Vector3.up);
+                    if (jumpT < 0.7f) F = W * 1.6f * jumpE;
+                    else
+                    {
+                        float hold = W * Mathf.Clamp01(jumpE * 1.5f) * (jumpT < 5f ? 1f : Mathf.Clamp01((10f - jumpT) / 5f)) * 1.03f;
+                        F = Mathf.Max(0f, hold - Tv - massSum * rb.velocity.y * 1.2f);
+                    }
+                }
                 thrustV += rotorN * F;
                 if (thrustV.sqrMagnitude > 0f) rb.AddForceAtPosition(thrustV, com, ForceMode.Force);
                 logSpd = spd; logVy = rb.velocity.y; logYaw = Vector3.Dot(rb.angularVelocity, transform.up) * Mathf.Rad2Deg; logF = W > 0f ? F / W : 0f;
@@ -322,7 +333,7 @@ namespace UL2Airtrike
         Vector3 RotorAero(Rigidbody rb, float spd, float W)
         {
             var v = transform.InverseTransformDirection(rb.velocity);
-            bodyAoA = spd > 5f ? Mathf.Atan2(-v.y, Mathf.Max(v.z, 0.1f)) * Mathf.Rad2Deg : 0f;
+            bodyAoA = v.sqrMagnitude > 1f ? Mathf.Atan2(-v.y, Mathf.Max(v.z, 0.1f)) * Mathf.Rad2Deg : 0f;
             float pull = Mathf.Clamp01(-pitchIn), push = Mathf.Clamp01(pitchIn);
             float cmd = INC0 + INC_PULL * pull - INC_PUSH * push;
             inc = Mathf.MoveTowards(inc, Mathf.Clamp(cmd, -6f, 14f), 20f * Time.fixedDeltaTime);
@@ -341,11 +352,13 @@ namespace UL2Airtrike
             rotorN = (Quaternion.AngleAxis(-inc + INC0, transform.right) * Quaternion.AngleAxis(-lat, transform.forward)) * transform.up;
             if (area <= 0f || rb.velocity.sqrMagnitude < 1f) return Vector3.zero;
             float a = bodyAoA + inc;                                      // disc angle of attack, deg
-            float cl = a >= 0f ? 1.15f * (float)Math.Tanh(a / 12f) : Mathf.Max(-0.25f, a / 15f);
+            // 0.15.17 (Nick 03:27 log: lifted off but bled speed and sank, disc at 10-20 deg): effective lifting area 1.6x the
+            // blade surfaces (a full 8.4 m disc), so cruise needs a few degrees of disc angle, not 10+, and induced drag drops
+            float cl = a >= 0f ? 1.15f * (float)Math.Tanh(a / 12f) : (spd > 8f ? Mathf.Max(-0.25f, a / 15f) : 0f);
             float q = 0.5f * 1.225f * rb.velocity.sqrMagnitude;
-            float T = Mathf.Min(rotorK * cl * q * area, 2.5f * W);
+            float T = Mathf.Min(rotorK * cl * q * area * 1.6f, 2.5f * W);
             var dir = -rb.velocity.normalized;
-            float Dp = rotorK * 0.012f * q * area;                        // blade profile drag; induced drag comes from the disc tilt
+            float Dp = rotorK * 0.009f * q * area;                        // blade profile drag; induced drag comes from the disc tilt
             return rotorN * T + dir * Dp;
         }
         float spawnT;
