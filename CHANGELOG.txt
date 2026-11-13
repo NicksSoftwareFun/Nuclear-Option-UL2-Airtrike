@@ -2,6 +2,9 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.13 test build: SUB-2000 lower to the Kel-Tec shape - raked grip with straight back strap and flared base,
+  molded square pockets cut into both sides, mag release button in a well, angled magazine base, thin strap trigger
+  guard from the hinge pin to the grip front, slim curved trigger moved just ahead of the grip.
 - 0.15.12 test build: SUB-2000 grip reshaped (rounded section, palm swell, finger grooves, sunk grip panels), round
   trigger guard and curved trigger; front block removed from the muzzle, shallow bore at the tip. Cockpit opening cut
   cleanly along the sill, old rim tubes removed, windscreen base strip seated on the wall edge all round, side consoles

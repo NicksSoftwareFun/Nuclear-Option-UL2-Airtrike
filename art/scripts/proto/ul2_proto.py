@@ -425,35 +425,50 @@ def rifle_on_seat(tag, P, side=-1):
     PL('frame', [(95, 660), (150, 600), (225, 555), (300, 600), (330, 650), (760, 690), (770, 845), (650, 862), (440, 1002), (95, 1002)], FR, FDE_)
     # 0.15.12 (Nick 00:07: grip, guard and trigger too blocky): the grip is a lofted, rounded shape with a palm swell on the
     # back strap and three finger grooves on the front; the guard is a round-section loop; the trigger is a curved blade
-    PL('grip_top', [(440, 1000), (655, 852), (657, 1010), (446, 1010)], FR, FDE_)
+    # 0.15.13 (Nick 00:37, Kel-Tec reference photo): raked grip with a straight back strap and flared base, molded square
+    # pockets cut into both sides, mag release button in a well, thin strap trigger guard from the hinge pin to the grip
+    # front, and a slim curved trigger just ahead of the grip
     def gx(pts, y):
         for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
             if y0 <= y <= y1: return x0 + (x1 - x0) * (y - y0) / (y1 - y0)
-        return pts[-1][0]
+        return pts[-1][0] if y > pts[-1][1] else pts[0][0]
+    FRONT = [(655, 862), (440, 1002), (470, 1080), (500, 1180), (515, 1292)]
+    BACK = [(702, 862), (694, 1010), (700, 1150), (706, 1230), (710, 1292)]
+    def edges(y):
+        f = min(1.0, max(0.0, (y - 1262) / 30)); f = f * f * (3 - 2 * f)          # flared base
+        return gx(FRONT, y) - 6 * f, gx(BACK, y) + 8 * f
+    def wloc(x, y):
+        xf, xb = edges(y); return FR / 2 * (0.82 + 0.18 * (x - xf) / max(1, xb - xf))
     rings = []; NR = 22
-    for j in range(15):
-        y = 995 + (1292 - 995) * j / 14; t = (y - 995) / 297
-        xf = gx([(440, 990), (452, 1050), (475, 1300)], y) + 9 * max(0.0, math.sin(math.pi * (y - 1035) / 75)) * (1035 <= y <= 1260)   # finger grooves
-        xb = gx([(657, 990), (654, 1060), (640, 1300)], y) + 10 * math.sin(math.pi * min(1, t * 1.15))                        # palm swell
+    for j in range(25):
+        y = 864 + (1292 - 864) * j / 24; xf, xb = edges(y)
         hl, cu = (xb - xf) / 2, (xf + xb) / 2; ring = []
         for k in range(NR):
             q = 2 * math.pi * k / NR; c, sn = math.cos(q), math.sin(q)
             ux = cu + hl * math.copysign(abs(c) ** (2 / 2.6), c)
-            ww = FR / 2 * (0.82 + 0.18 * (ux - xf) / max(1, xb - xf)) * math.copysign(abs(sn) ** (2 / 2.6), sn)
-            ring.append(L(ux, y, ww))
+            ring.append(L(ux, y, wloc(ux, y) * math.copysign(abs(sn) ** (2 / 2.6), sn)))
         rings.append(ring)
     gp = loft(f'{tag}_sub_grip', rings, FDE_)
-    # black grip panels sunk 1 to 2 mm into both grip sides
-    recess(gp, [BX(f'gripinsert_{sw}', 492, 1045, 618, 1262, 0.008, BLACK_, wc=sw * (FR / 2 * 0.86 + 0.004)) for sw in (-1, 1)], smooth=True)
+    cuts = []
+    for sw in (-1, 1):
+        for r in range(3):
+            y0 = 1092 + 54 * r
+            for i in range(3):
+                x0 = edges(y0 + 22)[0] + 20 + 54 * i; d = wloc(x0 + 22, y0 + 22) - 0.0012     # 1.2 mm deep from the local surface
+                cuts.append(BX(f'gpock{r}{i}_{sw}', x0, y0, x0 + 44, y0 + 44, 0.008, DARK, wc=sw * (d + 0.004)))
+        d = wloc(489, 1063) - 0.0018
+        cuts.append(BX(f'magrel_well_{sw}', 476, 1043, 502, 1083, 0.008, DARK, wc=sw * (d + 0.004)))
+    recess(gp, cuts, smooth=True)
+    for sw in (-1, 1):   # release button sits down in its well, just below the grip surface
+        d = wloc(489, 1063); BX(f'magrel_{sw}', 479, 1046, 499, 1080, 0.0032, BLACK_, wc=sw * (d - 0.0018 + 0.0013))
     PL('frame_low', [(95, 995), (262, 995), (262, 1060), (130, 1060), (95, 1020)], FR, FDE_)
-    BX('magbase', 470, 1288, 615, 1352, 0.030, BLACK_)
-    BX('magbody', 482, 1262, 603, 1290, 0.024, MECH)
-    tg = [(232, 998), (224, 1028), (225, 1058), (234, 1082), (248, 1098)]
-    sweep(f'{tag}_sub_trigger', crom([L(*q) for q in tg], 4), [(0.0032 * math.cos(2 * math.pi * k / 12), 0.0022 * math.sin(2 * math.pi * k / 12)) for k in range(12)],
-          MECH, side=tuple(AW), scale=[1.15 - 0.25 * i / 16 for i in range(17)])
-    sweep(f'{tag}_sub_guard', crom([L(*q) for q in ((150, 1040), (158, 1100), (195, 1135), (300, 1142), (400, 1125), (458, 1080))], 5),
-          [(0.0060 * math.cos(2 * math.pi * k / 12), 0.0034 * math.sin(2 * math.pi * k / 12)) for k in range(12)], BLACK_, side=tuple(AW))
-    for k, (x, y, r) in enumerate(((385, 885, 0.0055), (195, 750, 0.004), (180, 965, 0.004), (330, 810, 0.004), (625, 940, 0.004), (690, 800, 0.004), (430, 1080, 0.004))):
+    PL('magbase', [(508, 1290), (712, 1290), (717, 1302), (714, 1336), (500, 1336), (503, 1302)], 0.030, BLACK_, bev=0.003)
+    tg = [(401, 997), (396, 1030), (384, 1062), (385, 1090), (395, 1106)]
+    sweep(f'{tag}_sub_trigger', crom([L(*q) for q in tg], 4), [(0.0034 * math.cos(2 * math.pi * k / 12), 0.0024 * math.sin(2 * math.pi * k / 12)) for k in range(12)],
+          MECH, side=tuple(AW), scale=[1.1 - 0.3 * i / 16 for i in range(17)])
+    gd = ((236, 1000), (226, 1056), (240, 1106), (272, 1128), (349, 1136), (413, 1134), (446, 1118), (466, 1094))
+    sweep(f'{tag}_sub_guard', crom([L(*q) for q in gd], 5), rrect(0.0085, 0.0045, 0.0015), BLACK_, side=tuple(AW))
+    for k, (x, y, r) in enumerate(((385, 885, 0.0055), (195, 750, 0.004), (180, 965, 0.004), (330, 810, 0.004), (625, 940, 0.004), (690, 800, 0.004), (696, 1262, 0.004))):
         revolve(f'{tag}_sub_pin{k}', L(x, y, -0.021), AW, [(0, r), (0.042, r), (0.042, 0)], MECH if k % 2 == 0 else BLACK_, 10)
     # charging handle under the tube
     tube(f'{tag}_sub_ch_stem', L(945, 830), L(945, 955), 0.003, MECH, 8)
