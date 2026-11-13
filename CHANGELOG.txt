@@ -2,6 +2,7 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.16: rotor thrust and the jump now act at the aircraft's centre of mass (no more nose-down with the stick back or backflip on the jump); thrust normal to the tilted rotor disc and scaled by rotor rpm; rotor pitch/roll damping; roll control from the rotor head; the wheels hold it upright on the takeoff roll.
 - 0.15.15 test build: gyro rotor model. Each blade surface has its own lift transform pitched with the rotor head
   (3 deg neutral, 12 deg stick back, -1 deg pushed, held under the stall); blade lift scales with rotor rpm, which
   builds with airspeed (40 + 18 rpm per m/s, 380 max) or the pre-rotator. The artificial roll-out lift push is gone

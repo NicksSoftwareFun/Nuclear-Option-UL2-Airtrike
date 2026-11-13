@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.15")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.16")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -243,7 +243,7 @@ namespace UL2Airtrike
                 string o = "";
                 foreach (var c in partList) { if (c == null) continue; if (c.name == "mast" || c.name == "rotorHead" || c.name == "engine_core" || c.name == "tailboom_R" || c.name.StartsWith("nacelle")) { var q = Quaternion.Inverse(transform.rotation) * c.transform.rotation; var e = q.eulerAngles; o += $" {c.name} p{Wrap(e.x):0.0} r{Wrap(e.z):0.0}"; } }
                 var re = transform.rotation.eulerAngles;
-                Plugin.Log.LogInfo($"UL-2 flight: {logSpd * 3.6f:0} km/h climb {logVy:0.0} m/s alt {alt:0.0} | rotor {rpm:0} rpm lift {rotorK:0.00} incidence {inc:0.0} body aoa {bodyAoA:0.0} stick {pitchIn:0.00} thr {thr:0.00} prop thrust {logThrust:0} N jump {logF:0.00} W | pitch {Wrap(re.x):0.0} roll {Wrap(re.z):0.0} yaw rate {logYaw:0} deg/s |{o}");
+                Plugin.Log.LogInfo($"UL-2 flight: {logSpd * 3.6f:0} km/h climb {logVy:0.0} m/s alt {alt:0.0} | rotor {rpm:0} rpm lift {rotorK:0.00} incidence {inc:0.0} body aoa {bodyAoA:0.0} stick {pitchIn:0.00} thr {thr:0.00} prop thrust {logThrust:0} N jump {logF:0.00} W rotor thrust {logT:0.00} W | pitch {Wrap(re.x):0.0} roll {Wrap(re.z):0.0} yaw rate {logYaw:0} deg/s |{o}");
             }
             catch { }
         }
@@ -285,37 +285,68 @@ namespace UL2Airtrike
                     if (massSum < rb.mass) massSum = rb.mass;
                 }
                 float W = massSum * 9.81f, spd = fSpeed != null ? (float)fSpeed.GetValue(unit) : 0f, F = 0f;
-                RotorAero(rb, spd);
-                if (jumpT >= 0f) F += W * 2.2f * jumpE * Mathf.Clamp01(1f - jumpT / 2.0f);
-                if (F > 0f) rb.AddForce(transform.up * F, ForceMode.Force);
+                // 0.15.16 (Nick 03:14 log): the game's own forces on the high blade parts pitched the nose down 10 deg with the
+                // stick back, and the jump push on the nose-heavy root body flipped it backwards. Rotor thrust and the jump now
+                // act at the whole aircraft's centre of mass; the pitch and roll moments are ours, so they can be tuned.
+                Vector3 com = rb.worldCenterOfMass; float cm = 0f; Vector3 cs = Vector3.zero;
+                foreach (var c in partList) { if (c == null || Detached(c)) continue; var r = c.GetComponent<Rigidbody>(); if (r == null || r.isKinematic) continue; cs += r.worldCenterOfMass * r.mass; cm += r.mass; }
+                if (cm > 0f) com = cs / cm;
+                var thrustV = RotorAero(rb, spd, W);
+                if (jumpT >= 0f) F += W * 2.0f * jumpE * Mathf.Clamp01(1f - jumpT / 2.0f);
+                thrustV += rotorN * F;
+                if (thrustV.sqrMagnitude > 0f) rb.AddForceAtPosition(thrustV, com, ForceMode.Force);
                 logSpd = spd; logVy = rb.velocity.y; logYaw = Vector3.Dot(rb.angularVelocity, transform.up) * Mathf.Rad2Deg; logF = W > 0f ? F / W : 0f;
-                // rotor head pitch authority (a gyro pitches by tilting the head, Nick 22:31: nose would not come up on the
-                // takeoff roll). Scales with rotor rpm; strongest on the ground, eased off in flight where the elevator works.
-                // Game pitch input: positive = nose down.
+                logT = W > 0f ? Vector3.Dot(thrustV, transform.up) / W : 0f;
+                // rotor head control moments (a gyro pitches and rolls by tilting the head) plus the rotor's own damping,
+                // which is what keeps a real gyro from tumbling. Game pitch input: positive = nose down; roll: positive = right.
                 float rs = Mathf.Clamp01(rpm / 300f);
-                float K = alt < 2f ? 1500f : Mathf.Lerp(2500f, 900f, Mathf.InverseLerp(15f, 35f, spd));   // 0.15.15: lift no longer needs the nose rotated
-                if (rs > 0.05f && Mathf.Abs(pitchIn) > 0.02f) rb.AddTorque(transform.right * (pitchIn * K * rs), ForceMode.Force);
+                float K = alt < 2f ? 1800f : Mathf.Lerp(2500f, 1200f, Mathf.InverseLerp(15f, 35f, spd));
+                var wl = transform.InverseTransformDirection(rb.angularVelocity);
+                var tq = Vector3.zero;
+                if (rs > 0.05f) tq += transform.right * (Mathf.Clamp(pitchIn, -1f, 1f) * K * rs) - transform.forward * (Mathf.Clamp(rollIn, -1f, 1f) * 0.6f * K * rs);
+                float damp = 2500f * Mathf.Max(rotorK, 0.3f);
+                tq -= transform.right * (wl.x * damp) + transform.forward * (wl.z * damp);
+                // on the wheels: the wide gear keeps it upright against prop torque and the side load as the rotor unloads them
+                if (alt < 1.5f)
+                {
+                    float rollA = Wrap(transform.rotation.eulerAngles.z) * Mathf.Deg2Rad;
+                    tq += transform.forward * (-rollA * 9000f);
+                }
+                rb.AddTorque(tq, ForceMode.Force);
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 rotor lift: " + e); pRb = null; }
         }
-        void RotorAero(Rigidbody rb, float spd)
+        Vector3 rotorN = Vector3.up; float logT;
+        // 0.15.16 rotor thrust from the plugin (the blade surfaces keep a token area so damage still works): thrust is normal to
+        // the tilted disc, Cl rises with disc angle of attack and flattens instead of stalling, and scales with rotor rpm.
+        Vector3 RotorAero(Rigidbody rb, float spd, float W)
         {
-            // body angle of attack from the airflow (nose-up positive)
             var v = transform.InverseTransformDirection(rb.velocity);
             bodyAoA = spd > 5f ? Mathf.Atan2(-v.y, Mathf.Max(v.z, 0.1f)) * Mathf.Rad2Deg : 0f;
             float pull = Mathf.Clamp01(-pitchIn), push = Mathf.Clamp01(pitchIn);
             float cmd = INC0 + INC_PULL * pull - INC_PUSH * push;
-            cmd = Mathf.Min(cmd, ROTOR_AOA_MAX - bodyAoA);            // a rotor does not stall: keep the blades under the airfoil's stall
             inc = Mathf.MoveTowards(inc, Mathf.Clamp(cmd, -6f, 14f), 20f * Time.fixedDeltaTime);
             float k = Mathf.Clamp01((rpm - 100f) / 200f); rotorK = k * k;
+            float area = 0f;
             foreach (var b in rotorBlades)
             {
                 if (b.part == null) continue;
                 if (Detached(b.part)) { if (b.ln != null) b.ln.localRotation = Quaternion.identity; mSetArea?.Invoke(b.part, new object[] { b.area }); b.part = null; continue; }
-                if (b.ln != null) b.ln.localRotation = Quaternion.Euler(-inc, 0f, 0f);
-                mSetArea?.Invoke(b.part, new object[] { b.area * Mathf.Max(rotorK, 0.02f) });
+                if (b.ln != null) b.ln.localRotation = Quaternion.identity;
+                mSetArea?.Invoke(b.part, new object[] { b.area * 0.02f });
+                area += b.area;
             }
             try { if (prop != null) { mThrust = mThrust ?? AccessTools.Method(prop.GetType(), "GetThrust"); logThrust = (float)mThrust.Invoke(prop, null); } } catch { }
+            float lat = 4f * Mathf.Clamp(rollIn, -1f, 1f);
+            rotorN = (Quaternion.AngleAxis(-inc + INC0, transform.right) * Quaternion.AngleAxis(-lat, transform.forward)) * transform.up;
+            if (area <= 0f || rb.velocity.sqrMagnitude < 1f) return Vector3.zero;
+            float a = bodyAoA + inc;                                      // disc angle of attack, deg
+            float cl = a >= 0f ? 1.15f * (float)Math.Tanh(a / 12f) : Mathf.Max(-0.25f, a / 15f);
+            float q = 0.5f * 1.225f * rb.velocity.sqrMagnitude;
+            float T = Mathf.Min(rotorK * cl * q * area, 2.5f * W);
+            var dir = -rb.velocity.normalized;
+            float Dp = rotorK * 0.012f * q * area;                        // blade profile drag; induced drag comes from the disc tilt
+            return rotorN * T + dir * Dp;
         }
         float spawnT;
         void OnDetached<T>(T part) where T : class
