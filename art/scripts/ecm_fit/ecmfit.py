@@ -20,7 +20,7 @@ def mk(name, col, rough=0.6, metal=0.0):
 POD = mk('ecm', (0.32, 0.34, 0.33), 0.5, 0.2); STRAP = mk('strap', (0.85, 0.55, 0.05), 0.8); BUCK = mk('buckle', (0.6, 0.6, 0.62), 0.3, 1.0)
 # stock ECM pod mesh (Unity x right, y up, z forward) -> Blender (x, y fwd, z up)
 V, F = [], []
-for l in open('/mnt/project-files/ul2/ecm_fit/ecmpod1.obj'):
+for l in open('<out>
     p = l.split()
     if not p: continue
     if p[0] == 'v': x, y, z = map(float, p[1:4]); V.append((-x, z, y))
@@ -54,7 +54,7 @@ elif mode == 'C':
     nz = Vector((R @ Vector((0, 0, 1, 0)))[:3])     # pod depth axis
     W = [pod.matrix_world @ Vector(v) for v in V]
     lo = min(w.dot(nz) for w in W); hi = max(w.dot(nz) for w in W); print('depth range', lo, hi, 'axis', ax)
-    import importlib.util; sp = importlib.util.spec_from_file_location('straps', '/mnt/project-files/ul2/ecm_fit/straps.py'); ST = importlib.util.module_from_spec(sp); sp.loader.exec_module(ST)
+    import importlib.util; sp = importlib.util.spec_from_file_location('straps', '<out> ST = importlib.util.module_from_spec(sp); sp.loader.exec_module(ST)
     fwd = Vector((0, 1, 0))
     EDG = [(W[e.vertices[0]], W[e.vertices[1]]) for e in me.edges]
     so = bpy.data.objects['seat3']; SW = [so.matrix_world @ v.co for v in so.data.vertices]
@@ -91,6 +91,8 @@ elif mode == 'C':
     mx = Vector((0, -1.03, 0)); 
     for q, zz in enumerate((-0.06, 0.06)):
         cc = base + ax * 1.42; ST.tube(sc, f'mastclamp{q}', [Vector((0.15 * math.cos(math.radians(a2)) * 0.6 + 0.03, mx.y + 0.07 * math.sin(math.radians(a2)), cc.z + zz)) for a2 in range(0, 380, 30)], 0.008, ST.STEEL)
+    sp2 = importlib.util.spec_from_file_location('cables', '<out> CB = importlib.util.module_from_spec(sp2); sp2.loader.exec_module(CB)
+    CB.run(sc, ST, base, ax, nz, hi, mk)
     from mathutils.bvhtree import BVHTree
     def wb(o):
         bm = bmesh.new(); bm.from_mesh(o.data); bm.transform(o.matrix_world); t = BVHTree.FromBMesh(bm); bm.free(); return t
@@ -102,7 +104,7 @@ elif mode == 'C':
     for w in [o for o in bpy.data.objects if o.name.startswith('web')]:
         wt = wb(w)
         for o in bpy.data.objects:
-            if o.type == 'MESH' and not o.name.startswith(('web', 'hook', 'ratchet', 'abar', 'dring', 'strap', 'tie')) and o.name != 'ground' and not o.hide_render and wt.overlap(wb(o)): print('WEBHIT', w.name, o.name)
+            if o.type == 'MESH' and not o.name.startswith(('web', 'hook', 'ratchet', 'abar', 'dring', 'strap', 'tie', 'cable', 'con', 'zip', 'mfdp', 'mfdr', 'backsh')) and o.name != 'ground' and not o.hide_render and wt.overlap(wb(o)): print('WEBHIT', w.name, o.name)
     HIDE = a[6:] if len(a) > 6 else []
     for n in HIDE:
         if n in bpy.data.objects: bpy.data.objects[n].hide_render = True
@@ -123,7 +125,17 @@ for o in bpy.data.objects:
     if o.name.startswith('REF_'): o.hide_render = True
 import os
 if os.environ.get('NR'): sys.exit(0)
+if os.environ.get('MO'):
+    shot(sc, cam, f'{out}/{tag}_mfd2.png', (-0.42, 1.12, 1.80), (0.0, 0.90, 1.47), lens=45, res=(1400, 1000))
+    shot(sc, cam, f'{out}/{tag}_mfd3.png', (0.05, 1.30, 1.62), (0.0, 0.90, 1.46), lens=45, res=(1400, 1000))
+    sys.exit(0)
 if not os.environ.get('FO'): shot(sc, cam, f'{out}/{tag}_3q.png', (2.3, -2.9, 3.0), (0, -0.55, 1.8), lens=32, res=(1400, 1000))
+shot(sc, cam, f'{out}/{tag}_cableL.png', (-2.0, 0.9, 2.1), (0, -0.1, 1.2), lens=30, res=(1400, 1000))
+shot(sc, cam, f'{out}/{tag}_zip1.png', (-0.70, 0.50, 1.30), (-0.37, 0.68, 1.06), lens=55, res=(1200, 900))
+shot(sc, cam, f'{out}/{tag}_zip4.png', (-0.70, -0.05, 1.30), (-0.35, 0.14, 1.08), lens=55, res=(1200, 900))
+shot(sc, cam, f'{out}/{tag}_conn.png', (-0.9, -1.6, 2.3), (0, -0.85, 1.95), lens=35, res=(1400, 1000))
+shot(sc, cam, f'{out}/{tag}_mfd.png', (-0.55, 1.20, 1.75), (-0.02, 0.92, 1.40), lens=35, res=(1400, 1000))
+if os.environ.get('CO'): sys.exit(0)
 shot(sc, cam, f'{out}/{tag}_foot.png', (0.75, 0.25, 1.45), (0, -0.45, 1.0), lens=30, res=(1400, 1000))
 if os.environ.get('FO'): sys.exit(0)
 shot(sc, cam, f'{out}/{tag}_close.png', (1.5, 0.2, 2.2), (0, -0.7, 1.8), lens=35, res=(1400, 1000))

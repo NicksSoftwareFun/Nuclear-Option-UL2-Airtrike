@@ -413,11 +413,12 @@ public static partial class UL2Builder
         {
             // 0.15.4: the controls sit higher in the model itself (fighter grip, throttle quadrant on a raised console)
             var js = Need("joystick"); MoveAlone(js, P("x_stick")); SetMesh(js, "x_stick"); js.GetComponent<Renderer>().enabled = true;
-            // throttle lever pivots in its quadrant: stock Cockpit throttle in rotation mode, idle 25 deg aft, full 25 deg forward
-            var tz = Need("throttleZero"); MoveAlone(tz, P("x_throttle")); tz.rotation = Quaternion.Euler(-25f, 0f, 0f);
+            // 0.15.31 (Nick 16:38): the throttle SLIDES along its slot (stock Cockpit throttle in motion mode: local z =
+            // throttle x range). Zero sits 75 mm aft of the slot centre (idle at the aft gate), full is 75 mm forward of it
+            var tz = Need("throttleZero"); MoveAlone(tz, P("x_throttle")); tz.rotation = root.rotation; tz.position -= root.forward * 0.075f;
             var th = Need("throttle"); th.localPosition = Vector3.zero; th.localRotation = Quaternion.identity; SetMesh(th, "x_throttle"); th.GetComponent<Renderer>().enabled = true;
             foreach (var ck in root.GetComponentsInChildren<Component>(true).Where(c => c != null && c.GetType().Name == "Cockpit"))
-            { Set(ck, "throttles.Array.data[0].rotation", true); Set(ck, "throttles.Array.data[0].motion", false); Set(ck, "throttles.Array.data[0].range", 50f); }
+            { Set(ck, "throttles.Array.data[0].rotation", false); Set(ck, "throttles.Array.data[0].motion", true); Set(ck, "throttles.Array.data[0].range", 0.15f); }
             // the MFDs show the targeting ball's camera, the stock way (TargetCam draws onto targetScreen's material)
             var ts = Need("targetScreen"); MoveAlone(ts, P("x_mfd1"));
             // 0.15.20 (Nick 03:59: MFD turned 90 deg): the stock targetScreen maps u left->right over the main display

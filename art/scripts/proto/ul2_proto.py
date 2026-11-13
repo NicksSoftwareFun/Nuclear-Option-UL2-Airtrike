@@ -280,7 +280,9 @@ def recess(target, cutters, smooth=False):
     target.modifiers.clear(); target.data = me; bpy.data.meshes.remove(old)
     for c in list(cc.objects): bpy.data.objects.remove(c, do_unlink=True)
     bpy.data.collections.remove(cc)
+    _bm = bmesh.new(); _bm.from_mesh(me); bmesh.ops.dissolve_degenerate(_bm, dist=1e-6, edges=_bm.edges); bmesh.ops.recalc_face_normals(_bm, faces=_bm.faces); _bm.to_mesh(me); _bm.free()
     for pl in me.polygons: pl.use_smooth = smooth
+    if smooth and hasattr(me, 'set_sharp_from_angle'): me.set_sharp_from_angle(angle=R(35))
 PM = Matrix.Translation((0, 2.17, 1.28)) @ Matrix.Rotation(R(-20), 4, 'X')
 # Nick 22:40: the MFD must be SQUARE; smaller gauges make room
 GAUGES = ((0.205, 0.088), (0.205, 0.0), (0.205, -0.088)); GR = 0.030; _GS = GR / 0.036
@@ -371,11 +373,18 @@ loft('stick_grip', [_gring(*r) for r in _rows], DARK)
 sweep('stick_trigger', crom([(0, 0.029, 0.127), (0, 0.040, 0.121), (0, 0.046, 0.108), (0, 0.043, 0.095)], 6), rrect(0.011, 0.0045, 0.0018, 2), MECH, side=(1, 0, 0), M=GG)
 pipe('stick_guard', [(0, 0.030, 0.137), (0, 0.056, 0.128), (0, 0.062, 0.105), (0, 0.054, 0.087), (0, 0.030, 0.086)], 0.0032, DARK, 8, segs=10, M=GG)
 # four-way trim hat on a turned boss, with ridged directional nubs
-HM = GG @ Matrix.Translation((0, -0.006, 0.170)) @ Matrix.Rotation(R(-10), 4, 'X')
-revolve('stick_hat_base', (0, 0, 0), (0, 0, 1), [(-0.004, 0.0072), (0.000, 0.0072), (0.0015, 0.0066), (0.0020, 0.0055), (0.0020, 0)], MECH, 28, M=HM)
-for k in range(2): box(f'stick_hat{k}', (0, 0, 0.0040), (0.0115 if k == 0 else 0.0036, 0.0036 if k == 0 else 0.0115, 0.004), DARK, M=HM, bevel=0.0012)
-# weapon release: domed button in a raised collar, top left of the head
-revolve('stick_release', (-0.013, 0.018, 0.163), (0, 0.15, 1), [(-0.003, 0.0095), (0.0020, 0.0095), (0.0030, 0.0082), (0.0030, 0.0062), (0.0055, 0.0054), (0.0072, 0.0032), (0.0078, 0)], MECH, 24, M=GG)
+# 0.15.31b (Nick 16:38: top buttons looked wrong, half sunk into the dome): the head gets a flat, slightly nose-down
+# switch deck; the trim hat and a red weapon release stand clearly on it
+DM = GG @ Matrix.Translation((0, 0.004, 0.166)) @ Matrix.Rotation(R(-8), 4, 'X')
+loft('stick_deck', [[DM @ Vector((x, y, z)) for x, y in rrect(2 * hx, 2 * hy, r, 5)] for z, hx, hy, r in
+                    ((-0.004, 0.0215, 0.0300, 0.016), (0.004, 0.0215, 0.0300, 0.016), (0.0075, 0.0200, 0.0285, 0.0145), (0.009, 0.0180, 0.0265, 0.0125))], DARK)
+HM = DM @ Matrix.Translation((0.004, -0.010, 0.009))
+revolve('stick_hat_base', (0, 0, 0), (0, 0, 1), [(-0.002, 0.0085), (0.0015, 0.0085), (0.0028, 0.0075), (0.0030, 0.0062), (0.0030, 0)], MECH, 28, M=HM)
+for k in range(2): box(f'stick_hat{k}', (0, 0, 0.0055), (0.0135 if k == 0 else 0.0045, 0.0045 if k == 0 else 0.0135, 0.0050), DARK, M=HM, bevel=0.0013)
+ball('stick_hat_dot', (0, 0, 0.0082), (0.0024, 0.0024, 0.0012), MECH, M=HM, seg=12)
+RM = DM @ Matrix.Translation((-0.008, 0.014, 0.009))
+revolve('stick_release_guard', (0, 0, 0), (0, 0, 1), [(-0.002, 0.0095), (0.0030, 0.0095), (0.0035, 0.0088), (0.0035, 0.0078), (0.0010, 0.0078), (0.0010, 0)], MECH, 28, M=RM)
+revolve('stick_release', (0, 0, 0.0010), (0, 0, 1), [(0, 0.0068), (0.0030, 0.0068), (0.0045, 0.0052), (0.0054, 0.0030), (0.0057, 0)], 'UL2_red', 24, M=RM)
 # thumb castle switch on the left of the head: rounded square boss with a small domed rocker
 revolve('stick_castle', (-0.024, -0.004, 0.140), (-1, 0, 0), [(-0.004, 0.0095), (0.002, 0.0095), (0.004, 0.0080), (0.004, 0)], MECH, 24, M=GG)
 ball('stick_castle_cap', (-0.0290, -0.004, 0.140), (0.0035, 0.0062, 0.0062), DARK, M=GG, seg=16)
@@ -792,19 +801,20 @@ _BS = [(-0.015, 0.110, 0.054, 0.012), (-0.012, 0.116, 0.060, 0.015), (-0.006, 0.
 body = loft('ctrl2_body', [[CS @ Vector((x, y, z)) for x, y in rrect(w, h, r, 4)] for z, w, h, r in _BS], DARK)
 for sx in (-1, 1):
     # handle: a tapered horn from the bottom corner, curving down and back toward him, rounded end, rubber back
-    hp = crom([(sx * 0.034, -0.008, 0.000), (sx * 0.052, -0.036, -0.010), (sx * 0.060, -0.058, -0.024), (sx * 0.063, -0.076, -0.040)], 4)
-    sc_ = [1.35 - 0.63 * min(1, 2.2 * i / (len(hp) - 1)) + 0.0 if i < (len(hp) - 1) / 2.2 else 1.0 - 0.28 * i / (len(hp) - 1) for i in range(len(hp))]
-    sweep(f'ctrl2_handle{sx}', hp, rrect(0.034, 0.028, 0.011, 3), MECH, side=(1, 0, 0), M=CS, scale=sc_)
-    ball(f'ctrl2_handle_end{sx}', hp[-1], (0.0124, 0.0105, 0.0102), MECH, M=CS, seg=20)
-    sweep(f'ctrl2_grip{sx}', [Vector(q) + Vector((0, 0.0, -0.004)) for q in hp[2:]], rrect(0.026, 0.024, 0.009, 3), BLACK_, side=(1, 0, 0), M=CS, scale=sc_[2:])
+    hp = crom([(sx * 0.030, -0.004, 0.000), (sx * 0.049, -0.030, -0.008), (sx * 0.057, -0.050, -0.020), (sx * 0.060, -0.066, -0.034)], 4)
+    sc_ = [1.0 - 0.26 * f + 0.32 * max(0.0, 1 - 3.5 * f) ** 2 for f in [i / (len(hp) - 1) for i in range(len(hp))]]   # flared root, tapered tip
+    sweep(f'ctrl2_handle{sx}', hp, rrect(0.032, 0.026, 0.0115, 4), MECH, side=(1, 0, 0), M=CS, scale=sc_)
+    ball(f'ctrl2_handle_end{sx}', hp[-1], (0.0117, 0.0100, 0.0095), MECH, M=CS, seg=24)
+    sweep(f'ctrl2_grip{sx}', [Vector(q) + Vector((0, 0.0, -0.0035)) for q in hp[3:-1]], rrect(0.025, 0.022, 0.009, 4), BLACK_, side=(1, 0, 0), M=CS, scale=sc_[3:-1])
     sweep(f'ctrl2_bumper{sx}', crom([(sx * 0.016, 0.031, 0.008), (sx * 0.040, 0.032, 0.008), (sx * 0.054, 0.027, 0.008)], 4), rrect(0.008, 0.009, 0.0035, 3), MECH, side=(0, 0, 1), M=CS)
-    box(f'ctrl2_trig{sx}', (sx * 0.042, 0.030, -0.009), (0.028, 0.014, 0.014), MECH, M=CS, bevel=0.004)
+    sweep(f'ctrl2_trig{sx}', crom([(sx * 0.042, 0.026, -0.004), (sx * 0.042, 0.036, -0.010), (sx * 0.042, 0.034, -0.022)], 5), rrect(0.020, 0.007, 0.003, 3), MECH, side=(1, 0, 0), M=CS)
 wells = [revolve(f'ctrl2_wl{k}', CS @ Vector((x, y, 0.009)), CN, [(0, r * K2), (0.03, r * K2), (0.03, 0)], BLACK_, 24)
          for k, (x, y, r) in enumerate(((-0.034, 0.010, 0.0125), (0.018, -0.012, 0.0125), (-0.018, -0.012, 0.0135)))]
 wells += [revolve(f'ctrl2_wb{k}', CS @ Vector((0.040 + dx, 0.010 + dy, 0.009)), CN, [(0, 0.0052 * K2), (0.03, 0.0052 * K2), (0.03, 0)], BLACK_, 16)
           for k, (dx, dy) in enumerate(((0, 0.009), (0.009, 0), (0, -0.009), (-0.009, 0)))]
 wells += [box('ctrl2_wscr', (0, 0.016, 0.013), (0.022, 0.010, 0.006), BLACK_, M=CS)]
-recess(body, wells)
+recess(body, wells, smooth=True)
+for pl in body.data.polygons: pl.use_smooth = pl.normal.dot(CN) < 0.93 and pl.normal.dot(CN) > -0.93   # flat face plate and back, smooth rounded sides
 for k, (x, y) in enumerate(((-0.034, 0.010), (0.018, -0.012))):
     tube(f'ctrl2_stem{k}', CS @ Vector((x, y, 0.004)), CS @ Vector((x, y, 0.017)), 0.004 * K2, MECH, 12)
     revolve(f'ctrl2_cap{k}', CS @ Vector((x, y, 0.017)), CN, [(0, 0.0105 * K2), (0.004 * K2, 0.0105 * K2), (0.0045 * K2, 0.008 * K2), (0.0025 * K2, 0.0)], BLACK_, 24)
