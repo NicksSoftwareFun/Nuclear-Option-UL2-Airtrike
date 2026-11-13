@@ -147,6 +147,8 @@ def build_pod(ys, name, m=SKIN, cut=True, cap_front=False, cap_back=False):
     if cap_back: bm.faces.new(rings[-1][::-1])
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5); bmesh.ops.dissolve_degenerate(bm, dist=1e-5, edges=bm.edges)
     o = finish(name, bm, m); s = o.modifiers.new('thick', 'SOLIDIFY'); s.thickness = 0.018; s.offset = -1
+    if m == SKIN:   # inner wall gets the cockpit lining, so the livery (nose text) never shows through from inside
+        o.data.materials.append(mat(CPIT)); s.material_offset = 1; s.material_offset_rim = 0
     return o
 def frange(a, b, n): return [a + (b - a) * i / n for i in range(n + 1)]
 

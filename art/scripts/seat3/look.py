@@ -68,8 +68,8 @@ def _paint(name, rgb, rough, metal=0.0, wear=0.0, noise=0.06, scale=180.0):
     return m
 
 
-BRONZE = dict(rgb=(146, 108, 80), rough=0.42, metal=0.35, wear=0.35)      # cerakote receiver/handguard/rails/bipod legs
-FDE = dict(rgb=(176, 150, 110), rough=0.72, wear=0.15)                    # polymer stock, grips, trigger guard, laser module
+BRONZE = dict(rgb=(150, 128, 100), rough=0.55, metal=0.10, wear=0.30)      # cerakote receiver/handguard/rails/bipod legs
+FDE = dict(rgb=(166, 142, 108), rough=0.72, wear=0.15)                    # polymer stock, grips, trigger guard, laser module
 BLACK = dict(rgb=(34, 34, 33), rough=0.48, metal=0.4, wear=0.6)           # barrel, can, bipod clamp, links, chute, small steel
 STEEL = dict(rgb=(58, 55, 51), rough=0.40, metal=0.6, wear=0.3)           # knobs, grooves, screws
 RUBBER = dict(rgb=(28, 28, 28), rough=0.9)
@@ -92,7 +92,7 @@ RULES = [  # (regex on the base name, finish); first match wins; SCREEN-material
     (r'^ngal_', STEEL),
     (r'^mg_', BRONZE),
     # grenade launcher (same scheme): bronze frame and handguard, black cylinder/barrel/rails, FDE furniture
-    (r'^gl_nose', dict(rgb=(176, 146, 72), rough=0.35, metal=0.7)),
+    (r'^gl_nose', BRONZE),
     (r'^gl_buttpad', RUBBER),
     (r'^gl_(stock|grip$|grip_rib|vg|guard|rcover)', FDE),
     (r'^gl_(recv|rplate|fplate|strap|lstrap|hinge_lug|hg_[tblrc]|latch)', BRONZE),

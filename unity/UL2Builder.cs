@@ -292,8 +292,8 @@ public static partial class UL2Builder
         MAT["UL2_cockpit"] = LitMat("UL2_cockpit", new Color32(60, 62, 65, 255), 0.3f, 0f);
         MAT["UL2_screen"] = LitMat("UL2_screen", new Color32(12, 14, 16, 255), 0.85f, 0f);
         // seat rifles in the seat 3 gunners' FDE scheme (Nick 2026-11-12 21:23)
-        MAT["UL2_fde"] = LitMat("UL2_fde", new Color32(128, 92, 64, 255), 0.30f, 0f);   // darker brown like the handle (Nick 21:58)
-        MAT["UL2_bronze"] = LitMat("UL2_bronze", new Color32(146, 108, 80, 255), 0.58f, 0.35f);
+        MAT["UL2_fde"] = LitMat("UL2_fde", new Color32(150, 126, 96, 255), 0.32f, 0f);   // lighter FDE, less bronze (Nick 04:04 11-13)
+        MAT["UL2_bronze"] = LitMat("UL2_bronze", new Color32(150, 128, 100, 255), 0.45f, 0.10f);   // FDE cerakote, was bronze
         MAT["UL2_black"] = LitMat("UL2_black", new Color32(34, 34, 33, 255), 0.52f, 0.4f);
         MAT["UL2_fabric"] = LitMat("UL2_fabric", new Color32(166, 134, 94, 255), 0.03f, 0f);
         var glass = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/trainer_glass_PLACEHOLDER.mat");
@@ -556,11 +556,11 @@ public static partial class UL2Builder
         var pdc = Find(ph, "propDiscCollider"); if (pdc) { pdc.position = P("propCentre") + new Vector3(0f, 0f, -0.08f); pdc.localScale = new Vector3(0.68f, 0.68f, 0.15f); }
         Lod(ph, "propHub_colmesh");
         var csp = C(ph, "ConstantSpeedProp");
-        // Rotax 915-class pusher: literal power and blade size
-        Set(csp, "bladeLength", 0.74f); Set(csp, "hubRadius", 0.12f); Set(csp, "nominalPower", 150000f); Set(csp, "momentOfInertia", 8f);
+        // Rotax 915-class pusher, uprated to 195 kW so it climbs at 5+ deg nose up (Nick 04:08 11-13)
+        Set(csp, "bladeLength", 0.74f); Set(csp, "hubRadius", 0.12f); Set(csp, "nominalPower", 195000f); Set(csp, "momentOfInertia", 8f);
         Set(csp, "propTorqueLimit", 1500f); Set(csp, "hubFriction", 60f); Set(csp, "bladeStrength", 8000f);
         var te = C(root, "TurbineEngine");
-        Set(te, "maxPower", 150000f); Set(te, "maxFuelConsumption", 0.012f); Set(te, "spoolUpTime", 1.5f); Set(te, "startupTime", 4f);
+        Set(te, "maxPower", 195000f); Set(te, "maxFuelConsumption", 0.015f); Set(te, "spoolUpTime", 1.5f); Set(te, "startupTime", 4f);
         Set(te, "IRMin", 0.6f); Set(te, "IRMax", 0.8f);
     }
 
@@ -618,7 +618,7 @@ public static partial class UL2Builder
             if (g == "F") { Set(lg, "wheelRadius", 0.24f); Set(lg, "springRate", 60000f); Set(lg, "dampingRate", 5000f); Set(lg, "mass", 15f); }
             // 0.15.7 (Nick 22:36: tips over while taxiing): stiffer, better damped mains and less nose steering lock
             else { Set(lg, "wheelRadius", 0.27f); Set(lg, "springRate", 80000f); Set(lg, "dampingRate", 9000f); Set(lg, "mass", 20f); }
-            if (g == "F") Set(lg, "steeringLock", 30f);
+            if (g == "F") { Set(lg, "steeringLock", 22f); Set(lg, "steeringSpeed", 40f); }   // 0.15.22: plugin also fades the lock with speed
             // 0.15.8: the stock pedal brake (30% of one main wheel up to 108 km/h) yawed the narrow-track trike into a skid,
             // and Cricket tyre grip (0.85) is above the tip ratio (half track 0.81 / CG height 1.29 = 0.63), so a skid rolled
             // it over. Gentle pedal brake, and tyres that slide before they trip.
@@ -984,30 +984,43 @@ public static partial class UL2Builder
         // 0.15.8: bigger fin areas (Nick 22:53: unstable yaw past 60 km/h)
         Part("vstab1_L", 6f, 1.0f, 0.01f, -1f); Part("vstab1_R", 4f, 0.5f, 0.01f, -1f);
         Part("rudder_L", 3f, 0.5f, 0f, -1f); Part("rudder_R", 2f, 0.2f, 0f, -1f);
-        // joints: each part to its structural parent (break forces like the Cricket's light parts)
-        // joint strengths x4 (2026-11-12 playtest: tail and blade pieces broke off at spawn)
-        J("cockpit_R", "COIN_PLACEHOLDER", 60000f, "fuselage", 40000f);
-        J("cockpit_F", "COIN_PLACEHOLDER", 80000f, "cockpit_R", 40000f, "fuselage", 30000f);   // 0.15.5: every overlapping collider pair is jointed (stock joints switch their collision off), so nothing pushes apart at spawn
-        J("nose", "cockpit_F", 20000f);
-        J("fuselage", "COIN_PLACEHOLDER", 60000f);
-        J("intake", "fuselage", 24000f, "cockpit_R", 16000f, "COIN_PLACEHOLDER", 16000f);
-        J("mast", "fuselage", 60000f, "intake", 20000f, "COIN_PLACEHOLDER", 40000f, "cockpit_R", 24000f);   // 0.15.7: mast leaned right under the engine + rotor (Nick 22:33), brace it to the frame
-        J("rotorHead", "mast", 48000f, "fuselage", 30000f);
-        J("engine_core", "mast", 48000f, "fuselage", 24000f, "COIN_PLACEHOLDER", 30000f);
-        J("engine_L", "engine_core", 24000f); J("engine_R", "engine_core", 24000f);
-        J("propHub", "engine_core", 40000f);
-        J("gunmount_R", "COIN_PLACEHOLDER", 40000f, "cockpit_F", 20000f, "cockpit_R", 20000f);
-        J("nacelle_L", "fuselage", 40000f, "COIN_PLACEHOLDER", 24000f); J("nacelle_R", "fuselage", 40000f, "COIN_PLACEHOLDER", 24000f);
-        J("tailboom_L", "fuselage", 40000f, "mast", 30000f, "engine_core", 24000f, "COIN_PLACEHOLDER", 30000f); J("tailboom_R", "tailboom_L", 32000f, "fuselage", 24000f, "mast", 20000f);
-        J("vstab1_L", "tailboom_R", 24000f, "tailboom_L", 16000f); J("vstab1_R", "vstab1_L", 12000f);
-        J("rudder_L", "vstab1_L", 20000f); J("rudder_R", "vstab1_R", 20000f);
+        // joints: each part to its structural parent.
+        // 0.15.22 (Nick 04:05: a crash leaves it in one piece): the old strengths were 10x the Cricket's per kilogram
+        // (an 8 kg blade on a 48 kN joint needs 600 g to come off). Now sized like the stock Cricket, about 20-35 g on
+        // the mass each joint carries; control surfaces stay strong like stock; gear legs keep landing margin.
+        J("cockpit_R", "COIN_PLACEHOLDER", 12000f, "fuselage", 8000f);
+        J("cockpit_F", "COIN_PLACEHOLDER", 15000f, "cockpit_R", 8000f, "fuselage", 6000f);   // 0.15.5: every overlapping collider pair is jointed (stock joints switch their collision off), so nothing pushes apart at spawn
+        J("nose", "cockpit_F", 3000f);
+        J("fuselage", "COIN_PLACEHOLDER", 15000f);
+        J("intake", "fuselage", 5000f, "cockpit_R", 3000f, "COIN_PLACEHOLDER", 3000f);
+        J("mast", "fuselage", 25000f, "intake", 6000f, "COIN_PLACEHOLDER", 15000f, "cockpit_R", 8000f);   // carries head, blades and part of the engine
+        J("rotorHead", "mast", 15000f, "fuselage", 8000f);
+        J("engine_core", "mast", 15000f, "fuselage", 8000f, "COIN_PLACEHOLDER", 10000f);
+        J("engine_L", "engine_core", 5000f); J("engine_R", "engine_core", 5000f);
+        J("propHub", "engine_core", 6000f);
+        J("gunmount_R", "COIN_PLACEHOLDER", 4000f, "cockpit_F", 2000f, "cockpit_R", 2000f);
+        J("nacelle_L", "fuselage", 20000f, "COIN_PLACEHOLDER", 12000f); J("nacelle_R", "fuselage", 20000f, "COIN_PLACEHOLDER", 12000f);
+        J("tailboom_L", "fuselage", 7000f, "mast", 4000f, "engine_core", 3000f, "COIN_PLACEHOLDER", 4000f); J("tailboom_R", "tailboom_L", 8000f, "fuselage", 5000f, "mast", 4000f);
+        J("vstab1_L", "tailboom_R", 4000f, "tailboom_L", 2500f); J("vstab1_R", "vstab1_L", 2000f);
+        J("rudder_L", "vstab1_L", 5000f); J("rudder_R", "vstab1_R", 5000f);
         foreach (var s in new[] { "L", "R" })
         {
-            J("wing1_" + s, "rotorHead", 48000f); J("wing2_" + s, "wing1_" + s, 32000f); J("wing3_" + s, "wing2_" + s, 24000f);
+            J("wing1_" + s, "rotorHead", 7000f); J("wing2_" + s, "wing1_" + s, 5000f); J("wing3_" + s, "wing2_" + s, 3000f);
             J("aileron_" + s, "wing3_" + s, 50000f);
-            J("hstab_" + s, "tailboom_R", 24000f, "vstab1_L", 16000f); J("hstabTip_" + s, "hstab_" + s, 12000f);
-            J("elevator_" + s, "hstab_" + s, 20000f); J("elevatorTip_" + s, "hstabTip_" + s, 20000f);
+            J("hstab_" + s, "tailboom_R", 3500f, "vstab1_L", 2000f); J("hstabTip_" + s, "hstab_" + s, 1500f);
+            J("elevator_" + s, "hstab_" + s, 5000f); J("elevatorTip_" + s, "hstabTip_" + s, 5000f);
         }
+        // damage effects the stock way: the Cricket's engine fire sat on its engine nacelles, which on the UL-2 are the
+        // gear legs. Fire goes on the engine and the fuel tank (fuselage); breakup fragments on the tail too; crash impacts
+        // damage the nose, cockpit, mast, rotor head, engine, tail and gear (stock impactDamage, threshold in g)
+        var fireSrc = new SerializedObject(AP("nacelle_L")).FindProperty("damageEffects.Array.data[0].prefab").objectReferenceValue;
+        var fragSrc = new SerializedObject(AP("nacelle_L")).FindProperty("disintegrationEffects.Array.data[0]").objectReferenceValue;
+        foreach (var n in new[] { "nacelle_L", "nacelle_R" }) Size(AP(n), "damageEffects", 0);
+        foreach (var n in new[] { "engine_core", "fuselage" })
+        { Size(AP(n), "damageEffects", 1); Set(AP(n), "damageEffects.Array.data[0].prefab", fireSrc); Set(AP(n), "damageEffects.Array.data[0].threshold", 0f); }
+        foreach (var n in new[] { "tailboom_L", "tailboom_R", "nose", "vstab1_L" }) ObjArray(AP(n), "disintegrationEffects", fragSrc);
+        foreach (var n in new[] { "nose", "cockpit_F", "cockpit_R", "mast", "rotorHead", "engine_core", "tailboom_L", "tailboom_R", "nacelle_L", "nacelle_R", "wing1_L", "wing1_R" })
+        { Set(AP(n), "impactDamage.threshold", 25f); Set(AP(n), "impactDamage.multiplier", 2f); }
         log.AppendLine("aero + joints set");
     }
 
@@ -1027,7 +1040,7 @@ public static partial class UL2Builder
             var src = go.GetComponentsInChildren<Transform>(true).First(t => t.name == "throttleGauge");
             var g = Object.Instantiate(src.gameObject, go.transform, false); g.name = "UL2_rotorGauge";
             foreach (var c in g.GetComponents<Component>()) if (c != null && c.GetType().Name == "ThrottleGauge") Object.DestroyImmediate(c);
-            var rt = (RectTransform)g.transform; rt.anchoredPosition = src.GetComponent<RectTransform>().anchoredPosition + new Vector2(205f, 0f);
+            var rt = (RectTransform)g.transform; rt.anchoredPosition = src.GetComponent<RectTransform>().anchoredPosition + new Vector2(140f, 0f);   // Nick 04:06: back near the old bar spot
             var piv = g.transform.Find("throttleReadingPivot");
             var piv2 = Object.Instantiate(piv.gameObject, g.transform, false); piv2.name = "readPivot";
             piv.name = "carrotPivot";
@@ -1140,7 +1153,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.21\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.22\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

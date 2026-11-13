@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.21")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.22")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -276,6 +276,7 @@ namespace UL2Airtrike
         }
         bool propErr;
         // extra rotor lift the fixed lifting surfaces can't give: a spun-up rotor on the takeoff roll, and the jump
+        Component noseGear; bool noseSearched; static FieldInfo fLock;
         void FixedUpdate()
         {
             try
@@ -296,6 +297,21 @@ namespace UL2Airtrike
                 Vector3 com = rb.worldCenterOfMass; float cm = 0f; Vector3 cs = Vector3.zero;
                 foreach (var c in partList) { if (c == null || Detached(c)) continue; var r = c.GetComponent<Rigidbody>(); if (r == null || r.isKinematic) continue; cs += r.worldCenterOfMass * r.mass; cm += r.mass; }
                 if (cm > 0f) com = cs / cm;
+                // 0.15.22 (Nick 04:10: nose steering flips it): the stock nose wheel steers a fixed lock at any speed. Scale the lock
+                // so a full pedal turn stays under 0.3 g sideways (tip-over is ~0.63 g on this narrow, tall trike): 22 deg at walking
+                // pace, ~4 deg at 30 km/h, 2 deg floor.
+                if (noseGear == null && !noseSearched)
+                {
+                    noseSearched = true; var tLg = AccessTools.TypeByName("LandingGear");
+                    if (tLg != null) { fLock = AccessTools.Field(tLg, "steeringLock"); var fSt = AccessTools.Field(tLg, "steering");
+                        foreach (var g in unit.GetComponentsInChildren(tLg, true)) if (fSt != null && (bool)fSt.GetValue(g)) { noseGear = g; break; } }
+                    Plugin.Log.LogInfo("UL-2 nose steering " + (noseGear != null));
+                }
+                if (noseGear != null && fLock != null)
+                {
+                    float v2 = Mathf.Max(spd * spd, 1f), lockDeg = Mathf.Clamp(Mathf.Atan(2.6f * 0.3f * 9.81f / v2) * Mathf.Rad2Deg, 2f, 22f);
+                    fLock.SetValue(noseGear, lockDeg);
+                }
                 var thrustV = RotorAero(rb, spd, W);
                 thrustV += rotorN * F;
                 if (thrustV.sqrMagnitude > 0f) rb.AddForceAtPosition(thrustV, com, ForceMode.Force);

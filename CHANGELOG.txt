@@ -2,6 +2,7 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.22: part joints break like the stock Cricket (scaled to weight); fire and break-up effects on the main structure, impact damage on the pod, mast, engine, booms and gear; skin normal and metallic maps (panel lines, screw heads, rivet rows, small chips); inner pod wall uses the cockpit lining so markings no longer show inside; guns and seat 3 weapons in a lighter FDE; engine 195 kW (was 150); nose steering lock fades with speed; rotor gauge moved back left.
 - 0.15.21: pilot MFD mapped the stock way (was turned 90 deg); includes all 0.15.20 changes.
 - 0.15.20: rotor gauge restyled as a copy of the stock throttle gauge (curved arc, carrot = set rpm, coloured bar + readout = actual rpm), moved right; helipad spawns back on; stronger rudder (airflow and prop wash); seat 3 heading taken from the barrel direction in the kit frame.
 - 0.15.19: jumps removed. Custom axis = manual rotor rpm (110-450) on the ground; with flight assist on the rotor picks its own rpm (450 at full throttle on the takeoff roll, otherwise follows the throttle). HUD shows MANUAL / AUTO, green from 300 rpm.

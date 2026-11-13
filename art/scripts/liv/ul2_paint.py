@@ -66,10 +66,56 @@ print('stamped texels', n)
 def save_rgb(a, name):
     Image.fromarray((np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8).reshape(S, S, -1)).save(os.path.join(out, name))
 srgb = np.where(col <= 0.0031308, col * 12.92, 1.055 * np.power(np.clip(col, 0, 1), 1 / 2.4) - 0.055)
-srgb = col      # colours above are authored as sRGB values already
-save_rgb(srgb, 'UL2_skin_b.png')
-save_rgb(np.tile(np.array([0.5, 0.5, 1.0], np.float32), (len(P), 1)), 'UL2_skin_n.png')
-save_rgb(np.stack([np.zeros(len(P)), np.zeros(len(P)), np.zeros(len(P)), smooth], 1), 'UL2_skin_m.png')
+# ---- 0.15.22 surface detail (Nick 04:04: better metallic and normal maps). A 3D height field (panel seams, flush
+# screw heads, rib rivet rows, faint orange peel) is sampled along each texel's UV tangent frame, so the normal map
+# follows the real surface and runs across UV seams. Metallic/smoothness: matte paint, slicker leading edges,
+# sparse bare-metal chips on edges and fastener heads, duller dusty belly. Kept light, like stock.
+T = m['tan'].reshape(-1, 3)[src].astype(np.float32); BS = m['bsg'].ravel()[src].astype(np.float32)
+B = np.cross(N, T) * np.where(BS == 0, 1, BS)[:, None]
+POD = ids('cockpit_F', 'nose', 'gunmount_R'); HS = ids('hstab_L', 'hstab_R', 'hstabTip_L', 'hstabTip_R', 'elevator_L', 'elevator_R', 'elevatorTip_L', 'elevatorTip_R')
+VS = ids('vstab', 'rudder', 'vstabTip', 'rudderTip'); STUB = ids('UL2Airtrike'); GEAR = ids('gear_L', 'gear_R', 'gear_F')
+
+def groove(d, w=0.0022): return -np.exp(-(d / w) ** 2)                 # panel line (negative = recessed)
+def dots(a, b, pitch, r=0.0028):                                          # flush screw heads on a line: a along, b across
+    da = a - np.round(a / pitch) * pitch; rr = (da ** 2 + b ** 2) / r ** 2
+    return np.exp(-rr) * 0.55 - np.exp(-((np.sqrt(rr) - 1.15) / 0.35) ** 2) * 0.25   # slight dome with a ring
+POD_Y = (0.30, 0.85, 1.40, 1.95)                                          # pod frame stations (seams around the pod)
+PANEL = (0.45, 0.80, 0.76, 0.92)                                          # side access panel y0, y1, z0, z1
+def height(Q):
+    x, y, z = Q[:, 0], Q[:, 1], Q[:, 2]; h = np.zeros(len(Q), np.float32); mk = np.zeros(len(Q), np.float32)
+    ang = np.arctan2(z - 0.95, x); rad = np.hypot(x, z - 0.95); arc = ang * np.maximum(rad, 0.2)
+    for y0 in POD_Y:
+        g = groove(y - y0); h += POD * g; mk += POD * (dots(arc, y - y0 - 0.011, 0.045) + dots(arc, y - y0 + 0.011, 0.045))
+    side = POD * (np.abs(x) > 0.18)
+    h += side * (y < 2.45) * groove(z - 0.70); mk += side * (y < 2.45) * dots(y, z - 0.712, 0.05)
+    y0, y1, z0, z1 = PANEL; inb = (y > y0 - 0.01) & (y < y1 + 0.01) & (z > z0 - 0.01) & (z < z1 + 0.01)
+    pe = np.minimum(np.minimum(np.abs(y - y0), np.abs(y - y1)) + np.where((z < z0) | (z > z1), 9, 0),
+                    np.minimum(np.abs(z - z0), np.abs(z - z1)) + np.where((y < y0) | (y > y1), 9, 0))
+    h += side * inb * groove(pe); mk += side * inb * ((np.abs(y - y0 - 0.018) < 0.004) | (np.abs(y - y1 + 0.018) < 0.004)) * dots(z, 0 * z, 0.05) * ((z > z0 + 0.01) & (z < z1 - 0.01))
+    # tail surfaces: rib rivet rows (spanwise pitch 0.12) and a spar row
+    for sel, sp, ch in ((HS, x, y), (VS, z, y), (STUB, x, y)):
+        rib = sp - np.round(sp / 0.12) * 0.12; mk += sel * dots(ch, rib, 0.028, 0.0022) * 0.8
+    mk += HS * dots(x, y + 2.80, 0.03, 0.0022) * 0.8 + VS * dots(z, y + 2.86, 0.03, 0.0022) * 0.8 + STUB * dots(x, y - 0.45, 0.03, 0.0022) * 0.8
+    h += GEAR * groove(z - 0.50)
+    return h * 0.0006 + mk * 0.00035 + vnoise(Q, 0.012, 21) * 0.00004, mk
+e = 0.0012
+h0, mk = height(P)
+dT = (height(P + T * e)[0] - height(P - T * e)[0]) / (2 * e); dB = (height(P + B * e)[0] - height(P - B * e)[0]) / (2 * e)
+nt = np.stack([-dT, -dB, np.ones(len(P), np.float32)], 1); nt /= np.linalg.norm(nt, axis=1, keepdims=True)
+save_rgb(nt * 0.5 + 0.5, 'UL2_skin_n.png')
+seam = np.clip(-h0 / 0.0006, 0, 1); fast = np.clip(mk, 0, 1)
+col *= (1 - 0.18 * seam)[:, None]                                         # a little grime in the lines
+lead = np.clip((N[:, 1] - 0.75) / 0.2, 0, 1) * (HS | VS | STUB | POD)    # forward-facing edges
+chip = np.clip((vnoise(P, 0.03, 31) - 0.42) / 0.10, 0, 1) * np.clip(lead + fast * 0.8, 0, 1)
+BARE = np.array([150, 150, 146], np.float32) / 255
+col = col * (1 - 0.7 * chip[:, None]) + BARE * 0.7 * chip[:, None]
+metal = np.clip(0.04 + 0.12 * fast + 0.75 * chip, 0, 1)
+smooth = smooth + 0.03 * vnoise(P, 0.4, 41) + 0.10 * lead + 0.12 * fast + 0.25 * chip - 0.08 * seam
+smooth -= 0.06 * np.clip((0.75 - P[:, 2]) / 0.3, 0, 1) * POD             # dusty belly
+smooth = np.clip(smooth, 0.12, 0.6)
+print('surface detail: seam texels', int((seam > 0.3).sum()), 'fastener', int((fast > 0.3).sum()), 'chips', int((chip > 0.3).sum()))
+save_rgb(np.stack([metal, np.zeros(len(P)), np.zeros(len(P)), smooth], 1), 'UL2_skin_m.png')
+save_rgb(col, 'UL2_skin_b.png')     # colours are authored as sRGB values
 ao = 0.86 + 0.06 * vnoise(P, 0.6, 11)
 save_rgb(np.repeat(ao[:, None], 3, 1), 'UL2_skin_ao.png')
 # damage: 3D shards (Voronoi cells ~0.3 m), each opening at one of the stock levels; scorched colour, dark rims
