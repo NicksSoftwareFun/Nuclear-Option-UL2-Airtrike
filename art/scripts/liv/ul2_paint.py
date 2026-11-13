@@ -29,16 +29,21 @@ ORANGE = np.array([236, 118, 24], np.float32) / 255
 if LIV == 'steel':
     # polished stainless (Nick 04:29): bright steel, sheets of slightly different tone between the frame seams, fine
     # polishing streaks along the length, and a painted-in sky/ground reflection so it reads as mirror-bright metal
-    base = np.array([196, 199, 202], np.float32) / 255
+    base = np.array([178, 182, 187], np.float32) / 255
     col = np.tile(base, (len(P), 1))
     sheet = np.floor((P[:, 1] + 0.10) / 0.55) * 7.3 + np.floor(P[:, 0] * 1.7) * 3.1
-    col *= (1 + 0.035 * np.sin(sheet))[:, None]
+    col *= (1 + 0.04 * np.sin(sheet))[:, None]
     streak = vnoise(P * np.array([6.0, 0.25, 6.0], np.float32), 0.05, 13)
-    col *= (1 + 0.045 * streak)[:, None]
+    col *= (1 + 0.07 * streak)[:, None]
     up = N[:, 2]
-    refl = np.where(up > 0, 0.08 * up, 0.0) - 0.20 * np.exp(-((up + 0.08) / 0.18) ** 2) - np.where(up < -0.2, 0.12 * (-up - 0.2), 0.0)
-    col *= (1 + refl)[:, None]
-    col = np.where(up[:, None] > -0.05, col * np.array([0.98, 1.0, 1.03], np.float32), col * np.array([1.02, 1.0, 0.96], np.float32))   # cool sky above, warm ground below
+    # mirror cues baked in: bright sky on upward faces, a sharp dark horizon line just below the side equator,
+    # warm dark ground reflection on the belly, and a soft sun glint band on the upper flanks
+    sky = np.where(up > 0, 0.30 * np.sqrt(np.clip(up, 0, 1)), 0.0)
+    hor = -0.42 * np.exp(-((up + 0.06) / 0.10) ** 2)
+    gnd = np.where(up < -0.12, -0.30 - 0.10 * np.clip(-up - 0.12, 0, 1), 0.0)
+    glint = 0.22 * np.exp(-((up - 0.45) / 0.08) ** 2) * (vnoise(P, 0.6, 14) > -0.2)
+    col *= (1 + sky + hor + gnd + glint)[:, None]
+    col = np.where(up[:, None] > -0.05, col * np.array([0.97, 1.0, 1.04], np.float32), col * np.array([1.04, 1.0, 0.93], np.float32))
 elif LIV == 'tiger':
     # black with orange tiger stripes (Nick 04:29): wavy, tapering, forked bands running round the aircraft, slanted back
     col = np.tile(np.array([20, 20, 21], np.float32) / 255, (len(P), 1))

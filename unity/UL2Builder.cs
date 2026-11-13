@@ -708,7 +708,25 @@ public static partial class UL2Builder
         so.FindProperty("Texture").objectReferenceValue = b; so.FindProperty("Glossiness").floatValue = 0f;
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(liv);
         log.AppendLine("skin material + livery " + AssetDatabase.AssetPathToGUID(LIVERY));
+        // 0.15.25 (Nick 04:29): extra liveries the stock way, colour map only (normal/metallic/AO/damage maps are shared).
+        // Glossiness is the stock LiveryData field the game puts on the skin's _Glossiness; the steel one sets it for a shine.
+        ExtraLivery("steel", 0.6f); ExtraLivery("tiger", 0f);
         return mat;
+    }
+    static string LiveryPath(string k) { return MOD + "Art/UL2_livery_" + k + ".asset"; }
+    static void ExtraLivery(string k, float gloss)
+    {
+        var tex = SkinTex("UL2_skin_" + k + "_b", true, false, false);
+        var liv = AssetDatabase.LoadMainAssetAtPath(LiveryPath(k)) as ScriptableObject;
+        if (liv == null)
+        {
+            var t = System.AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("LiveryData")).FirstOrDefault(x => x != null);
+            liv = ScriptableObject.CreateInstance(t); AssetDatabase.CreateAsset(liv, LiveryPath(k));
+        }
+        var so = new SerializedObject(liv);
+        so.FindProperty("Texture").objectReferenceValue = tex; so.FindProperty("Glossiness").floatValue = gloss;
+        so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(liv);
+        log.AppendLine("livery " + k + " gloss " + gloss + " " + AssetDatabase.AssetPathToGUID(LiveryPath(k)));
     }
     // the game writes the livery texture only into renderers listed in a part's damageMaterial.renderers (an empty list = the
     // part's own renderer), so every skin renderer that is not a part itself is added to its owning part (as on the P220)
@@ -1109,12 +1127,17 @@ public static partial class UL2Builder
         so.FindProperty("HUDExtras").objectReferenceValue = HudExtrasUL2();
         so.FindProperty("DefaultFuelLevel").floatValue = 1f;
         so.FindProperty("cruiseThrottle").floatValue = 0.75f;
-        var liv = so.FindProperty("liveries"); liv.arraySize = 1;
-        var li = liv.GetArrayElementAtIndex(0);
-        li.FindPropertyRelative("name").stringValue = "Army Olive";
-        li.FindPropertyRelative("faction").objectReferenceValue = null;
-        li.FindPropertyRelative("assetReference.m_AssetGUID").stringValue = AssetDatabase.AssetPathToGUID(LIVERY);
-        li.FindPropertyRelative("assetReference.m_SubObjectName").stringValue = "";
+        var liv = so.FindProperty("liveries"); liv.arraySize = 3;
+        string[] livName = { "Army Olive", "Polished Stainless", "Black Tiger" };
+        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger") };
+        for (int i = 0; i < 3; i++)
+        {
+            var li = liv.GetArrayElementAtIndex(i);
+            li.FindPropertyRelative("name").stringValue = livName[i];
+            li.FindPropertyRelative("faction").objectReferenceValue = null;
+            li.FindPropertyRelative("assetReference.m_AssetGUID").stringValue = AssetDatabase.AssetPathToGUID(livPath[i]);
+            li.FindPropertyRelative("assetReference.m_SubObjectName").stringValue = "";
+        }
         // six hardpoint sets now: side gun, left/right stub top, left/right stub under, seat 3 passenger
         var lo = so.FindProperty("loadouts");
         for (int i = 0; i < lo.arraySize; i++)
@@ -1184,7 +1207,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.24\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.25\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

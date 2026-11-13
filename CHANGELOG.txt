@@ -2,6 +2,7 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.25: two new liveries, Polished Stainless (bright steel with mirror cues painted in, livery gloss 0.6) and Black Tiger (black with orange tiger stripes); seat 3 MG 338 fires a tracer every 3rd round (was 5).
 - 0.15.24: airframe trimmed from 75.0k to 64.9k triangles with no visible change (flat areas merged, fewer pod and camera ball rings), seat 3 kits about 1% lighter; gun ammo box moved inside the pod (no longer pokes through the right stub); inner engine faces use the stock engine internals material; main rotor plays the stock rotor loop with pitch and volume following rotor rpm.
 - 0.15.23: own map/selection icon and seat 3 weapon icons (MG, grenadier, spotter); seat 3 passenger adds capture power 2 (1/8 of a full Ibis troop load) while landed and stopped.
 - 0.15.22: part joints break like the stock Cricket (scaled to weight); fire and break-up effects on the main structure, impact damage on the pod, mast, engine, booms and gear; skin normal and metallic maps (panel lines, screw heads, rivet rows, small chips); inner pod wall uses the cockpit lining so markings no longer show inside; guns and seat 3 weapons in a lighter FDE; engine 195 kW (was 150); nose steering lock fades with speed; rotor gauge moved back left.
