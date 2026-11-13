@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.22")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.23")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -656,7 +656,21 @@ namespace UL2Airtrike
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 seat 3: " + e); enabled = false; }
         }
-        void OnDestroy() { foreach (var kv in magOrig) if (kv.Key != null) fMag.SetValue(kv.Key, kv.Value); foreach (var kv in visOrig) if (kv.Key != null) fVis.SetValue(kv.Key, kv.Value); }
+        // 0.15.23 (Nick 04:21, 04:24): any seat 3 passenger gives the aircraft 1/8 of a full Ibis troop load's capture power (16 troops,
+        // 8 per bay, 8 capture each = 16), i.e. 2. Same rule as the stock MountedTroops: only while landed and stopped.
+        static FieldInfo fSpd, fRalt; static MethodInfo mCap, mPartDet; Component seatPart; bool capOn; float capT;
+        const float CAPTURE = 2f;
+        void Capture()
+        {
+            if ((capT -= Time.deltaTime) > 0f || aircraft == null) return; capT = 2f;
+            var tU = AccessTools.TypeByName("Unit");
+            fSpd = fSpd ?? AccessTools.Field(tU, "speed"); fRalt = fRalt ?? AccessTools.Field(tU, "radarAlt"); mCap = mCap ?? AccessTools.Method(tU, "ModifyCaptureStrength");
+            if (seatPart == null) { var tP = AccessTools.TypeByName("UnitPart"); seatPart = GetComponentInParent(tP); mPartDet = mPartDet ?? AccessTools.Method(tP, "IsDetached"); }
+            bool gone = seatPart != null && mPartDet != null && (bool)mPartDet.Invoke(seatPart, null);
+            bool on = !gone && fSpd != null && fRalt != null && (float)fSpd.GetValue(aircraft) < 2f && (float)fRalt.GetValue(aircraft) < 1f;
+            if (on != capOn && mCap != null) { capOn = on; mCap.Invoke(aircraft, new object[] { on ? CAPTURE : -CAPTURE }); Plugin.Log.LogInfo("UL-2 seat 3 capture " + (on ? "on" : "off")); }
+        }
+        void OnDestroy() { try { if (capOn && aircraft != null && mCap != null) mCap.Invoke(aircraft, new object[] { -CAPTURE }); } catch { } foreach (var kv in magOrig) if (kv.Key != null) fMag.SetValue(kv.Key, kv.Value); foreach (var kv in visOrig) if (kv.Key != null) fVis.SetValue(kv.Key, kv.Value); }
 
         static float Wrap(float a) { a %= 360f; if (a > 180f) a -= 360f; if (a < -180f) a += 360f; return a; }
 
@@ -664,6 +678,7 @@ namespace UL2Airtrike
         {
             try
             {
+                try { Capture(); } catch (Exception ce) { if (capT > -1f) Plugin.Log.LogWarning("UL-2 seat 3 capture: " + ce.Message); capT = 30f; }
                 float dt = Time.timeScale > 0f ? Time.unscaledDeltaTime : 0f;
                 float tA = 0f, tE = 0f; bool active = false;
                 if (turret != null && elev != null)

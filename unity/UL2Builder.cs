@@ -238,6 +238,16 @@ public static partial class UL2Builder
         }
         throw new System.Exception("no placeholder " + name + " (" + type + ")");
     }
+    // icon PNGs import as uncompressed single sprites, like the P220 icon
+    public static Sprite IconSprite(string ip)
+    {
+        var ti = AssetImporter.GetAtPath(ip) as TextureImporter;
+        if (ti == null) return null;
+        ti.textureType = TextureImporterType.Sprite; ti.spriteImportMode = SpriteImportMode.Single; ti.alphaIsTransparency = true;
+        ti.mipmapEnabled = false; ti.textureCompression = TextureImporterCompression.Uncompressed; ti.filterMode = FilterMode.Bilinear;
+        ti.SaveAndReimport();
+        return AssetDatabase.LoadAssetAtPath<Sprite>(ip);
+    }
     static Object Mount(string name)
     {
         var custom = AssetDatabase.LoadMainAssetAtPath(MNT + name + ".asset");
@@ -1109,6 +1119,10 @@ public static partial class UL2Builder
         var wt = so.FindProperty("WorkshopTag"); if (wt != null) wt.stringValue = "UL-2 Airtrike";
         so.FindProperty("code").stringValue = "UL-2";
         so.FindProperty("description").stringValue = "A light three-seat gyroplane for scouting and harassment from rough strips. The pilot lases targets from a small optical ball under the nose, the copilot runs the sensors, and a soldier in the third seat works a 12.7 mm gun in a side mount.";
+        // own map and aircraft selection icon (Nick 04:20): white top-down silhouette, nose up, rotor at 35 deg passing under
+        // the body, like the stock icons (art/scripts/icons)
+        var mapIco = IconSprite(ART + "Icons/UL2_icon_map.png");
+        if (mapIco != null) so.FindProperty("mapIcon").objectReferenceValue = mapIco; else log.AppendLine("NO MAP ICON");
         so.FindProperty("length").floatValue = 6.5f;
         so.FindProperty("width").floatValue = 9.2f;
         so.FindProperty("height").floatValue = 3.3f;
@@ -1153,7 +1167,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.22\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.23\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
