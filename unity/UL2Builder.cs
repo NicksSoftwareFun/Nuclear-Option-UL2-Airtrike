@@ -1005,7 +1005,7 @@ public static partial class UL2Builder
         log.AppendLine("aero + joints set");
     }
 
-    // 0.15.7 (Nick 22:35): manual rotor rpm on the HUD the way the Alkyon shows its wing angle. Own copy of the stock
+    // 0.15.7 (Nick 22:35), restyled 0.15.20: rotor rpm on the HUD the way the Alkyon shows its wing angle. Own copy of the stock
     // COIN HUD extras plus the Alkyon gauge's label (same font/style), and an idle-to-full bar; the plugin fills it in.
     static GameObject HudExtrasUL2()
     {
@@ -1014,50 +1014,30 @@ public static partial class UL2Builder
         AssetDatabase.DeleteAsset(dst);
         if (!AssetDatabase.CopyAsset(PH + "GameObject/COIN_HUDExtras_PLACEHOLDER.prefab", dst)) { log.AppendLine("HUD extras: copy failed"); return null; }
         var go = PrefabUtility.LoadPrefabContents(dst);
-        var quad = PrefabUtility.LoadPrefabContents(PH + "GameObject/QuadVTOL1_HUDExtras_PLACEHOLDER.prefab");
         try
         {
-            var src = quad.GetComponentsInChildren<Transform>(true).First(t => t.name == "wingAngleGauge");
+            // 0.15.20 (Nick 03:43): the rotor gauge is a copy of the stock throttle gauge (same arc, bar, carrot and HUD styles),
+            // a little right of the old bar. Carrot = rpm set by the axis or the assist, coloured bar + readout = actual rpm.
+            var src = go.GetComponentsInChildren<Transform>(true).First(t => t.name == "throttleGauge");
             var g = Object.Instantiate(src.gameObject, go.transform, false); g.name = "UL2_rotorGauge";
-            foreach (var c in g.GetComponents<Component>()) if (c != null && c.GetType().Name == "WingAngleGauge") Object.DestroyImmediate(c);
-            // 0.15.9 (Nick 23:11): sits where the Alkyon's swept-wing gauge sits (stock position, right middle); texts are the
-            // stock label (game HUD font, TextStyleApplier keeps the HUD colour); frame and jump mark are stock HUD images
-            // (ImageStyleApplier); only the vertical fill turns red / green
-            var rt = (RectTransform)g.transform; rt.anchoredPosition = src.GetComponent<RectTransform>().anchoredPosition;
-            var hudImg = g.transform.Find("wingIcon").gameObject;
-            foreach (var n in new[] { "inputPivot", "tiltArc" }) { var t = g.transform.Find(n); if (t) Object.DestroyImmediate(t.gameObject); }
-            var lab = (RectTransform)g.transform.Find("label");
-            System.Func<string, Vector2, string, RectTransform> text = (nm, pos, txt) =>
+            foreach (var c in g.GetComponents<Component>()) if (c != null && c.GetType().Name == "ThrottleGauge") Object.DestroyImmediate(c);
+            var rt = (RectTransform)g.transform; rt.anchoredPosition = src.GetComponent<RectTransform>().anchoredPosition + new Vector2(205f, 0f);
+            var piv = g.transform.Find("throttleReadingPivot");
+            var piv2 = Object.Instantiate(piv.gameObject, g.transform, false); piv2.name = "readPivot";
+            piv.name = "carrotPivot";
+            foreach (var t in piv.GetComponentsInChildren<Transform>(true).Where(x => x.name == "throttleReading").ToList())
             {
-                var r = nm == "label" ? lab : (RectTransform)Object.Instantiate(lab.gameObject, g.transform, false).transform; r.name = nm;
-                r.anchorMin = r.anchorMax = new Vector2(0.5f, 0.5f); r.pivot = new Vector2(1f, 0.5f); r.anchoredPosition = pos; r.sizeDelta = new Vector2(320f, 30f);
-                var tmp = r.GetComponent<TMPro.TextMeshProUGUI>(); if (tmp) { tmp.alignment = TMPro.TextAlignmentOptions.Right; tmp.text = txt; }
-                return r;
-            };
-            text("title", new Vector2(-24f, 122f), "PRE ROTATOR"); text("title2", new Vector2(-24f, 94f), "MANUAL CONTROL");
-            text("label", new Vector2(-24f, -112f), "ROTOR 0 RPM"); text("hint", new Vector2(-24f, -140f), "");
-            System.Func<string, Transform, RectTransform> img = (nm, parent) =>
-            {
-                var o = Object.Instantiate(hudImg, parent, false); o.name = nm; foreach (Transform ch in o.transform) Object.DestroyImmediate(ch.gameObject);
-                var im = o.GetComponent<UnityEngine.UI.Image>(); im.sprite = null; im.type = UnityEngine.UI.Image.Type.Simple;
-                var r = (RectTransform)o.transform; r.anchorMin = r.anchorMax = r.pivot = new Vector2(0.5f, 0.5f); r.localRotation = Quaternion.identity; r.localScale = Vector3.one; return r;
-            };
-            // vertical bar 200 tall: frame (HUD colour, faint), fill from the bottom (idle 110 rpm) to the top (450 rpm)
-            var brt = img("barBg", g.transform); brt.anchoredPosition = new Vector2(0f, 0f); brt.sizeDelta = new Vector2(16f, 200f);
-            brt.GetComponent<UnityEngine.UI.Image>().color = new Color(0f, 1f, 0f, 0.25f);
-            var fill = new GameObject("barFill", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image)); fill.layer = g.layer;
-            var frt = (RectTransform)fill.transform; frt.SetParent(brt, false); frt.anchorMin = new Vector2(0f, 0f); frt.anchorMax = new Vector2(1f, 0f); frt.pivot = new Vector2(0.5f, 0f);
-            frt.anchoredPosition = new Vector2(0f, 1f); frt.sizeDelta = new Vector2(-2f, 198f);
-            fill.GetComponent<UnityEngine.UI.Image>().color = new Color(1f, 0.2f, 0.15f, 0.9f);
-            var trt = img("jumpMark", brt); trt.anchorMin = trt.anchorMax = new Vector2(0.5f, (400f - 110f) / 340f); trt.sizeDelta = new Vector2(30f, 2f); trt.anchoredPosition = Vector2.zero;
-            trt.GetComponent<UnityEngine.UI.Image>().color = new Color(0f, 1f, 0f, 1f);
-            Object.DestroyImmediate(hudImg);
+                var bp = t.Find("barPointer"); if (bp != null) bp.SetParent(t.parent, true);   // the carrot sits under the reading in stock
+                Object.DestroyImmediate(t.gameObject);
+            }
+            foreach (var t in piv2.transform.GetComponentsInChildren<Transform>(true).Where(x => x.name == "barPointer").ToList()) if (t != null) Object.DestroyImmediate(t.gameObject);
+            var lab = g.transform.Find("throttleLabel"); var tmp = lab.GetComponent<TMPro.TextMeshProUGUI>(); if (tmp) tmp.text = "ROTOR";
             g.SetActive(false);
             PrefabUtility.SaveAsPrefabAsset(go, dst);
-            log.AppendLine("HUD extras: rotor gauge added");
+            log.AppendLine("HUD extras: rotor gauge (throttle style) added");
         }
         catch (System.Exception e) { log.AppendLine("HUD extras ERROR " + e.Message); }
-        finally { PrefabUtility.UnloadPrefabContents(go); PrefabUtility.UnloadPrefabContents(quad); }
+        finally { PrefabUtility.UnloadPrefabContents(go); }
         return AssetDatabase.LoadAssetAtPath<GameObject>(dst);
     }
 
@@ -1144,7 +1124,8 @@ public static partial class UL2Builder
         // medium hangars only (0.15.8, Nick 22:53: helipad spawns off for now, runway starts give repeatable takeoff tests)
         // 0.15.9 (Nick 23:14: no spawn at small airbases): every building the stock Cricket spawns from, revetments and
         // shelters included (shelter1 also holds a helipad hangar, which stays off)
-        var hk = new[] { "hangar_med", "revetment1", "shelter1" };
+        // 0.15.20 (Nick 03:48): helicopter spawns (stock helipads) back on
+        var hk = new[] { "hangar_med", "revetment1", "shelter1", "Helipad" };
         var hs = so.FindProperty("hangars"); hs.arraySize = hk.Length;
         for (int i = 0; i < hk.Length; i++)
         {
@@ -1153,7 +1134,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.15\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.20\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

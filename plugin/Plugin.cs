@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.19")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.20")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -152,6 +152,7 @@ namespace UL2Airtrike
                 }
                 if (manual && (dbgT -= dt) <= 0f) { dbgT = 2f; Plugin.Log.LogInfo($"UL-2 pre-rotator axis {axis:0.00} rpm {rpm:0} alt {alt:0.00} engine {er:0.00} thr {thr:0.00} clutch {clutch}"); }
                 prevAxis = axis;
+                setRpm = target;
                 rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? upRate : 40f) * dt);
                 spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * dt, 0f);
                 // rotor disc tilt with the stick (gyros steer by tilting the head); held back on the ground roll
@@ -200,7 +201,8 @@ namespace UL2Airtrike
         bool inErr;
         // HUD rotor gauge (Nick 22:31/22:35/22:36): the Alkyon-style label from our HUD extras prefab (UL2_rotorGauge),
         // rpm readout and an idle (110) to full (450 rpm) bar, red until the rotor is fast enough to jump (400), then green
-        Transform hud; RectTransform barFill; UnityEngine.UI.Image fillImg; TMPro.TMP_Text hudRpm, hudHint; float hudFind, hudShow;
+        // 0.15.20 (Nick 03:43): styled like the stock throttle gauge: carrot = set rpm, coloured arc bar + readout = actual rpm
+        Transform hud, carrotPiv, readPiv; UnityEngine.UI.Image barImg; TMPro.TMP_Text hudRead, hudLabel; float hudFind, hudShow, setRpm;
         void HudGauge(float dt, bool engOn)
         {
             try
@@ -210,23 +212,28 @@ namespace UL2Airtrike
                     if ((hudFind -= dt) > 0f) return; hudFind = 1f;
                     foreach (var t in Resources.FindObjectsOfTypeAll<RectTransform>()) if (t.name == "UL2_rotorGauge" && t.gameObject.scene.IsValid()) { hud = t; break; }
                     if (hud == null) return;
-                    barFill = hud.Find("barBg/barFill") as RectTransform; if (barFill != null) fillImg = barFill.GetComponent<UnityEngine.UI.Image>();
-                    var l = hud.Find("label"); if (l != null) hudRpm = l.GetComponent<TMPro.TMP_Text>();
-                    var ti = hud.Find("hint"); if (ti != null) hudHint = ti.GetComponent<TMPro.TMP_Text>();
-                    Plugin.Log.LogInfo("UL-2 HUD rotor gauge found, bar " + (barFill != null) + " text " + (hudRpm != null));
+                    foreach (var t in hud.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (t.name == "throttlebar") barImg = t.GetComponent<UnityEngine.UI.Image>();
+                        else if (t.name == "throttleLabel") hudLabel = t.GetComponent<TMPro.TMP_Text>();
+                        else if (t.name == "carrotPivot") carrotPiv = t;
+                        else if (t.name == "readPivot") readPiv = t;
+                    }
+                    if (readPiv != null) foreach (var t in readPiv.GetComponentsInChildren<Transform>(true)) if (t.name == "throttleReading") hudRead = t.GetComponent<TMPro.TMP_Text>();
+                    Plugin.Log.LogInfo("UL-2 HUD rotor gauge found, bar " + (barImg != null) + " carrot " + (carrotPiv != null) + " readout " + (hudRead != null));
                 }
-                bool want = axis > 0.05f || autoSpin;
+                bool want = axis > 0.05f || autoSpin || (alt < 0.8f && engOn);
                 if (want) hudShow = 3f; else if (hudShow > 0f) hudShow -= dt;
                 bool show = hudShow > 0f;
                 if (hud.gameObject.activeSelf != show) hud.gameObject.SetActive(show);
                 if (!show) return;
-                bool ready = rpm >= 300f;   // full rotor lift available from 300 rpm
-                var col = ready ? new Color(0.3f, 1f, 0.3f, 1f) : new Color(1f, 0.25f, 0.2f, 1f);
-                // vertical bar (0.15.9): only the fill changes colour; the texts keep the HUD colour from their style applier
-                if (barFill != null) barFill.sizeDelta = new Vector2(barFill.sizeDelta.x, 198f * Mathf.Clamp01((rpm - 110f) / 340f));
-                if (fillImg != null) fillImg.color = col;
-                if (hudRpm != null) hudRpm.text = "ROTOR " + Mathf.RoundToInt(rpm) + " RPM";
-                if (hudHint != null) hudHint.text = axis > 0.05f ? "MANUAL" : autoSpin ? "AUTO" : "";
+                float f = Mathf.Clamp01(rpm / 450f), fs = Mathf.Clamp01(setRpm / 450f);
+                var col = rpm >= 300f ? new Color(0.3f, 1f, 0.3f, 1f) : Color.Lerp(new Color(1f, 0.25f, 0.2f, 1f), new Color(1f, 0.6f, 0.1f, 1f), Mathf.Clamp01(rpm / 300f));
+                if (barImg != null) { barImg.fillAmount = f; barImg.color = col; }
+                if (carrotPiv != null) carrotPiv.localEulerAngles = new Vector3(0f, 0f, fs * 26f - 13f);
+                if (readPiv != null) readPiv.localEulerAngles = new Vector3(0f, 0f, f * 26f - 13f);
+                if (hudRead != null) { hudRead.text = Mathf.RoundToInt(rpm) + " RPM"; hudRead.color = col; hudRead.transform.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }
+                if (hudLabel != null) hudLabel.text = axis > 0.05f ? "ROTOR MANUAL" : autoSpin ? "ROTOR AUTO" : "ROTOR";
             }
             catch (Exception e) { if (!hudErr) { hudErr = true; Plugin.Log.LogWarning("UL-2 HUD gauge: " + e.Message); } }
         }
@@ -312,6 +319,9 @@ namespace UL2Airtrike
                     float rollA = Wrap(transform.rotation.eulerAngles.z) * Mathf.Deg2Rad;
                     tq += transform.forward * (-rollA * 9000f);
                 }
+                // 0.15.20 (Nick 03:51: more rudder): extra rudder moment from the airflow plus the prop wash over the fin
+                float qe = 0.6125f * rb.velocity.sqrMagnitude + 0.3f * Mathf.Max(logThrust, 0f);
+                tq += transform.up * (Mathf.Clamp(yawIn, -1f, 1f) * qe * 1.4f);
                 rb.AddTorque(tq, ForceMode.Force);
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 rotor lift: " + e); pRb = null; }
