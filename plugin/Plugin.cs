@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.55")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.56")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -56,6 +56,14 @@ namespace UL2Airtrike
                 var alert = AccessTools.Method(AccessTools.TypeByName("AIPilotCombatModes"), "AICombat_OnMissileAlert");
                 if (alert != null) h.Patch(alert, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostMissileAlert)));
                 Logger.LogInfo("UL-2 combat altitude patch " + (alt != null) + ", missile alert " + (alert != null));
+                // 0.15.56 (Nick 23:14): tactics on top of the stock combat AI, applied after it picks its steering each tick:
+                // pop-up missile attack, beaming a radar that locks it, and the spotter's standoff loiter
+                var tCm = AccessTools.TypeByName("AIPilotCombatModes");
+                var run = AccessTools.Method(tCm, "RunAttackMode");
+                if (run != null) h.Patch(run, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostRunAttack)));
+                var rw = AccessTools.Method(tCm, "AICombat_OnRadarWarning");
+                if (rw != null) h.Patch(rw, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostRadarWarning)));
+                Logger.LogInfo("UL-2 tactics patches: attack " + (run != null) + ", radar warning " + (rw != null));
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
         }
@@ -120,7 +128,7 @@ namespace UL2Airtrike
             }
             catch { }
         }
-        static FieldInfo fTh, fStAc, fCurT;
+        internal static FieldInfo fTh, fStAc, fCurT;
         static RotorSpinner UL2Of(object state)
         {
             fStAc = fStAc ?? AccessTools.Field(state.GetType(), "aircraft");
@@ -132,6 +140,54 @@ namespace UL2Airtrike
         {
             try { var rs = UL2Of(__instance); if (rs != null) rs.GoLow("missile alert"); } catch { }
         }
+        // ---------------------------------------------------------------- 0.15.56 tactics (Nick 23:14 / 23:15)
+        internal static FieldInfo fMode, fEvade, fDest, fTkp, fWi, fObsc, fFollow, fLastFired, fName, fReq, fMaxR, fMissile, fGx, fGy, fGz;
+        internal static MethodInfo mGlobal; internal static Type tGP;
+        internal static Vector3 GP(object g) { return new Vector3((float)fGx.GetValue(g), (float)fGy.GetValue(g), (float)fGz.GetValue(g)); }
+        internal static object MakeGP(Vector3 v) { var g = Activator.CreateInstance(tGP); fGx.SetValue(g, v.x); fGy.SetValue(g, v.y); fGz.SetValue(g, v.z); return g; }
+        static bool TacInit(object st)
+        {
+            if (fMode != null) return true;
+            var t = st.GetType();
+            fMode = AccessTools.Field(t, "attackMode"); fEvade = AccessTools.Field(t, "evadeMode"); fDest = AccessTools.Field(t, "destination");
+            fTkp = AccessTools.Field(t, "targetKnownPosition"); fWi = AccessTools.Field(t, "currentWeaponInfo"); fObsc = AccessTools.Field(t, "targetObscured");
+            fFollow = AccessTools.Field(t, "followTerrain"); fLastFired = AccessTools.Field(t, "lastFiredTime"); fName = AccessTools.Field(t, "stateDisplayName");
+            fCurT = fCurT ?? AccessTools.Field(t, "currentTarget"); fTh = fTh ?? AccessTools.Field(t, "targetHeight");
+            tGP = AccessTools.TypeByName("GlobalPosition"); fGx = AccessTools.Field(tGP, "x"); fGy = AccessTools.Field(tGP, "y"); fGz = AccessTools.Field(tGP, "z");
+            mGlobal = AccessTools.Method(AccessTools.TypeByName("Unit"), "GlobalPosition", Type.EmptyTypes);
+            var tWi = AccessTools.TypeByName("WeaponInfo"); fReq = AccessTools.Field(tWi, "targetRequirements"); fMissile = AccessTools.Field(tWi, "missile");
+            fMaxR = AccessTools.Field(AccessTools.TypeByName("TargetRequirements"), "maxRange");
+            bool ok = fMode != null && fEvade != null && fDest != null && fTkp != null && fName != null && mGlobal != null && fGx != null && fMaxR != null;
+            Log.LogInfo("UL-2 tactics fields " + ok + (fDest == null ? " (no destination field)" : ""));
+            if (!ok) fMode = null;
+            return ok;
+        }
+        static void PostRadarWarning(object __instance, object source)
+        {
+            try
+            {
+                var rs = UL2Of(__instance); if (rs == null || source == null) return;
+                var t = source.GetType();
+                if (!(bool)t.GetField("detected").GetValue(source) || !(bool)t.GetField("isTarget").GetValue(source)) return;
+                var em = t.GetField("emitter").GetValue(source) as Component; if (em == null) return;
+                if (!TacInit(__instance)) return;
+                rs.RadarLock(GP(mGlobal.Invoke(em, null)));
+            }
+            catch (Exception e) { Log.LogWarning("UL-2 radar warning: " + e.Message); }
+        }
+        static void PostRunAttack(object __instance)
+        {
+            try
+            {
+                var rs = UL2Of(__instance); if (rs == null || !TacInit(__instance)) return;
+                string mode = fMode.GetValue(__instance).ToString(), ev = fEvade.GetValue(__instance).ToString();
+                string name = fName.GetValue(__instance) as string;
+                if (name != null && !name.StartsWith("UL-2: ")) rs.stockName = name;      // what the stock AI last showed
+                string tac = ev == "None" ? rs.Tactic(__instance, mode) : null;
+                fName.SetValue(__instance, tac != null ? "UL-2: " + tac : rs.stockName);  // spectator status box
+            }
+            catch (Exception e) { Log.LogWarning("UL-2 tactics: " + e.Message); fMode = null; }
+        }
         static void PostAltitude(object __instance)
         {
             try
@@ -141,7 +197,7 @@ namespace UL2Airtrike
                 fCurT = fCurT ?? AccessTools.Field(__instance.GetType(), "currentTarget");
                 var tgt = fCurT?.GetValue(__instance) as UnityEngine.Object;
                 if (tgt != null) rs.GoLow("attacking a target");
-                if (!rs.LowMode) return;
+                if (!rs.LowMode || rs.PopUp) return;
                 fTh = fTh ?? AccessTools.Field(__instance.GetType(), "targetHeight");
                 float th = (float)fTh.GetValue(__instance), cap = rs.SpotterAboard ? RotorSpinner.CAP_SPOT : RotorSpinner.CAP_LOW;
                 if (th > cap) fTh.SetValue(__instance, cap);
@@ -658,7 +714,7 @@ namespace UL2Airtrike
             // or ~190 m with the spotter aboard so he can see over the terrain
             // 0.15.54b (Nick 23:03): only while the low window is open (missile alert or attack in the last 5 min); otherwise
             // the 0.15.34 cap (no climbing above ~150 m)
-            if (!LowMode) gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(120f, 220f, alt)));
+            if (!LowMode || PopUp) gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(120f, 220f, alt)));   // 0.15.56: a pop-up may climb
             else if (SpotterAboard) gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(160f, 240f, alt)));
             else gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(35f, 70f, alt)));
             // 0.15.54 (Nick 20:21: AI held 20 m on the approach until it stalled): on a landing the floors below all read the
@@ -764,6 +820,71 @@ namespace UL2Airtrike
         internal const float LOW_TIME = 300f;
         float lowUntil = -1f;
         internal bool LowMode => Time.time < lowUntil;
+        // ---- 0.15.56 tactics: each returns the label shown to spectators, or null to leave the stock AI alone
+        internal string stockName;
+        float beamStart = -99f, beamLast = -99f, popUntil = -1f, popFired = -99f; Vector3 beamFrom; int orbitDir;
+        internal bool PopUp => Time.time < popUntil;
+        internal void RadarLock(Vector3 emitterGlobal)
+        {
+            if (Time.time - beamStart > 40f) beamStart = Time.time;            // up to 20 s of beaming, then 20 s of ignoring it
+            beamLast = Time.time; beamFrom = emitterGlobal; GoLow("radar lock");
+        }
+        bool Beaming => Time.time - beamLast < 4f && Time.time - beamStart < 20f;
+        static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
+        void SetDest(object st, Vector3 g, float height)
+        {
+            Plugin.fDest.SetValue(st, Plugin.MakeGP(g)); Plugin.fTh.SetValue(st, height);
+            if (Plugin.fFollow != null) Plugin.fFollow.SetValue(st, true);
+        }
+        internal string Tactic(object st, string mode)
+        {
+            Vector3 own = Plugin.GP(Plugin.mGlobal.Invoke(unit, null)), fwd = Flat(transform.forward).normalized;
+            var tgt = Plugin.fCurT.GetValue(st) as Component;
+            Vector3 tpos = tgt != null ? Plugin.GP(Plugin.fTkp.GetValue(st)) : own;
+            // RADAR SHY: a radar locked on, so turn side-on to it (beam it, so it loses the closing speed) and get down low.
+            // Not while a missile shot is already lined up.
+            if (Beaming && mode != "UsingMissiles")
+            {
+                var d = Flat(own - beamFrom).normalized; var perp = new Vector3(-d.z, 0f, d.x);
+                if (Vector3.Dot(perp, fwd) < 0f) perp = -perp;
+                SetDest(st, own + perp * 3000f, 12f);
+                return "Beaming Radar";
+            }
+            // SPOTTER LOITER: with the spotter aboard, hold a wide slow circle 4 km from the target and watch it for the team
+            // instead of running in; missile shots that come in range are still taken from the circle
+            if (SpotterAboard && tgt != null && mode != "UsingMissiles" && mode != "NoTarget")
+            {
+                var r = Flat(own - tpos); float dist = r.magnitude; var rad = dist > 1f ? r / dist : -fwd;
+                if (orbitDir == 0) orbitDir = Vector3.Dot(Vector3.Cross(Vector3.up, rad), fwd) >= 0f ? 1 : -1;
+                Vector3 aim = dist < 3000f ? own + rad * 2000f : tpos + (Quaternion.AngleAxis(-orbitDir * 25f, Vector3.up) * rad) * 4000f;
+                aim.y = own.y; SetDest(st, aim, 150f);
+                return "Spotting Target";
+            }
+            orbitDir = 0;
+            // POP-UP ATTACK: with a missile selected, run in very low and out of sight; inside range + 2 km climb only until
+            // the target is in view, fire, then dive away to the side
+            var wi = Plugin.fWi?.GetValue(st);
+            bool missile = wi != null && Plugin.fMissile != null && (bool)Plugin.fMissile.GetValue(wi);
+            if (tgt != null && missile && (mode == "FlyingToTarget" || mode == "UsingMissiles"))
+            {
+                float maxR = (float)Plugin.fMaxR.GetValue(Plugin.fReq.GetValue(wi)), dist = Flat(own - tpos).magnitude;
+                float lf = Plugin.fLastFired != null ? (float)Plugin.fLastFired.GetValue(st) : -99f;
+                if (Time.timeSinceLevelLoad - lf < 1f) popFired = Time.time;
+                if (dist > maxR + 2000f) { Plugin.fTh.SetValue(st, 25f); if (Plugin.fFollow != null) Plugin.fFollow.SetValue(st, true); return "Low Run-In"; }
+                bool hidden = Plugin.fObsc != null && (bool)Plugin.fObsc.GetValue(st);
+                popUntil = Time.time + 3f;
+                Plugin.fTh.SetValue(st, hidden ? 110f : Mathf.Max(alt, 25f));
+                return "Pop-Up Attack";
+            }
+            if (Time.time - popFired < 12f && (mode == "BreakOffAttack" || mode == "RetreatStandoff" || mode == "FlyingToTarget"))
+            {
+                var away = Flat(own - tpos).normalized; var side = new Vector3(-away.z, 0f, away.x);
+                if (Vector3.Dot(side, fwd) < 0f) side = -side;
+                SetDest(st, own + (away + side).normalized * 3000f, 15f);
+                return "Diving Away";
+            }
+            return null;
+        }
         internal void GoLow(string why)
         {
             if (!LowMode) Plugin.Log.LogInfo("UL-2 AI low-level mode on (" + why + "), 5 min" + (SpotterAboard ? ", spotter cap 160 m" : ", cap 35 m"));
