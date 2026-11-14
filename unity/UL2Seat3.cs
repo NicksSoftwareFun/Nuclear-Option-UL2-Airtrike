@@ -553,6 +553,9 @@ public static partial class UL2Builder
         iso.FindProperty("weaponPrefab").objectReferenceValue = bomb;
         iso.FindProperty("effectiveness.antiSurface").floatValue = 0f; iso.FindProperty("effectiveness.antiAir").floatValue = 0f;
         iso.FindProperty("useWeaponDoors").boolValue = false;
+        // 0.15.45 (Nick 02:17: no CCIP bombsight): the HUD picks the bombing sight from WeaponInfo.bomb, so it is off here;
+        // the HUD then shows the plain weapon display (as for the ECM pod). It stays flagged nuclear; nothing else reads bomb.
+        iso.FindProperty("bomb").boolValue = false;
         iso.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(info);
 
         // 2. the seat 3 mount: stock external bomb mount, pylon removed, bomb posed nose-down in the seat

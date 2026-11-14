@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.44")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.45")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -142,7 +142,13 @@ namespace UL2Airtrike
                 if (mounted == null)
                 {
                     if (clock < scanT) return; scanT = clock + 2f;
-                    foreach (var t in GetComponentsInChildren<Transform>(true)) if (t.name == "UL2_xbomb_mounted") { mounted = t; wasActive = t.gameObject.activeInHierarchy; break; }
+                    // 0.15.45: the parts detach from the aircraft root at spawn (seat 3 rides on its own part), so search the
+                    // unit's part list (RotorSpinner keeps it), not the root's children
+                    var rs = GetComponent<RotorSpinner>();
+                    var roots = new List<Transform> { transform };
+                    if (rs != null) foreach (var c in rs.partList) if (c != null) roots.Add(c.transform);
+                    foreach (var r in roots) { foreach (var t in r.GetComponentsInChildren<Transform>(true)) if (t.name == "UL2_xbomb_mounted") { mounted = t; break; } if (mounted != null) break; }
+                    if (mounted != null) { wasActive = mounted.gameObject.activeInHierarchy; Plugin.Log.LogInfo("UL-2 expedient bomb on seat 3, watching for the fire"); }
                     return;
                 }
                 bool act = mounted.gameObject.activeInHierarchy;
@@ -203,7 +209,7 @@ namespace UL2Airtrike
         readonly Dictionary<string, Transform> pedals = new Dictionary<string, Transform>();
         readonly Dictionary<string, Vector3> pedalRest = new Dictionary<string, Vector3>(); float yawIn, pedalPos, brakeIn;
         Transform tilt; float tiltX, tiltZ, thr, pitchIn, rollIn, axis, prevAxis, alt, er, jumpT = -1f, jumpE, massSum, massT;
-        readonly List<Component> partList = new List<Component>(); float scanT, offGround, dbgT;
+        internal readonly List<Component> partList = new List<Component>(); float scanT, offGround, dbgT;
 
         static FieldInfo fFa; bool autoArmed = true, autoSpin;
         // 0.15.15 gyro model (Nick 01:28: takeoff deep dive). The game's wing lift is Cl(alpha) * q * area off each part's lift
