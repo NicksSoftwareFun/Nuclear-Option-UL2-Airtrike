@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.50")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.51")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -267,19 +267,25 @@ namespace UL2Airtrike
                 // in the air it sets the rpm outright instead of only adding to the autorotation. Axis at the bottom = released,
                 // back to autorotation. Flight assist on keeps the old behaviour (pre-rotator only on the ground and 3 s after).
                 bool manualAir = manual && !fa && !clutch;
-                if (headOn && engOn && !struck && manualAir) target = 110f + 340f * axis;
-                else if (headOn && clutch && engOn && !struck)
+                // 0.15.51 (Nick 02:49): no automatic rotor braking. The drive (pre-rotator / manual axis in the air with flight
+                // assist off) can only spin the rotor UP to its setpoint; above it the rotor runs free on the airflow (settles
+                // toward the autorotation rpm, or winds down slowly with no airflow). Only the BRAKE button pulls it down: a
+                // modest rotor brake toward the axis setpoint (axis at minimum = FREE: brake toward a stop), ground or air.
+                float autoT = target, drive = 0f;
+                if (headOn && engOn && !struck && (clutch || manualAir))
                 {
-                    float pre = 0f;
-                    if (manual) pre = 110f + 340f * axis;
-                    else if (fa && ground) pre = thr > 0.95f ? 450f : Mathf.Lerp(110f, 300f, thr);
+                    if (manual) drive = 110f + 340f * axis;
+                    else if (fa && ground) drive = thr > 0.95f ? 450f : Mathf.Lerp(110f, 300f, thr);
                     if (rpm > 250f) upRate = 30f;
-                    target = Mathf.Max(target, pre);
                 }
-                if (manual && (dbgT -= dt) <= 0f) { dbgT = 2f; Plugin.Log.LogInfo($"UL-2 pre-rotator axis {axis:0.00} rpm {rpm:0} alt {alt:0.00} engine {er:0.00} thr {thr:0.00} clutch {clutch}"); }
+                target = Mathf.Max(autoT, drive);
+                float sp = manual ? 110f + 340f * axis : 0f;
+                bool braking = headOn && brakeIn > 0.1f && rpm > sp + 0.5f;
+                if (manual && (dbgT -= dt) <= 0f) { dbgT = 2f; Plugin.Log.LogInfo($"UL-2 pre-rotator axis {axis:0.00} rpm {rpm:0} alt {alt:0.00} engine {er:0.00} thr {thr:0.00} clutch {clutch} brake {braking}"); }
                 prevAxis = axis;
-                setRpm = target;
-                rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? upRate : 40f) * dt);
+                setRpm = manual ? sp : target;
+                if (braking) rpm = Mathf.Max(sp, rpm - 35f * brakeIn * dt);                       // rotor brake ~35 rpm/s
+                else rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? upRate : autoT > 0f ? 40f : 6f) * dt);   // free: aero settling / slow wind-down
                 spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * dt, 0f);
                 RotorAudio(headOn);
                 RotorBlur(headOn);
