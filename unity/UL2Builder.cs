@@ -1129,7 +1129,7 @@ public static partial class UL2Builder
             var m = SaveMount(go, "UL2_sidegun", "turret_12.7mm_door", null, "12.7mm Gun (300 rounds)");
             var so = new SerializedObject(m);
             var amp = so.FindProperty("ammo"); if (amp != null) amp.intValue = 300;
-            so.FindProperty("GearSafety").boolValue = false; so.FindProperty("GroundSafety").boolValue = false;
+            so.FindProperty("GearSafety").boolValue = true; so.FindProperty("GroundSafety").boolValue = false;   // 0.15.46 (Nick 02:29): safe with the gear down (gear key; the gear never moves)
             so.FindProperty("drag").floatValue = 0.05f; so.FindProperty("emptyDrag").floatValue = 0.05f;
             so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
         }
@@ -1465,7 +1465,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.45\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.46\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }

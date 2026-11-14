@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.45")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.46")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -176,12 +176,19 @@ namespace UL2Airtrike
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 xbomb: " + e); enabled = false; }
         }
+        // 0.15.46 (Nick 02:29: it slid back a foot into the engine when fired): the bomb rigidbody interpolates, so a pose set
+        // in the physics step drew a step behind the moving seat. Now it is parented to the seat 3 part with interpolation
+        // off and its local pose re-set every step and frame, so it rides the part exactly.
         void Hold()
         {
             if (held == null) return;
-            if (mounted == null || !mounted.gameObject.scene.IsValid()) { held.isKinematic = false; held = null; return; }
+            if (mounted == null || !mounted.gameObject.scene.IsValid()) { held.transform.SetParent(null, true); held.isKinematic = false; held = null; return; }
             if (!held.isKinematic) held.isKinematic = true;
-            held.transform.SetPositionAndRotation(mounted.position, mounted.rotation);
+            if (held.interpolation != RigidbodyInterpolation.None) held.interpolation = RigidbodyInterpolation.None;
+            var par = mounted.parent;
+            if (held.transform.parent != par) held.transform.SetParent(par, false);
+            held.transform.localPosition = mounted.localPosition; held.transform.localRotation = mounted.localRotation;
+            held.velocity = Vector3.zero; held.angularVelocity = Vector3.zero;
         }
         void FixedUpdate() { try { Hold(); } catch { held = null; } }
         void LateUpdate() { try { Hold(); } catch { held = null; } }
