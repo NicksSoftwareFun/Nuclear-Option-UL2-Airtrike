@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.54")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.55")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -52,7 +52,10 @@ namespace UL2Airtrike
                 // For the UL-2 the target height is held low so it masks behind terrain; with the spotter aboard it may go higher.
                 var alt = AccessTools.Method(AccessTools.TypeByName("AIPilotCombatModes"), "ManageAltitude");
                 if (alt != null) h.Patch(alt, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostAltitude)));
-                Logger.LogInfo("UL-2 combat altitude patch " + (alt != null));
+                // 0.15.54b (Nick 23:03): the low cap only runs for 5 minutes after a missile alert or while attacking a target
+                var alert = AccessTools.Method(AccessTools.TypeByName("AIPilotCombatModes"), "AICombat_OnMissileAlert");
+                if (alert != null) h.Patch(alert, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostMissileAlert)));
+                Logger.LogInfo("UL-2 combat altitude patch " + (alt != null) + ", missile alert " + (alert != null));
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
         }
@@ -117,15 +120,28 @@ namespace UL2Airtrike
             }
             catch { }
         }
-        static FieldInfo fTh, fStAc;
+        static FieldInfo fTh, fStAc, fCurT;
+        static RotorSpinner UL2Of(object state)
+        {
+            fStAc = fStAc ?? AccessTools.Field(state.GetType(), "aircraft");
+            var ac = fStAc?.GetValue(state) as Component;
+            if (ac == null || !ac.name.StartsWith("UL2Airtrike")) return null;
+            return ac.GetComponent<RotorSpinner>();
+        }
+        static void PostMissileAlert(object __instance)
+        {
+            try { var rs = UL2Of(__instance); if (rs != null) rs.GoLow("missile alert"); } catch { }
+        }
         static void PostAltitude(object __instance)
         {
             try
             {
-                fStAc = fStAc ?? AccessTools.Field(__instance.GetType(), "aircraft");
-                var ac = fStAc?.GetValue(__instance) as Component;
-                if (ac == null || !ac.name.StartsWith("UL2Airtrike")) return;
-                var rs = ac.GetComponent<RotorSpinner>(); if (rs == null) return;
+                var rs = UL2Of(__instance); if (rs == null) return;
+                // attacking: a live target keeps the low window open; with nothing going on it flies the stock way
+                fCurT = fCurT ?? AccessTools.Field(__instance.GetType(), "currentTarget");
+                var tgt = fCurT?.GetValue(__instance) as UnityEngine.Object;
+                if (tgt != null) rs.GoLow("attacking a target");
+                if (!rs.LowMode) return;
                 fTh = fTh ?? AccessTools.Field(__instance.GetType(), "targetHeight");
                 float th = (float)fTh.GetValue(__instance), cap = rs.SpotterAboard ? RotorSpinner.CAP_SPOT : RotorSpinner.CAP_LOW;
                 if (th > cap) fTh.SetValue(__instance, cap);
@@ -640,7 +656,10 @@ namespace UL2Airtrike
             else gMax = Mathf.Lerp(0f, 6f, Mathf.InverseLerp(V80, 30f, spd));          // shallow climb once speed builds
             // stay low (0.15.54, Nick 20:59: lower in combat, masking behind terrain): no climbing above ~45 m over the ground,
             // or ~190 m with the spotter aboard so he can see over the terrain
-            if (SpotterAboard) gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(160f, 240f, alt)));
+            // 0.15.54b (Nick 23:03): only while the low window is open (missile alert or attack in the last 5 min); otherwise
+            // the 0.15.34 cap (no climbing above ~150 m)
+            if (!LowMode) gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(120f, 220f, alt)));
+            else if (SpotterAboard) gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(160f, 240f, alt)));
             else gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(35f, 70f, alt)));
             // 0.15.54 (Nick 20:21: AI held 20 m on the approach until it stalled): on a landing the floors below all read the
             // runway ahead as ground to climb over, so the stock landing autopilot keeps the path and only the speed
@@ -741,6 +760,15 @@ namespace UL2Airtrike
         }
         bool spotKit; internal bool SpotterAboard => spotKit;
         internal const float CAP_LOW = 35f, CAP_SPOT = 160f;   // combat target height over the ground, m
+        // 0.15.54b (Nick 23:03): the low cap holds for 5 minutes after the last missile alert or attack; otherwise normal flight
+        internal const float LOW_TIME = 300f;
+        float lowUntil = -1f;
+        internal bool LowMode => Time.time < lowUntil;
+        internal void GoLow(string why)
+        {
+            if (!LowMode) Plugin.Log.LogInfo("UL-2 AI low-level mode on (" + why + "), 5 min" + (SpotterAboard ? ", spotter cap 160 m" : ", cap 35 m"));
+            lowUntil = Time.time + LOW_TIME;
+        }
         // harnesses go with their occupant (Nick 21:58): pilot / copilot harness hides once that crewman has ejected,
         // the seat 3 lap belt shows only while a seat 3 kit (with its soldier) is loaded
         readonly GameObject[] harness = new GameObject[3]; bool seat3Kit; static FieldInfo fPilots, fEjected;
