@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.46")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.47")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -263,7 +263,12 @@ namespace UL2Airtrike
                 bool fa = false; try { if (fFa == null) fFa = AccessTools.Field(unit.GetType(), "flightAssist"); if (fFa != null) fa = (bool)fFa.GetValue(unit); } catch { }
                 bool manual = axis > 0.05f;
                 autoSpin = !manual && fa && ground && engOn && thr > 0.05f;
-                if (headOn && clutch && engOn && !struck)
+                // 0.15.47 (Nick 02:41): with flight assist OFF the custom axis is the rotor rpm in flight too (raise or lower it);
+                // in the air it sets the rpm outright instead of only adding to the autorotation. Axis at the bottom = released,
+                // back to autorotation. Flight assist on keeps the old behaviour (pre-rotator only on the ground and 3 s after).
+                bool manualAir = manual && !fa && !clutch;
+                if (headOn && engOn && !struck && manualAir) target = 110f + 340f * axis;
+                else if (headOn && clutch && engOn && !struck)
                 {
                     float pre = 0f;
                     if (manual) pre = 110f + 340f * axis;
