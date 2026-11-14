@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.49")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.50")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -364,7 +364,7 @@ namespace UL2Airtrike
                     }
                     Plugin.Log.LogInfo("UL-2 HUD rotor gauge found, bar " + (barImg != null) + " carrot " + (carrotPiv != null) + " readout " + (hudRead != null));
                 }
-                bool want = axis > 0.05f || autoSpin || (alt < 0.8f && engOn);
+                bool want = axis > 0.05f || autoSpin || (alt < 0.8f && engOn) || rpm > 1f;   // 0.15.50: stays up in flight so FREE / the markers can be read
                 if (want) hudShow = 3f; else if (hudShow > 0f) hudShow -= dt;
                 bool show = hudShow > 0f;
                 if (hud.gameObject.activeSelf != show) hud.gameObject.SetActive(show);
@@ -377,7 +377,7 @@ namespace UL2Airtrike
                 if (carrotPiv != null) carrotPiv.localEulerAngles = new Vector3(0f, 0f, fs * 26f - 13f);
                 if (readPiv != null) { readPiv.localEulerAngles = new Vector3(0f, 0f, f * 26f - 13f); foreach (Transform ch in readPiv) ch.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }   // 0.15.29 (Nick 12:29): readout line stays flat like the throttle one
                 if (hudDash != null) hudDash.color = col;
-                if (hudRead != null) { hudRead.text = Mathf.RoundToInt(rpm) + " RPM"; hudRead.color = col; if (hudRead.transform.parent != readPiv) hudRead.transform.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }
+                if (hudRead != null) { hudRead.text = (axis <= 0.05f && !autoSpin) ? "FREE" : Mathf.RoundToInt(rpm) + " RPM"; /* 0.15.50 (Nick 02:46): axis at minimum = free airspeed rotation */ hudRead.color = col; if (hudRead.transform.parent != readPiv) hudRead.transform.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }
                 if (hudLabel != null) hudLabel.text = axis > 0.05f ? "ROTOR MANUAL" : autoSpin ? "ROTOR AUTO" : "ROTOR";
             }
             catch (Exception e) { if (!hudErr) { hudErr = true; Plugin.Log.LogWarning("UL-2 HUD gauge: " + e.Message); } }
