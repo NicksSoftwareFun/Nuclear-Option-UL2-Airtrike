@@ -20,6 +20,8 @@ G_T = Vector((0.05, 0.17, 0.34))          # gun origin in the torso frame: heads
 H_T = Vector((0.0, 0.02, 0.33))          # swing point for the gun's yaw relative to the torso
 SOCKET = Vector((0.17, 0.06, 0.15)); HINGE = Vector((0.20, 0.10, 0.19))   # waist, front-right of the belt (Nick 12:38)   # harness arm root (hips frame)
 L1 = L2 = 0.26
+RAIL = [Vector(q) for q in ((0.20, 0.10, 0.19), (0.15, 0.15, 0.19), (0.075, 0.18, 0.19), (0.0, 0.19, 0.19), (-0.075, 0.18, 0.19), (-0.15, 0.15, 0.19), (-0.20, 0.10, 0.19))]
+POST_L = 0.15            # 2026-11-14: longer post so the links run below the gun and the hands
 ARM_SCALE = (1.14, 1.06)        # upper arm, forearm length factors
 WRIST_SINK = 0.040
 LEAN_MAX = 24.0
@@ -145,9 +147,14 @@ class Gunner:
         ul2lib.sweep('hb_belt', sweep_pts, ul2lib.rect(0.012, 0.06), SEAT, side=(0, 0, 1), smooth=False)
         hips_objs = list(ul2lib.PARTS['seat3_harness']['objs'])
         # socket block bolted to the belt on the right hip
-        box('hb_socket', tuple(SOCKET), (0.08, 0.07, 0.08), DARK, bevel=0.008)
-        for k in range(2): tube(f'hb_bolt{k}', tuple(SOCKET + Vector((0.035, -0.015 + 0.03 * k, -0.03))), tuple(SOCKET + Vector((0.040, -0.015 + 0.03 * k, -0.03))), 0.006, MECH, segs=8)
-        tube('hb_hinge', tuple(HINGE - Vector((0, 0, 0.04))), tuple(HINGE + Vector((0, 0, 0.04))), 0.022, MECH, segs=14)
+        # 2026-11-14 (Nick: the support clips through the gun and the body): the arm root runs on a rail round the front
+        # of the belt, hip to hip, so a gun swung to the left side no longer drags the arm across the lap
+        for sx in (1, -1):
+            sk = Vector((sx * SOCKET.x, SOCKET.y, SOCKET.z))
+            box(f'hb_socket{sx}', tuple(sk), (0.06, 0.06, 0.07), DARK, bevel=0.008)
+            for k in range(2): tube(f'hb_bolt{sx}{k}', tuple(sk + Vector((sx * 0.028, -0.015 + 0.03 * k, -0.025))), tuple(sk + Vector((sx * 0.033, -0.015 + 0.03 * k, -0.025))), 0.006, MECH, segs=8)
+        for dz in (-0.022, 0.022):
+            pipe(f'hb_rail{dz > 0}', [tuple(q + Vector((0, 0, dz))) for q in RAIL], 0.0075, MECH, n=6, segs=8)
         hips_objs = list(ul2lib.PARTS['seat3_harness']['objs'])
         # back struts from the belt up to a shoulder yoke, straps over the shoulders to the chest plate
         st = []
@@ -218,6 +225,17 @@ class Gunner:
         R3 = q.to_matrix() @ Mh.to_3x3(); M4 = R3.to_4x4(); M4.translation = Mh.translation; ph.matrix = M4
         bpy.context.view_layer.update()
 
+    def _level_head(self, dw):
+        """take the roll out of the head after _aim_head: its up vector goes to world up (about the gaze line)"""
+        ph = self.pb['head']; AWi = self.ao.matrix_world.to_3x3().inverted()
+        H = self._head_world(); f = (H.to_3x3() @ self.fwd_h).normalized(); u = (H.to_3x3() @ self.up_h)
+        u = (u - f * u.dot(f)).normalized(); w = Vector((0, 0, 1)); w = (w - f * w.dot(f))
+        if w.length < 1e-4: return
+        w.normalize(); ang = math.atan2(u.cross(w).dot(f), u.dot(w))
+        Rw = Quaternion(f, ang).to_matrix(); Ra = AWi @ Rw @ self.ao.matrix_world.to_3x3()
+        Mh = ph.matrix.copy(); M4 = (Ra @ Mh.to_3x3()).to_4x4(); M4.translation = Mh.translation; ph.matrix = M4
+        bpy.context.view_layer.update()
+
     def _head_world(self):
         return self.ao.matrix_world @ self.pb['head'].matrix
 
@@ -225,10 +243,13 @@ class Gunner:
         """grenadier: launcher shouldered, head on the sight line. spotter: head on the target, binoculars at the eyes."""
         TF = self._torso(T, self._lean_for(A)); dw = self.place.to_3x3() @ _rz(A).to_3x3() @ Vector((0, math.cos(math.radians(E)), math.sin(math.radians(E))))
         if self.kind == 'spot':
+            # 2026-11-14 (Nick: not looking where he holds them): head turned onto the target with NO roll, binoculars on
+            # exactly the same line (target direction, level), eyecups on the eyes
             self._aim_head(dw)
+            self._level_head(dw)
             H = self._head_world(); eye = H @ self.eye_h
-            f = (H.to_3x3() @ self.fwd_h).normalized(); u = (H.to_3x3() @ self.up_h); u = (u - f * u.dot(f)).normalized(); r = f.cross(u)
-            GM = Matrix((r, f, u)).transposed().to_4x4(); GM.translation = eye + f * 0.024
+            f = dw.normalized(); u = Vector((0, 0, 1)); u = (u - f * u.dot(f)).normalized(); r = f.cross(u)
+            GM = Matrix((r, f, u)).transposed().to_4x4(); GM.translation = eye + f * 0.006
         else:
             # butt in the right shoulder pocket: the launcher yaws and pitches about that point (Nick 16:50: no chest clipping)
             import gl_model as gl
@@ -400,6 +421,11 @@ class Gunner:
                 rings.append([bm.verts.new(c + (x * math.cos(2 * math.pi * k / N) + y * math.sin(2 * math.pi * k / N)) * r) for k in range(N)])
             for r0, r1 in zip(rings, rings[1:]):
                 for k in range(N): bm.faces.new((r0[k], r0[(k + 1) % N], r1[(k + 1) % N], r1[k]))
+            # 0.15.53 (review: you could see into the hollow sleeve from the front): a closing disc across the cut sleeve end
+            rr = sum(((v - se) - d * (v - se).dot(d)).length for v in ring) / len(ring) * 0.97
+            cc = se - d * 0.004; cr = [bm.verts.new(cc + (x * math.cos(2 * math.pi * k / N) + y * math.sin(2 * math.pi * k / N)) * rr) for k in range(N)]
+            ctr = bm.verts.new(cc)
+            for k in range(N): bm.faces.new((ctr, cr[k], cr[(k + 1) % N]))
             bm.to_mesh(o.data); bm.free(); o.data.update()
             for pg in o.data.polygons: pg.use_smooth = True
         ev.to_mesh_clear()
@@ -449,9 +475,12 @@ class Gunner:
         for o in self.arm_objs: bpy.data.objects.remove(o)
         part('seat3_arm'); ul2lib.PARTS['seat3_arm']['objs'] = []
         P = self.place
-        hinge = P @ HINGE
+        hl = self._hinge_local(self.A); hinge = P @ hl
+        hr = P.to_3x3() @ Vector((0, 0, 1))
+        tube('arm_carriage', tuple(hinge - hr * 0.035), tuple(hinge + hr * 0.035), 0.024, DARK, segs=14)
+        tube('arm_hinge', tuple(hinge - hr * 0.045), tuple(hinge + hr * 0.045), 0.016, MECH, segs=12)
         post_top = self.GM @ (mg.MOUNT + Vector((0, 0, -0.028)))
-        post_bot = post_top - (self.GM.to_3x3() @ Vector((0, 0, 1))).normalized() * 0.08
+        post_bot = post_top - (self.GM.to_3x3() @ Vector((0, 0, 1))).normalized() * POST_L
         d = post_bot - hinge; L = d.length; L_ = min(L, L1 + L2 - 0.005); self.arm_len = L
         h = math.sqrt(max(0.0, L1 * L1 - (L_ / 2) ** 2))
         # elbow forced outboard (away from the body centre), to the rear and up
@@ -459,9 +488,50 @@ class Gunner:
         out = (hinge + post_bot) / 2 - cen; out.z = 0
         n = (1.6 * out.normalized() + (P.to_3x3() @ Vector((0, -0.3, 0))) + Vector((0, 0, 0.8)))
         n = (n - d.normalized() * n.dot(d.normalized())).normalized()
-        elbow = hinge + d.normalized() * (L_ / 2) + n * h
+        # 2026-11-14 (Nick: the support clips through the gun and the body): the elbow may swing anywhere round the
+        # hinge-post line; keep the swing that leaves the links furthest from the posed soldier and the gun, staying near
+        # the old outboard/rear/up preference and the previous pose's elbow so neighbouring poses blend smoothly
+        du = d.normalized(); bvhs = self._clear_bvhs()
+        def clear(e):
+            m = 9.0
+            for a_, b_, s0, s1 in ((hinge, e, 0.25, 1.0), (e, post_bot, 0.0, 0.65)):
+                for k in range(9):
+                    t = s0 + (s1 - s0) * k / 8.0; q = a_ + (b_ - a_) * t
+                    for bv in bvhs:
+                        r = bv.find_nearest(q)
+                        if r[0] is not None: m = min(m, r[3])
+            return m
+        prev = getattr(self, '_prev_arm_el', None); best = None
+        for k in range(24):
+            nn = Quaternion(du, math.radians(15 * k)) @ n
+            e = hinge + du * (L_ / 2) + nn * h
+            c = clear(e); score = min(c, 0.09) - 0.010 * (1 - nn.dot(n)) - (0.08 * (e - prev).length if prev is not None else 0.0)
+            if best is None or score > best[0]: best = (score, e, c)
+        elbow = best[1]; self._prev_arm_el = elbow.copy(); self.arm_clear = best[2]
         mg.build_arm(hinge, elbow, post_bot, post_top)
         self.arm_objs = list(ul2lib.PARTS['seat3_arm']['objs'])
+
+    def _hinge_local(self, A):
+        """arm root on the belt rail: right hip for right-side aim, left hip for left-side aim, sliding across the front
+        through the forward zone (A from +10 to -40 deg)"""
+        f = max(0.0, min(1.0, (10.0 - A) / 50.0)); f = f * f * (3 - 2 * f)
+        t = f * (len(RAIL) - 1); i = min(int(t), len(RAIL) - 2); u = t - i
+        return RAIL[i].lerp(RAIL[i + 1], u)
+
+    def _clear_bvhs(self):
+        """posed soldier (whole body) and the gun, world space, for the support arm clearance"""
+        bpy.context.view_layer.update(); dg = bpy.context.evaluated_depsgraph_get(); out = []
+        ev = self.so.evaluated_get(dg); me = ev.to_mesh(); W = self.so.matrix_world
+        out.append(BVHTree.FromPolygons([W @ v.co for v in me.vertices], [list(p.vertices) for p in me.polygons])); ev.to_mesh_clear()
+        V, F = [], []
+        for o in self.gun_objs:
+            if o.type != 'MESH': continue
+            W = o.matrix_world; b0 = len(V); V += [W @ v.co for v in o.data.vertices]; F += [[b0 + i for i in p.vertices] for p in o.data.polygons]
+        # the yoke and the post top really do meet the gun: leave out gun parts within 6 cm of the mount
+        mnt = self.GM @ mg.MOUNT
+        F = [f for f in F if min((V[i] - mnt).length for i in f) > 0.06]
+        if F: out.append(BVHTree.FromPolygons(V, F))
+        return out
 
     def clearance(self, other):
         """min distance from the gun objects (world) to another mesh object (e.g. the seat 2 crew)"""

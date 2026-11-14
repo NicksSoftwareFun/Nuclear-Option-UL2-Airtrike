@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.52")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.53")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -200,6 +200,11 @@ namespace UL2Airtrike
         Component unit; Transform spin; Component headPart;
         readonly List<KeyValuePair<Component, Transform>> blades = new List<KeyValuePair<Component, Transform>>();
         float rpm; bool ready; int tries;
+        // 0.15.53 (Nick 19:28): spawned on the ground, both blades start folded forward over the nose like a shipped
+        // airframe, wait 2 s, then swing out to the flying position over 3 s; the rotor is held still until they lock out.
+        // Mirrors the stock RotorShaft rotor hinges (Ibis): hinge euler = foldAngle * SmoothStep(foldAmount), unfold after a
+        // delay, rotor locked until unfolded. RotorShaft itself is the helicopter engine, so the gyro rotor can't use it.
+        readonly Transform[] fold = new Transform[2]; readonly float[] foldAng = new float[2]; bool foldOn; float foldT;
         // 0.15.26 (Nick 04:56/04:59): rotor blur disc and blade strikes (stock SwashRotor way: a line along each blade)
         readonly List<GameObject> rblur = new List<GameObject>(); bool rblurOn; bool struck; readonly Vector3[] bladeDir = new Vector3[2];
         readonly HashSet<Collider> ownCols = new HashSet<Collider>(); float colScanT;
@@ -286,6 +291,12 @@ namespace UL2Airtrike
                 setRpm = manual ? sp : target;
                 if (braking) rpm = Mathf.Max(sp, rpm - 35f * brakeIn * dt);                       // rotor brake ~35 rpm/s
                 else rpm = Mathf.MoveTowards(rpm, target, (target > rpm ? upRate : autoT > 0f ? 40f : 6f) * dt);   // free: aero settling / slow wind-down
+                if (foldOn)
+                {
+                    foldT += dt; float k = Mathf.SmoothStep(0f, 1f, (foldT - 2f) / 3f);
+                    for (int i = 0; i < 2; i++) if (fold[i] != null) fold[i].localRotation = Quaternion.AngleAxis(foldAng[i] * (1f - k), Vector3.up);
+                    rpm = 0f; if (k >= 1f) { foldOn = false; Plugin.Log.LogInfo("UL-2 rotor blades unfolded"); }
+                }
                 spin.localRotation *= Quaternion.Euler(0f, rpm * 6f * dt, 0f);
                 RotorAudio(headOn);
                 RotorBlur(headOn);
@@ -561,6 +572,39 @@ namespace UL2Airtrike
             aiRawLog = (float)fPitch.GetValue(ci);
             float spd = fSpeed != null ? (float)fSpeed.GetValue(unit) : 0f;
             fPitch.SetValue(ci, AiPitch(rb, spd, (float)fPitch.GetValue(ci)));
+            if (aiLevel && fRoll != null)
+            {
+                float bank = Vector3.SignedAngle(Vector3.ProjectOnPlane(Vector3.up, transform.forward), transform.up, transform.forward);
+                fRoll.SetValue(ci, Mathf.Clamp(bank * 0.03f, -1f, 1f));            // roll back toward wings level
+            }
+        }
+        bool aiLevel; float aiNeedT, aiNeed = -90f;
+        static System.Type tUnitT;
+        static bool IsVehicle(Collider c)
+        {
+            if (c == null) return false; tUnitT = tUnitT ?? AccessTools.TypeByName("Unit");
+            var u = c.GetComponentInParent(tUnitT); if (u == null) return false;
+            var n = u.GetType().Name; return n != "Building" && n != "Scenery";
+        }
+        float TerrainNeed(Rigidbody rb, Vector3 v, float vm, float gamma)
+        {
+            if ((aiNeedT -= Time.fixedDeltaTime) > 0f) return aiNeed; aiNeedT = 0.15f;
+            var vh = new Vector3(v.x, 0f, v.z); float sh = vh.magnitude; if (sh < 3f) return aiNeed = -90f;
+            float w = rb.angularVelocity.y;                                         // turn rate about world up, rad/s
+            Vector3 p = rb.worldCenterOfMass, dir = vh / sh; float best = -90f, s = 0f;
+            for (int i = 1; i <= 14; i++)
+            {
+                const float dt = 0.5f; float t = i * dt;
+                dir = Quaternion.AngleAxis(w * dt * Mathf.Rad2Deg, Vector3.up) * dir; p += dir * sh * dt; s += sh * dt;
+                var top = new Vector3(p.x, rb.worldCenterOfMass.y + 600f, p.z);
+                if (!Physics.Raycast(top, Vector3.down, out var gh, 1500f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                if (gh.rigidbody == rb || gh.transform.IsChildOf(transform.root) || IsVehicle(gh.collider)) continue;
+                float yOnPath = rb.worldCenterOfMass.y + v.y * t;                   // height if the path angle is held
+                float margin = Mathf.Lerp(8f, 22f, Mathf.InverseLerp(1f, 5f, t));
+                float shortBy = gh.point.y + margin - yOnPath;
+                if (shortBy > 0f) best = Mathf.Max(best, gamma + Mathf.Atan2(shortBy, s) * Mathf.Rad2Deg);
+            }
+            return aiNeed = best;
         }
         float AiPitch(Rigidbody rb, float spd, float raw)
         {
@@ -579,13 +623,23 @@ namespace UL2Airtrike
             float gMin = Mathf.Clamp(-(alt - 10f) * 0.5f, -15f, 0f);
             if (alt < 10f) gMin = Mathf.Lerp(4f, 0f, alt / 10f);
             float look = Mathf.Max(spd * 5f, 40f); Vector3 vd = v / vm, org = rb.worldCenterOfMass + vd * 6f;
-            if (Physics.Raycast(org, vd, out var hit, look, ~0, QueryTriggerInteraction.Ignore) && hit.rigidbody != rb && !hit.transform.IsChildOf(transform.root))
+            // 0.15.53 (Nick 19:14: overshooting the target with the nose gun): vehicles are not obstacles. On a gun run the
+            // target itself sat on the flight path, so the floor pulled the nose up over it and the rounds went long
+            if (Physics.Raycast(org, vd, out var hit, look, ~0, QueryTriggerInteraction.Ignore) && hit.rigidbody != rb && !hit.transform.IsChildOf(transform.root) && !IsVehicle(hit.collider))
             {
                 float ttc = hit.distance / vm;                                         // seconds to impact on the current path
                 gMin = Mathf.Max(gMin, Mathf.Lerp(12f, 2f, Mathf.InverseLerp(1.5f, 5f, ttc)));
                 aiObst = hit.distance;
             }
             else aiObst = -1f;
+            // 0.15.53 (Nick 19:14: still flies into mountains while circling a target for the seat 3 guns): the straight
+            // look-ahead misses rising ground on the inside of a turn. Now the curved path is predicted from the turn rate
+            // for 7 s, the ground height under each point is measured, and the path floor climbs early enough to clear it
+            // by 25 m. When the needed climb is more than a few degrees beyond the current path, the wings are rolled level
+            // so the pull goes into climbing instead of tightening the turn into the slope.
+            float need = TerrainNeed(rb, v, vm, gamma);
+            aiLevel = need > gamma + 4f;
+            gMin = Mathf.Max(gMin, Mathf.Min(need, 18f));
             aiGamMax = gMax; aiGamMin = gMin;
             if (gMin > gMax) gMax = gMin;                                              // not hitting the ground beats speed
             float pMin = 0.08f * (gamma - gMax) + 0.02f * upRate;
@@ -901,6 +955,28 @@ namespace UL2Airtrike
         static float Wrap(float a) { a %= 360f; if (a > 180f) a -= 360f; if (a < -180f) a += 360f; return a; }
         bool Detached(Component part) { try { return mDetached != null && (bool)mDetached.Invoke(part, null); } catch { return false; } }
 
+        void StowBlades()
+        {
+            float a0 = 99f; try { if (fAlt != null) a0 = (float)fAlt.GetValue(unit); } catch { }
+            // same test as the stock RotorShaft (Ibis): folded only when spawned at its ground spawn height (spawnOffset 1.15 + 1 m)
+            if (a0 > 2.15f) { Plugin.Log.LogInfo($"UL-2 spawned in the air ({a0:0.0} m): blades start unfolded"); return; }
+            var fw = spin.InverseTransformDirection(transform.forward); fw.y = 0f;
+            if (fw.sqrMagnitude < 1e-4f) return; fw.Normalize();
+            string[] sides = { "L", "R" }; string[] seg = { "root", "mid", "tip" };
+            for (int i = 0; i < 2; i++)
+            {
+                var root = spin.Find("spin_" + sides[i] + "_root"); if (root == null || bladeDir[i] == Vector3.zero) continue;
+                var pv = new GameObject("UL2_fold_" + sides[i]).transform; pv.SetParent(spin, false);
+                pv.position = root.position; pv.localRotation = Quaternion.identity;                 // fold hinge at the blade grip
+                foreach (var g in seg) { var v = spin.Find("spin_" + sides[i] + "_" + g); if (v != null) v.SetParent(pv, true); }
+                var d = bladeDir[i]; d.y = 0f;
+                foldAng[i] = Vector3.SignedAngle(d.normalized, fw, Vector3.up);
+                pv.localRotation = Quaternion.AngleAxis(foldAng[i], Vector3.up); fold[i] = pv;
+            }
+            foldOn = fold[0] != null || fold[1] != null; foldT = 0f;
+            Plugin.Log.LogInfo($"UL-2 blades stowed forward ({foldAng[0]:0} / {foldAng[1]:0} deg), unfolding 2 s after spawn");
+        }
+
         void Setup()
         {
             var tUnit = AccessTools.TypeByName("Unit"); var tPart = AccessTools.TypeByName("UnitPart");
@@ -994,6 +1070,7 @@ namespace UL2Airtrike
                     bladeDir[s == "L" ? 0 : 1] = spin.InverseTransformDirection(dw.normalized);
                 }
             }
+            try { StowBlades(); } catch (System.Exception e) { foldOn = false; Plugin.Log.LogInfo("UL-2 blade stow skipped: " + e.Message); }
             rblur.Clear(); foreach (Transform ch in spin) if (ch.name.StartsWith("UL2_rblur_")) rblur.Add(ch.gameObject);
             InnerDisc(spin);
             Plugin.Log.LogInfo("UL-2 rotor blur segments " + rblur.Count + ", blade strike lines " + (bladeDir[0] != Vector3.zero) + "/" + (bladeDir[1] != Vector3.zero));

@@ -7,6 +7,7 @@ import sys, os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy.spatial import cKDTree
+from scipy.ndimage import gaussian_filter
 sys.path.insert(0, '/mnt/project-files/tu22/art/scripts/tex')
 from tex_paint import vnoise
 
@@ -20,6 +21,7 @@ S = m['pos'].shape[0]; pos = m['pos'].reshape(-1, 3); nrm = m['nrm'].reshape(-1,
 cov = m['cov'].ravel(); idx = m['idx'].ravel(); names = list(m['names'])
 src = idx                                       # gutter texels copy their nearest covered texel
 P = pos[src]; N = nrm[src]; PID = pid[src]
+TPM = float(m['ppm']) if 'ppm' in m.files else 364.0                     # texels per metre
 def ids(*n): return np.isin(PID, [names.index(x) for x in n if x in names])
 
 # livery: env UL2_LIVERY = olive (default, writes every map) | steel | tiger (colour map only, like stock extra liveries:
@@ -46,12 +48,21 @@ if LIV == 'steel':
 elif LIV == 'tiger':
     # black with orange tiger stripes (Nick 04:29): wavy, tapering, forked bands running round the aircraft, slanted back
     col = np.tile(np.array([20, 20, 21], np.float32) / 255, (len(P), 1))
+    # 0.15.53 (Nick 19:12: tail seams must be invisible): soft anti-aliased stripe edges (no stair steps), smooth
+    # width falloff (the old on/off normal test made stripes jump at panel joints), and on the tailplanes the stripes
+    # run fore and aft so they carry straight across the stabiliser / elevator hinge line instead of along it
+    HSP = ids('hstab_L', 'hstab_R', 'hstabTip_L', 'hstabTip_R', 'elevator_L', 'elevator_R', 'elevatorTip_L', 'elevatorTip_R')
     sc = P[:, 1] * 0.94 + P[:, 2] * 0.34 + 0.22 * vnoise(P, 0.9, 51) + 0.06 * vnoise(P, 0.25, 52)
+    sc = np.where(HSP, np.abs(P[:, 0]) * 0.94 - (P[:, 1] + 2.9) * 0.30 + 0.22 * vnoise(P, 0.9, 51) + 0.06 * vnoise(P, 0.25, 52), sc)
     ph = (sc / 0.42) % 1.0
-    width = 0.20 + 0.10 * vnoise(P, 0.7, 53) - 0.16 * np.clip(np.abs(P[:, 0]) / 0.9, 0, 1) * (np.abs(N[:, 0]) < 0.5)
-    band = np.abs(ph - 0.5) < width / 2
-    fork = (np.abs(ph - 0.5) < width * 0.12) & (vnoise(P, 0.35, 54) > 0.15)
-    stripe = (band & ~fork & (vnoise(P, 0.5, 55) > -0.45)).astype(np.float32)
+    side_k = np.clip((0.65 - np.abs(N[:, 0])) / 0.3, 0, 1) * (~HSP)
+    width = 0.20 + 0.10 * vnoise(P, 0.7, 53) - 0.16 * np.clip(np.abs(P[:, 0]) / 0.9, 0, 1) * side_k
+    AA = 0.0045 / 0.42                                                      # edge softness ~1.5 texels, in phase units
+    dist = np.abs(ph - 0.5)
+    band = np.clip((width / 2 - dist) / AA + 0.5, 0, 1)
+    fork = np.clip((width * 0.12 - dist) / AA + 0.5, 0, 1) * np.clip((vnoise(P, 0.35, 54) - 0.15) / 0.04 + 0.5, 0, 1)
+    gate = np.clip((vnoise(P, 0.5, 55) + 0.45) / 0.04 + 0.5, 0, 1)
+    stripe = (band * (1 - fork) * gate).astype(np.float32)
     col = col * (1 - stripe[:, None]) + ORANGE * stripe[:, None] * (1 + 0.04 * vnoise(P, 0.3, 56))[:, None]
 else:
     col = np.tile(OLIVE, (len(P), 1))
@@ -62,29 +73,40 @@ STEP = {'olive': BLACK, 'steel': BLACK, 'tiger': WHITE}[LIV]
 smooth = np.full(len(P), 0.28, np.float32)
 
 def text_mask(txt, font, px=400):
+    if set(txt) == {'\u2588'}:                                             # backing block: Inter has no U+2588 glyph
+        f = ImageFont.truetype(font, px); l, t, r, b = f.getbbox('0' * len(txt))  # (it drew a "NO GLYPH" box)
+        return np.pad(np.ones((b - t, r - l), np.float32), 10)
     f = ImageFont.truetype(font, px); l, t, r, b = f.getbbox(txt)
     im = Image.new('L', (r - l + 20, b - t + 20), 0); ImageDraw.Draw(im).text((10 - l, 10 - t), txt, 255, font=f)
     return np.asarray(im, np.float32) / 255
 
+def samp(tm, u, v):
+    """bilinear lookup of a text mask (soft letter edges)"""
+    th, tw = tm.shape; x = np.clip(u * tw - 0.5, 0, tw - 1.001); y = np.clip(v * th - 0.5, 0, th - 1.001)
+    x0 = x.astype(int); y0 = y.astype(int); fx = x - x0; fy = y - y0
+    return (tm[y0, x0] * (1 - fx) * (1 - fy) + tm[y0, x0 + 1] * fx * (1 - fy) + tm[y0 + 1, x0] * (1 - fx) * fy + tm[y0 + 1, x0 + 1] * fx * fy)
+
 def stamp(sel, txt, font, centre, h, side, colour, axis='x'):
     """Text on a surface facing +-axis: centre (y, z) in metres, cap height h; reads nose-to-the-right on the right side."""
     tm = text_mask(txt, font); th, tw = tm.shape; w = h * tw / th
+    tm = gaussian_filter(tm, max(0.5, 0.5 * th / (h * TPM)))                # prefilter to the texel size: no jaggies
     face = sel & (np.sign(N[:, 0]) == side) & (np.abs(N[:, 0]) > 0.5)
     u = (P[:, 1] - centre[0]) * side / w + 0.5; v = 0.5 - (P[:, 2] - centre[1]) / h
     ok = face & (u >= 0) & (u < 1) & (v >= 0) & (v < 1)
     a = np.zeros(len(P), np.float32)
-    a[ok] = tm[(v[ok] * th).astype(int).clip(0, th - 1), (u[ok] * tw).astype(int).clip(0, tw - 1)]
+    a[ok] = samp(tm, u[ok], v[ok])
     col[:] = col * (1 - a[:, None]) + colour * a[:, None]
     return ok.sum()
 
 def stamp_top(sel, txt, font, centre, h, colour, up=1):
     """Text on an upward face, read from behind (nose up the page): centre (x, y)."""
     tm = text_mask(txt, font); th, tw = tm.shape; w = h * tw / th
+    tm = gaussian_filter(tm, max(0.5, 0.5 * th / (h * TPM)))                # prefilter to the texel size: no jaggies
     face = sel & (N[:, 2] * up > 0.6)
     u = (P[:, 0] - centre[0]) / w + 0.5; v = 0.5 - (P[:, 1] - centre[1]) / h
     ok = face & (u >= 0) & (u < 1) & (v >= 0) & (v < 1)
     a = np.zeros(len(P), np.float32)
-    a[ok] = tm[(v[ok] * th).astype(int).clip(0, th - 1), (u[ok] * tw).astype(int).clip(0, tw - 1)]
+    a[ok] = samp(tm, u[ok], v[ok])
     col[:] = col * (1 - a[:, None]) + colour * a[:, None]
     return ok.sum()
 

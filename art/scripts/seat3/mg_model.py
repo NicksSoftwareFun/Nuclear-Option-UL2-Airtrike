@@ -222,14 +222,15 @@ def build_gun(M):
         box(f'mg_butt_rib{k}', (SX, Y0 + 0.2765, 0.085 - k * 0.026), (0.034, 0.003, 0.006), DARK, M=M)
     plate('mg_cheek', [(Y0 + 0.05, 0.100), (Y0 + 0.19, 0.100), (Y0 + 0.19, 0.112), (Y0 + 0.07, 0.116)], 0.026, DARK, Ss, bevel=0.003)
     # belt box (fabric pouch) under the feed with lid flap, straps, side pocket and buckle
-    P = Vector((0, 0.215, -0.072))
-    box('mg_pouch', P, (0.105, 0.140, 0.110), SEAT, bevel=0.012, M=M)
-    box('mg_pouch_lid', P + Vector((0.004, 0, 0.056)), (0.100, 0.144, 0.010), SEAT, bevel=0.004, M=M)
+    # 0.15.53: shorter pouch, its front face now clears the foregrip so the left hand can close round the grip
+    P = Vector((0, 0.180, -0.072))
+    box('mg_pouch', P, (0.105, 0.090, 0.110), SEAT, bevel=0.012, M=M)
+    box('mg_pouch_lid', P + Vector((0.004, 0, 0.056)), (0.100, 0.094, 0.010), SEAT, bevel=0.004, M=M)
     for sy in (-1, 1):
-        box(f'mg_pouch_strap{sy}', P + Vector((0.0535, sy * 0.040, 0.0)), (0.004, 0.022, 0.112), DARK, M=M)
-    box('mg_pouch_pocket', P + Vector((-0.0545, 0.0, -0.010)), (0.008, 0.070, 0.070), SEAT, bevel=0.004, M=M)
-    box('mg_pouch_buckle', P + Vector((0.056, 0.040, 0.030)), (0.004, 0.026, 0.016), MECH, M=M)
-    box('mg_pouch_rail', (0, 0.215, -0.012), (0.060, 0.140, 0.014), DARK, M=M)
+        box(f'mg_pouch_strap{sy}', P + Vector((0.0535, sy * 0.026, 0.0)), (0.004, 0.018, 0.112), DARK, M=M)
+    box('mg_pouch_pocket', P + Vector((-0.0545, 0.0, -0.010)), (0.008, 0.060, 0.070), SEAT, bevel=0.004, M=M)
+    box('mg_pouch_buckle', P + Vector((0.056, 0.026, 0.030)), (0.004, 0.020, 0.016), MECH, M=M)
+    box('mg_pouch_rail', (0, 0.180, -0.012), (0.060, 0.090, 0.014), DARK, M=M)
     # belt: rounds in links leaving the box mouth on the left and climbing into the feed tray
     for k in range(6):
         z = -0.012 + k * 0.017; x = -W / 2 - 0.009 - 0.012 * (1 - k / 5.0) ** 2
@@ -249,6 +250,12 @@ def build_gun(M):
 
 
 def _glove_wrap(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top'):
+    # 2026-11-14 (Nick: hands need a massive improvement in detail): organic hands with contact-solved fingers
+    import glove
+    return glove.glove(tag, top, bot, side, fwd, rg, M, arm_dir, thumb)
+
+
+def _glove_wrap_box(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top'):
     """modelled gloved hand closed around a cylindrical grip (top->bot axis): a mitten-like palm/back block on the
     wrist side, 4 flattened two-segment fingers wrapping around the front (index longest, little 15 % shorter, 2 mm gaps),
     a knuckle ridge, the thumb, and a cuff wider than the wrist aimed along arm_dir (toward the elbow).

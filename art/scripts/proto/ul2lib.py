@@ -48,7 +48,7 @@ def finish(name, bm, m, smooth=True, bevel=0.0, auto=True):
     if bevel:
         b = o.modifiers.new('bevel', 'BEVEL'); b.width = bevel; b.segments = 2; b.limit_method = 'ANGLE'; b.angle_limit = R(40)
     if smooth and auto:
-        try: o.modifiers.new('ws', 'WEIGHTED_NORMAL'); me.set_sharp_from_angle(angle=R(40)) if hasattr(me, 'set_sharp_from_angle') else None
+        try: wn = o.modifiers.new('ws', 'WEIGHTED_NORMAL'); wn.keep_sharp = True; me.set_sharp_from_angle(angle=R(40)) if hasattr(me, 'set_sharp_from_angle') else None
         except Exception: pass
     PARTS[CUR[0]]['objs'].append(o); return o
 

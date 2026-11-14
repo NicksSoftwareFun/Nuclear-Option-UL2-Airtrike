@@ -135,7 +135,8 @@ public static partial class UL2Builder
                     so.ApplyModifiedPropertiesWithoutUndo();
                     // Nick 20:20: MG 75-round belts, 5 s reload, 2.1 km range (own weapon info so it is its own station); GL 6-round
                     // magazine, 7 s reload, a third of the Ibis 40 mm turret's 340 rpm
-                    if (K.k == "mg") { Set(gun, "fireRate", 650f); Set(gun, "magazineCapacity", 75); Set(gun, "magazines", 6); Set(gun, "reloadTime", 5f); Set(gun, "bulletSpread", 2.5f); Set(gun, "recoilImpulse", 25f); Set(gun, "info", MgInfo()); Set(gun, "tracerRatio", 3); /* every 3rd round a tracer (Nick 04:51; stock 12.7 door gun is 5) */ }
+                    if (K.k == "mg") { Set(gun, "fireRate", 650f); Set(gun, "magazineCapacity", 75); Set(gun, "magazines", 6); Set(gun, "reloadTime", 5f); Set(gun, "bulletSpread", 2.5f); Set(gun, "recoilImpulse", 25f); Set(gun, "info", MgInfo()); Set(gun, "tracerRatio", 3); /* every 3rd round a tracer (Nick 04:51; stock 12.7 door gun is 5) */
+                        Set(gun, "pitch", 0.72f); /* 0.15.53 (Nick 19:14: audio must match the fire rate): the stock 900 rpm MG loop played at 650/900 = 0.72 speed, so its shot beat is 650 rpm */ }
                     else { Set(gun, "fireRate", 113f); Set(gun, "magazineCapacity", 6); Set(gun, "magazines", 6); Set(gun, "reloadTime", 7f); Set(gun, "info", GlInfo(new SerializedObject(gun).FindProperty("info").objectReferenceValue)); }
                 }
                 S3Kit(go, K.k);
