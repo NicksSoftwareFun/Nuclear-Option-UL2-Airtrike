@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.56")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.57")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -824,6 +824,20 @@ namespace UL2Airtrike
         internal string stockName;
         float beamStart = -99f, beamLast = -99f, popUntil = -1f, popFired = -99f; Vector3 beamFrom; int orbitDir;
         internal bool PopUp => Time.time < popUntil;
+        Vector3 homeDir = Vector3.forward; static FieldInfo fThreat, fTv, fBase, fCenter;
+        // flat direction from the target toward the nearest friendly airbase the stock AI already tracks (local space)
+        Vector3? HomeBearing(object st, Vector3 targetLocal)
+        {
+            try
+            {
+                fBase = fBase ?? AccessTools.Field(st.GetType(), "nearestAirbase");
+                var ab = fBase?.GetValue(st) as Component; if (ab == null) return null;
+                fCenter = fCenter ?? AccessTools.Field(ab.GetType(), "center");
+                var c = fCenter?.GetValue(ab) as Transform; if (c == null) return null;
+                var d = Flat(c.position - targetLocal); return d.sqrMagnitude > 1f ? d.normalized : (Vector3?)null;
+            }
+            catch { return null; }
+        }
         internal void RadarLock(Vector3 emitterGlobal)
         {
             if (Time.time - beamStart > 40f) beamStart = Time.time;            // up to 20 s of beaming, then 20 s of ignoring it
@@ -852,11 +866,31 @@ namespace UL2Airtrike
             }
             // SPOTTER LOITER: with the spotter aboard, hold a wide slow circle 4 km from the target and watch it for the team
             // instead of running in; missile shots that come in range are still taken from the circle
+            // 0.15.57 (Nick 23:20: the orbit must not carry it deep into enemy ground): it is no longer a full circle but an arc
+            // on the friendly side, at most 60 deg either side of the line from the target to the nearest friendly airbase
+            // (or the side it came in from), pushed away from the threats the stock AI knows about; at an end of the arc it
+            // turns back the other way. Starting on the far side, it first works round to the friendly side.
             if (SpotterAboard && tgt != null && mode != "UsingMissiles" && mode != "NoTarget")
             {
                 var r = Flat(own - tpos); float dist = r.magnitude; var rad = dist > 1f ? r / dist : -fwd;
-                if (orbitDir == 0) orbitDir = Vector3.Dot(Vector3.Cross(Vector3.up, rad), fwd) >= 0f ? 1 : -1;
-                Vector3 aim = dist < 3000f ? own + rad * 2000f : tpos + (Quaternion.AngleAxis(-orbitDir * 25f, Vector3.up) * rad) * 4000f;
+                if (orbitDir == 0) { orbitDir = Vector3.Dot(Vector3.Cross(Vector3.up, rad), fwd) >= 0f ? 1 : -1; homeDir = rad; }
+                var h = HomeBearing(st, tgt.transform.position) ?? homeDir;
+                try
+                {
+                    fThreat = fThreat ?? AccessTools.Field(st.GetType(), "threatVector");
+                    var tvo = fThreat?.GetValue(st); fTv = fTv ?? (tvo != null ? AccessTools.Field(tvo.GetType(), "threatVector") : null);
+                    if (tvo != null && fTv != null) { var tv = Flat((Vector3)fTv.GetValue(tvo)); if (tv.sqrMagnitude > 1e-4f) h = (h - tv.normalized * 0.5f).normalized; }
+                }
+                catch { }
+                float a = Vector3.SignedAngle(h, rad, Vector3.up);             // where it sits on the circle, from the friendly line
+                Vector3 aim;
+                if (Mathf.Abs(a) > 75f)                                         // outside the arc: head round to its near end
+                    aim = tpos + (Quaternion.AngleAxis(Mathf.Sign(a) * 60f, Vector3.up) * h) * 4000f;
+                else
+                {
+                    if (Mathf.Abs(a) > 60f && Mathf.Sign(a) == -orbitDir) orbitDir = -orbitDir;   // end of the arc: turn back
+                    aim = dist < 3000f ? own + rad * 2000f : tpos + (Quaternion.AngleAxis(-orbitDir * 25f, Vector3.up) * rad) * 4000f;
+                }
                 aim.y = own.y; SetDest(st, aim, 150f);
                 return "Spotting Target";
             }
