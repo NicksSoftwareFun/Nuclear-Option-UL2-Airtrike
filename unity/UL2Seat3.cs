@@ -307,7 +307,7 @@ public static partial class UL2Builder
     const string XB_NAME = "Expedient 1.5kt Bomb";
     const string XB_DESC = "Volunteers needed. Single men only. Over 40 preferred.";
     // can pose in seat3_hp space: base centre on the blocks, axis leaned 12 deg back (toward the mast)
-    static readonly Vector3 XB_BASE = new Vector3(0f, -0.42f, 0.28f);   // foot where the ECM pod foot sits, ahead of the seat 3 cushion
+    static readonly Vector3 XB_BASE = new Vector3(0f, -0.44f, 0.13f);   // foot on the ECM pod's chock, front face where the pod front sits
     static readonly Vector3 XB_AX = new Vector3(0f, 0.978f, -0.208f);
     static readonly Vector3 XB_FW = new Vector3(0f, 0.208f, 0.978f);
     class MB
@@ -383,44 +383,87 @@ public static partial class UL2Builder
             LitMat("UL2_xb_yellow", new Color32(196, 160, 40, 255), 0.4f, 0f),
             LitMat("UL2_xb_cap", new Color32(66, 68, 67, 255), 0.4f, 0.3f) });
     }
-    // wood blocks and wedges under the can, two olive 6 in ratchet straps with steel ratchets, mast clamp and D-ring
+    // 0.15.40 (Nick 00:13): the ECM pod's tie-down, sized for the can: tray clamped across the frame side rails with a
+    // rubber chock, two 6 in olive webbing ratchet straps pulled taut round the can front (straps.py ported), the lower
+    // one also round the seat back to hooks on the seat back frame edges, the upper one to D-rings on a mast clamp
+    const float XW = 0.152f, XT = 0.005f;
+    static List<Vector2> Hull2(List<Vector2> pts)
+    {
+        var P = pts.Distinct().OrderBy(p => p.x).ThenBy(p => p.y).ToList(); if (P.Count < 3) return P;
+        System.Func<Vector2, Vector2, Vector2, float> cr = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+        var lo = new List<Vector2>(); foreach (var p in P) { while (lo.Count >= 2 && cr(lo[lo.Count - 2], lo[lo.Count - 1], p) <= 0) lo.RemoveAt(lo.Count - 1); lo.Add(p); }
+        var up = new List<Vector2>(); for (int i = P.Count - 1; i >= 0; i--) { var p = P[i]; while (up.Count >= 2 && cr(up[up.Count - 2], up[up.Count - 1], p) <= 0) up.RemoveAt(up.Count - 1); up.Add(p); }
+        lo.RemoveAt(lo.Count - 1); up.RemoveAt(up.Count - 1); lo.AddRange(up); return lo;
+    }
+    static void BoxC(MB mb, int sm, Vector3 c, Vector3 a, Vector3 b, Vector3 d)   // centre and full edge vectors
+    { mb.Box(sm, c - a * 0.5f, a, b * 0.5f, d * 0.5f); }
+    static void XbStrap(MB mb, Vector3 c, Vector3 ax, Vector3 fwd, Vector3[] anchors, Vector2[] extra)
+    {
+        var f = (fwd - ax * Vector3.Dot(fwd, ax)).normalized; var u = Vector3.right; u = (u - ax * Vector3.Dot(u, ax) - f * Vector3.Dot(u, f)).normalized;
+        System.Func<Vector3, Vector2> to2 = p => new Vector2((float)System.Math.Round(Vector3.Dot(p - c, u), 4), (float)System.Math.Round(Vector3.Dot(p - c, f), 4));
+        var sec = new List<Vector2>();
+        for (int i = 0; i < 48; i++) { float a = i * Mathf.PI * 2f / 48f; sec.Add(new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * 0.190f); }
+        sec.AddRange(extra);
+        Vector2 A = to2(anchors[0]), B = to2(anchors[1]); sec.Add(A); sec.Add(B);
+        var H = Hull2(sec); int ia = H.IndexOf(A), ib = H.IndexOf(B);
+        var ch1 = new List<Vector2>(); for (int k = 0; k <= ((ib - ia) % H.Count + H.Count) % H.Count; k++) ch1.Add(H[(ia + k) % H.Count]);
+        var ch2 = new List<Vector2>(); for (int k = 0; k <= ((ia - ib) % H.Count + H.Count) % H.Count; k++) ch2.Add(H[((ia - k) % H.Count + H.Count) % H.Count]);
+        var ch = ch1.Max(p => p.y) >= ch2.Max(p => p.y) ? ch1 : ch2;   // the run round the can front
+        var P = ch.Select(q => c + u * q.x + f * q.y).ToList();
+        Vector3[] prev = null;
+        for (int i = 0; i < P.Count; i++)
+        {
+            var t = (P[Mathf.Min(i + 1, P.Count - 1)] - P[Mathf.Max(i - 1, 0)]).normalized; var n = Vector3.Cross(ax, t).normalized;
+            if (Vector3.Dot(P[i] - c, n) < 0 && i > 0 && i < P.Count - 1) n = -n;
+            var vs = new[] { P[i] - ax * XW * 0.5f, P[i] - ax * XW * 0.5f + n * XT, P[i] + ax * XW * 0.5f, P[i] + ax * XW * 0.5f + n * XT };
+            if (prev != null) { mb.Quad(0, prev[0], vs[0], vs[2], prev[2]); mb.Quad(0, prev[1], prev[3], vs[3], vs[1]); mb.Quad(0, prev[0], prev[1], vs[1], vs[0]); mb.Quad(0, prev[2], vs[2], vs[3], prev[3]); }
+            prev = vs;
+        }
+        // hooks: a flat plate at each end biting on its anchor bar / D-ring
+        for (int k = 0; k < 2; k++)
+        {
+            var end = k == 0 ? P[0] : P[P.Count - 1]; var nxt = k == 0 ? P[1] : P[P.Count - 2];
+            var t = (end - nxt).normalized; var n = Vector3.Cross(ax, t).normalized;
+            BoxC(mb, 1, end - t * 0.03f, t * 0.06f, ax * (XW * 0.75f), n * 0.008f);
+            BoxC(mb, 1, end + t * 0.012f + n * 0.012f, t * 0.012f, ax * (XW * 0.6f), n * 0.03f);
+            BoxC(mb, 1, anchors[k] + t * 0.012f, ax * 0.12f, t * 0.014f, n * 0.014f);   // anchor bar / D-ring bar
+        }
+        // red ratchet block on the right tail, part way along
+        {
+            var a0 = P[P.Count - 1]; var b0 = P[P.Count - 2]; var p = Vector3.Lerp(a0, b0, 0.45f); var t = (b0 - a0).normalized; var n = Vector3.Cross(ax, t).normalized;
+            if (Vector3.Dot(p - c, n) < 0) n = -n;
+            BoxC(mb, 2, p + n * 0.025f, t * 0.17f, ax * (XW + 0.03f), n * 0.035f);
+            foreach (var sg in new[] { -1f, 1f }) BoxC(mb, 1, p + n * 0.035f + ax * sg * (XW * 0.5f + 0.018f), t * 0.15f, ax * 0.008f, n * 0.06f);
+            BoxC(mb, 2, p + n * 0.06f + t * 0.05f, t * 0.13f, ax * 0.14f, n * 0.015f);   // handle
+        }
+    }
     static KeyValuePair<Mesh, Material[]> XbKit()
     {
-        var mb = new MB(3); var A = XB_AX; var F = XB_FW; var X = Vector3.right; var B = XB_BASE;
-        // wood: two stacked blocks under the base, three wedges round it
-        mb.Box(2, B + new Vector3(0f, -0.095f, 0f), Vector3.up * 0.045f, X * 0.17f, Vector3.forward * 0.17f);
-        mb.Box(2, B + new Vector3(0f, -0.05f, 0f), Vector3.up * 0.04f, X * 0.15f, Vector3.forward * 0.15f);
-        for (int k = 0; k < 3; k++)
-        {
-            float a = Mathf.PI * 0.5f + k * Mathf.PI * 2f / 3f; var d = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
-            var p = B + new Vector3(0f, -0.01f, 0f) + d * 0.24f; var side = Vector3.Cross(Vector3.up, d) * 0.05f;
-            Vector3 lo0 = p - side, lo1 = p + side, in0 = p - d * 0.12f - side, in1 = p - d * 0.12f + side, top0 = in0 + Vector3.up * 0.07f, top1 = in1 + Vector3.up * 0.07f;
-            mb.Quad(2, lo0, lo1, in1, in0); mb.Quad(2, lo1, lo0, top0, top1); mb.Quad(2, in0, in1, top1, top0);
-            mb.Quad(2, lo0, in0, top0, lo0); mb.Quad(2, lo1, top1, in1, lo1);
+        var mb = new MB(5); var A = XB_AX; var F = XB_FW; var X = Vector3.right; var B = XB_BASE; var Y = Vector3.up; var Zf = Vector3.forward;
+        // tray across the frame side rails (U clamps at both rails, front and back) and the rubber chock on it
+        BoxC(mb, 3, new Vector3(0f, -0.5165f, 0.13f), X * 0.66f, Y * 0.013f, Zf * 0.46f);
+        foreach (var sx in new[] { -1f, 1f }) foreach (var zz in new[] { -0.08f, 0.34f }) BoxC(mb, 3, new Vector3(sx * 0.30f, -0.535f, zz), X * 0.05f, Y * 0.045f, Zf * 0.03f);
+        {   // chock: flat on the tray, top sloped 12 deg to meet the leaned can foot
+            float z0 = -0.09f, z1 = 0.35f, yb = -0.51f; System.Func<float, float> yt = z => B.y + (z - B.z) * 0.2126f;   // plane square to the can axis through the foot
+            var v = new List<Vector3>(); foreach (var x in new[] { -0.15f, 0.15f }) { v.Add(new Vector3(x, yb, z0)); v.Add(new Vector3(x, yb, z1)); v.Add(new Vector3(x, yt(z1) - 0.004f, z1)); v.Add(new Vector3(x, yt(z0) - 0.004f, z0)); }
+            int[][] fc = { new[] { 0, 1, 2, 3 }, new[] { 7, 6, 5, 4 }, new[] { 0, 4, 5, 1 }, new[] { 1, 5, 6, 2 }, new[] { 2, 6, 7, 3 }, new[] { 3, 7, 4, 0 } };
+            foreach (var q in fc) mb.Quad(4, v[q[0]], v[q[1]], v[q[2]], v[q[3]]);
         }
-        // straps: a ring round the can at 0.35 m and 1.00 m up its axis, then tails
-        foreach (var s in new[] { 0.35f, 1.00f })
-        {
-            var c = B + A * s; mb.Tube(0, c, X, F, A, 0.192f, -0.025f, 0.025f, 32); mb.Tube(0, c, X, F, A, 0.186f, 0.025f, -0.025f, 32);
-        }
-        var low = B + A * 0.35f;
-        foreach (var sx in new[] { -1f, 1f })
-        {
-            var p0 = low + X * 0.19f * sx; var p1 = new Vector3(0.085f * sx, -0.15f, -0.55f);
-            mb.Strip(0, p0, p1, A, 0.05f, 0.006f);
-            var mid = Vector3.Lerp(p0, p1, 0.45f); var dir = (p1 - p0).normalized;
-            mb.Box(1, mid - dir * 0.05f, dir * 0.10f, Vector3.ProjectOnPlane(A, dir).normalized * 0.035f, Vector3.Cross(dir, A).normalized * 0.018f * sx);   // ratchet
-            mb.Box(1, p1, -dir * 0.03f, X * 0.015f, Vector3.up * 0.015f);   // hook on the rail
-        }
-        var up0 = B + A * 1.00f - F * 0.19f; var up1 = new Vector3(0f, 0.56f, -0.50f);
-        mb.Strip(0, up0, up1, X, 0.05f, 0.006f);
-        mb.Box(1, new Vector3(0f, 0.56f, -0.53f) - Vector3.up * 0.03f, Vector3.up * 0.06f, X * 0.06f, Vector3.forward * 0.035f);   // mast clamp
-        mb.Tube(1, up1, X, Vector3.up, Vector3.forward, 0.025f, -0.006f, 0.006f, 12);                                              // D-ring
+        // lower strap: round the can and the seat 3 back, hooks on the seat back frame edges
+        var cL = B + A * 0.55f;
+        XbStrap(mb, cL, A, F, new[] { new Vector3(-0.09f, cL.y, -0.48f), new Vector3(0.09f, cL.y, -0.48f) }, new[] { new Vector2(-0.27f, -0.42f), new Vector2(0.27f, -0.42f) });
+        // upper strap: round the can to D-rings on a clamp round the mast
+        var cU = B + A * 1.18f;
+        XbStrap(mb, cU, A, F, new[] { new Vector3(-0.11f, cU.y, -0.43f), new Vector3(0.16f, cU.y, -0.43f) }, new Vector2[0]);
+        foreach (var dy in new[] { -0.06f, 0.06f }) mb.Tube(1, new Vector3(0.0f, cU.y + dy, -0.53f), X, Zf, Y, 0.065f, -0.008f, 0.008f, 16);   // mast clamp bands
+        foreach (var dx in new[] { -0.11f, 0.16f }) BoxC(mb, 1, new Vector3(dx * 0.5f, cU.y, -0.47f), X * (Mathf.Abs(dx) + 0.02f), Y * 0.03f, Zf * 0.03f);   // clamp ears to the D-rings
         var mesh = SaveMesh(mb.Make("UL2_xb_kit"), ART + "UL2_xb_kit.asset");
         return new KeyValuePair<Mesh, Material[]>(mesh, new[] {
             LitMat("UL2_xb_strap", new Color32(86, 92, 52, 255), 0.15f, 0f),
             LitMat("UL2_xb_steel", new Color32(150, 152, 155, 255), 0.5f, 0.8f),
-            LitMat("UL2_xb_wood", new Color32(150, 112, 68, 255), 0.2f, 0f) });
+            LitMat("UL2_xb_ratchet", new Color32(150, 30, 26, 255), 0.4f, 0.1f),
+            LitMat("UL2_xb_tray", new Color32(107, 110, 107, 255), 0.45f, 0.6f),
+            LitMat("UL2_xb_pad", new Color32(30, 30, 30, 255), 0.1f, 0f) });
     }
     static void Seat3XBomb()
     {
@@ -479,7 +522,7 @@ public static partial class UL2Builder
             var py = rt.Find("pylon");   // the stock bomb hangs under its pylon: lift it out, then drop the pylon
             var b = py.Find("bomb"); b.SetParent(rt, false); b.localScale = Vector3.one; b.name = "UL2_xbomb_mounted";   // the stock bomb carries an inverse of the pylon scale
             Object.DestroyImmediate(py.gameObject);
-            // the can stands on wood blocks and wedges on the seat 3 floor, leaned 12 deg back against the mast (like the
+            // the can stands on the ECM tray chock on the seat 3 floor, leaned 12 deg back against the mast (like the
             // ECM pod), held by two olive ratchet straps: the lower one round the seat back to the rear rails, the upper
             // one to a D-ring clamped on the mast
             var lod = b.GetComponent<LODGroup>(); if (lod != null) Object.DestroyImmediate(lod);
