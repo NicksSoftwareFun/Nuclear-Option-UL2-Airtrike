@@ -1063,7 +1063,7 @@ public static partial class UL2Builder
         while (sets.arraySize < 3) sets.InsertArrayElementAtIndex(1);
         while (sets.arraySize > 3) sets.DeleteArrayElementAtIndex(sets.arraySize - 1);
         // Nick 2026-11-12 20:42: under stations removed completely, Kingpin (Rocket2_4Pod) removed from the top stations
-        string[] topOpts = { "RocketPod1_single", "AGM1_single", "AAM3_single", "ECMPod1", "ATGM1_quad" };
+        string[] topOpts = { "RocketPod1_single", "AGM1_single", "AGM1_double_compact", "AAM3_single", "ECMPod1", "ATGM1_quad" };   // 0.15.58: AGM-48 x2 (Nick 23:25)
         string[] underOpts = { "gun_12.7mm_pod", "gun_20mm_pod", "bomb_125_single" };
         var defs = new[] {
             new { name = "Left Stub", hp = "pylon_fuselage_L", sym = false, symName = "Stub Pylons (top)", opts = topOpts, pre = 3 },
@@ -1083,7 +1083,7 @@ public static partial class UL2Builder
             var op = p.FindPropertyRelative("weaponOptions"); op.arraySize = d.opts.Length + 1; op.GetArrayElementAtIndex(0).objectReferenceValue = null;
             for (int k = 0; k < d.opts.Length; k++)
             {
-                var m = d.opts[k] == "AGM1_single" ? Mount("UL2_AGM1_rail") : d.opts[k] == "AAM3_single" ? Mount("UL2_AAM3_rail") : AssetDatabase.LoadMainAssetAtPath(Placeholder(d.opts[k], "WeaponMount"));
+                var m = d.opts[k] == "AGM1_single" ? Mount("UL2_AGM1_rail") : d.opts[k] == "AGM1_double_compact" ? Mount("UL2_AGM1_double") : d.opts[k] == "AAM3_single" ? Mount("UL2_AAM3_rail") : AssetDatabase.LoadMainAssetAtPath(Placeholder(d.opts[k], "WeaponMount"));
                 if (m == null) log.AppendLine("MISSING mount " + d.opts[k]);
                 op.GetArrayElementAtIndex(k + 1).objectReferenceValue = m;
             }
@@ -1150,6 +1150,8 @@ public static partial class UL2Builder
         }
         finally { Object.DestroyImmediate(go); }
         RailMount("AGM1_single", "UL2_AGM1_rail", -0.092f);
+        // 0.15.58 (Nick 23:25): two AGM-48s side by side on the stub (stock compact twin rack, its pylon removed like the single)
+        RailMount("AGM1_double_compact", "UL2_AGM1_double", -0.092f);
         RailMount("AAM3_single", "UL2_AAM3_rail", -0.076f);
     }
     // AGM-48 / IRM-S2 straight on the beefed-up built-in pylon (Nick 2026-11-12 21:35): the stock single mount without
@@ -1415,17 +1417,29 @@ public static partial class UL2Builder
             li.FindPropertyRelative("assetReference.m_SubObjectName").stringValue = "";
         }
         // six hardpoint sets now: side gun, left/right stub top, left/right stub under, seat 3 passenger
-        var lo = so.FindProperty("loadouts");
+        // 0.15.58 (Nick 23:32): the AI loadouts Nick set up in the loadout tool (stations: forward gun, left stub, right
+        // stub, third seat; "" = empty). Loadout 0 stays empty like stock.
+        string[][] AIL = {
+            new[] { "Standard", "UL2_sidegun", "ATGM1_quad", "ATGM1_quad", "UL2_s3_mg" },
+            new[] { "Spotter", "UL2_sidegun", "ECMPod1", "UL2_AAM3_rail", "UL2_s3_spot" },
+            new[] { "Tank Hunter", "UL2_sidegun", "UL2_AGM1_double", "UL2_AGM1_double", "UL2_s3_ecm" },
+            new[] { "Survivor", "UL2_sidegun", "ATGM1_quad", "ECMPod1", "UL2_s3_gl" },
+            new[] { "Frontliner", "UL2_sidegun", "ATGM1_quad", "RocketPod1_single", "UL2_s3_mg" },
+            new[] { "Broker", "UL2_sidegun", "ECMPod1", "UL2_AGM1_double", "UL2_s3_gl" },
+            new[] { "Decoy", "UL2_sidegun", "ECMPod1", "ECMPod1", "UL2_s3_spot" } };
+        var lo = so.FindProperty("loadouts"); lo.arraySize = AIL.Length + 1;
         for (int i = 0; i < lo.arraySize; i++)
         {
             var w = lo.GetArrayElementAtIndex(i).FindPropertyRelative("weapons"); w.arraySize = 4;
-            for (int k = 0; k < 4; k++) w.GetArrayElementAtIndex(k).objectReferenceValue = null;
-            if (i == 0) continue;
-            w.GetArrayElementAtIndex(0).objectReferenceValue = Mount("UL2_sidegun");
-            var at = AssetDatabase.LoadMainAssetAtPath(Placeholder("ATGM1_quad", "WeaponMount"));
-            w.GetArrayElementAtIndex(1).objectReferenceValue = at; w.GetArrayElementAtIndex(2).objectReferenceValue = at;
-            w.GetArrayElementAtIndex(3).objectReferenceValue = Mount("UL2_s3_mg");
+            for (int k = 0; k < 4; k++)
+            {
+                string id = i == 0 ? "" : AIL[i - 1][k + 1];
+                var m = id == "" ? null : Mount(id);
+                if (id != "" && m == null) log.AppendLine("loadout " + AIL[i - 1][0] + ": MISSING mount " + id);
+                w.GetArrayElementAtIndex(k).objectReferenceValue = m;
+            }
         }
+        log.AppendLine("AI loadouts: " + (lo.arraySize - 1));
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(par);
 
         var def = AssetDatabase.LoadMainAssetAtPath(DEF);
