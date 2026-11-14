@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.43")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.44")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -43,13 +43,16 @@ namespace UL2Airtrike
                 // 0.15.43 (Nick 01:05): the nose gun is a fixed gun. The stock turret in manual mode with no target locked
                 // points along the cockpit camera (head tracked); for our nose gun only, that vector is replaced by the gun's
                 // own dead-ahead line. With a target locked the stock aim solver still leads it inside the +-5 deg travel.
-                var setVec = AccessTools.Method(AccessTools.TypeByName("Turret"), "SetVector");
-                if (setVec != null) h.Patch(setVec, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreSetVector)));
+                // 0.15.44: SetVector is a one-line setter the JIT inlines into FixedUpdate, so its patch never ran; patch the
+                // manual aim step itself (AimTurret(Vector3), only used in manual mode with no target)
+                var aimM = AccessTools.Method(AccessTools.TypeByName("Turret"), "AimTurret", new[] { typeof(Vector3) });
+                if (aimM != null) h.Patch(aimM, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreAimManual)));
+                Logger.LogInfo("UL-2 nose gun fixed-aim patch " + (aimM != null));
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
         }
         static readonly System.Collections.Generic.Dictionary<int, Transform> noseGunBase = new System.Collections.Generic.Dictionary<int, Transform>();
-        static void PreSetVector(Component __instance, ref Vector3 vector)
+        static void PreAimManual(Component __instance, ref Vector3 aimVector)
         {
             try
             {
@@ -58,10 +61,16 @@ namespace UL2Airtrike
                 if (!noseGunBase.TryGetValue(id, out var bt))
                 {
                     bt = null;   // the mount root of our nose gun (UL2_sidegun), never the seat 3 gunner turret
-                    for (var t = __instance.transform.parent; t != null; t = t.parent) if (t.name.StartsWith("UL2_sidegun")) { bt = t; break; }
+                    var path = "";
+                    for (var t = __instance.transform.parent; t != null; t = t.parent)
+                    {
+                        path += t.name + "/";
+                        if (t.name.StartsWith("UL2_sidegun") || t.name == "gunmount_R_hp") { bt = t; break; }
+                    }
                     noseGunBase[id] = bt;
+                    if (bt != null || path.Contains("UL2Airtrike")) Log.LogInfo("UL-2 manual turret " + __instance.name + " under " + path + " -> fixed " + (bt != null));
                 }
-                if (bt != null) vector = bt.forward;
+                if (bt != null) aimVector = bt.forward * Mathf.Max(aimVector.magnitude, 1000f);
             }
             catch (Exception e) { Log.LogError("UL-2 nose gun: " + e); }
         }

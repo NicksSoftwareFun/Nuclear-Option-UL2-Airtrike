@@ -1124,7 +1124,8 @@ public static partial class UL2Builder
             Set(tu, "traverseRate", 40f); Set(tu, "elevationRate", 35f);
             // 0.15.29 (Nick 12:29): no magazine changes, one 300-round belt fired however the pilot wants
             foreach (var gn in go.GetComponentsInChildren<MonoBehaviour>(true).Where(c => c != null && c.GetType().Name == "Gun"))
-            { Set(gn, "magazineCapacity", 300); Set(gn, "magazines", 1); Set(gn, "reloadTime", 0f); log.AppendLine("side gun belt 300 rounds on " + gn.name); }
+            { Set(gn, "magazineCapacity", 300); Set(gn, "magazines", 0); Set(gn, "reloadTime", 0f);   // 0.15.44 (Nick 02:13): magazines = SPARE mags in the stock Gun, so 0 = the single 300-round belt, no spare in the HUD counter
+              log.AppendLine("side gun belt 300 rounds on " + gn.name); }
             var m = SaveMount(go, "UL2_sidegun", "turret_12.7mm_door", null, "12.7mm Gun (300 rounds)");
             var so = new SerializedObject(m);
             var amp = so.FindProperty("ammo"); if (amp != null) amp.intValue = 300;
@@ -1464,7 +1465,7 @@ public static partial class UL2Builder
         }
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(so.targetObject);
         string mi = MOD + "modinfo.json";
-        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.43\"\n}\n");
+        System.IO.File.WriteAllText(mi, "{\n    \"displayName\": \"UL-2 Airtrike TEST BUILD\",\n    \"version\": \"0.15.44\"\n}\n");
         log.AppendLine("def, parameters, hangar op, modinfo written");
     }
 }
