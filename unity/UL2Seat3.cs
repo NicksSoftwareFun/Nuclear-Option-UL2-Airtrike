@@ -364,7 +364,7 @@ public static partial class UL2Builder
     // cap at each end and a yellow band; matte mid-grey like the stock weapon bodies. Own mesh (local z = can axis).
     static KeyValuePair<Mesh, Material[]> XbCan()
     {
-        var mb = new MB(3); Vector3 o = Vector3.zero, X = Vector3.right, Y = Vector3.up, Z = Vector3.forward; int sg = 32;
+        var mb = new MB(4); Vector3 o = Vector3.zero, X = Vector3.right, Y = Vector3.up, Z = Vector3.forward; int sg = 32;
         mb.Tube(0, o, X, Y, Z, 0.185f, -0.63f, 0.63f, sg);
         foreach (var sgn in new[] { -1f, 1f })
         {
@@ -377,11 +377,41 @@ public static partial class UL2Builder
             { float a = k * Mathf.PI / 3f; var p = (X * Mathf.Cos(a) + Y * Mathf.Sin(a)) * 0.13f + Z * g; mb.Box(2, p, Z * 0.012f * sgn, X * 0.012f, Y * 0.012f); }
         }
         mb.Tube(1, o, X, Y, Z, 0.1865f, 0.46f, 0.52f, sg);   // yellow band (clear of the upper strap)
+        // 0.15.41 (Nick 00:30): radiation trefoil on the left and right sides, between the straps: black on a yellow disc,
+        // laid onto the curved skin (centre disc r, blades 60 deg wide from 1.5r to 5r, one blade pointing up the can)
+        foreach (var th in new[] { 0f, Mathf.PI })
+        {
+            float zc = 0.17f, R1 = 0.1875f, R2 = 0.1890f, r = 0.021f;
+            System.Func<float, float, float, Vector3> P = (a, b, R) => { float q = th + a / R; return (X * Mathf.Cos(q) + Y * Mathf.Sin(q)) * R + Z * (zc + b); };
+            System.Func<float, float, Vector3> N = (a, R) => { float q = th + a / R; return X * Mathf.Cos(q) + Y * Mathf.Sin(q); };
+            // flip the 2D 'a' axis on the far side so both trefoils read the same way up
+            float fl = th == 0f ? 1f : 1f;
+            // a ring sector as a fine (angle x radius) grid so it lies on the curved skin instead of cutting chords under it
+            System.Action<int, float, float, float, float, float> sector = (sm, R, r0, r1, f0, f1) =>
+            {
+                int na = 24, nr = 8, k = mb.v.Count;
+                for (int i = 0; i <= na; i++) for (int j = 0; j <= nr; j++)
+                {
+                    float a = Mathf.Lerp(f0, f1, i / (float)na), rr = Mathf.Lerp(r0, r1, j / (float)nr);
+                    var q = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * rr; mb.v.Add(P(q.x * fl, q.y, R)); mb.n.Add(N(q.x * fl, R));
+                }
+                for (int i = 0; i < na; i++) for (int j = 0; j < nr; j++)
+                {
+                    int a0 = k + i * (nr + 1) + j, a1 = a0 + nr + 1;   // (i,j) (i,j+1) (i+1,j+1) (i+1,j): CCW in the decal plane
+                    mb.t[sm].AddRange(new[] { a0, a0 + 1, a1 + 1, a0, a1 + 1, a1 });
+                }
+            };
+            sector(1, R1, 0f, 5.9f * r, 0f, Mathf.PI * 2f);                         // yellow disc
+            sector(3, R2, 0f, r, 0f, Mathf.PI * 2f);                                // centre dot
+            foreach (var bl in new[] { 90f, 210f, 330f })                           // blades
+                sector(3, R2, 1.5f * r, 5f * r, (bl - 30f) * Mathf.Deg2Rad, (bl + 30f) * Mathf.Deg2Rad);
+        }
         var mesh = SaveMesh(mb.Make("UL2_xb_can"), ART + "UL2_xb_can.asset");
         return new KeyValuePair<Mesh, Material[]>(mesh, new[] {
             LitMat("UL2_xb_body", new Color32(84, 86, 84, 255), 0.45f, 0f),
             LitMat("UL2_xb_yellow", new Color32(196, 160, 40, 255), 0.4f, 0f),
-            LitMat("UL2_xb_cap", new Color32(66, 68, 67, 255), 0.4f, 0.3f) });
+            LitMat("UL2_xb_cap", new Color32(66, 68, 67, 255), 0.4f, 0.3f),
+            LitMat("UL2_xb_black", new Color32(22, 22, 22, 255), 0.35f, 0f) });
     }
     // 0.15.40 (Nick 00:13): the ECM pod's tie-down, sized for the can: tray clamped across the frame side rails with a
     // rubber chock, two 6 in olive webbing ratchet straps pulled taut round the can front (straps.py ported), the lower
@@ -396,14 +426,14 @@ public static partial class UL2Builder
         lo.RemoveAt(lo.Count - 1); up.RemoveAt(up.Count - 1); lo.AddRange(up); return lo;
     }
     static void BoxC(MB mb, int sm, Vector3 c, Vector3 a, Vector3 b, Vector3 d)   // centre and full edge vectors
-    { mb.Box(sm, c - a * 0.5f, a, b * 0.5f, d * 0.5f); }
-    static void XbStrap(MB mb, Vector3 c, Vector3 ax, Vector3 fwd, Vector3[] anchors, Vector2[] extra)
+    { if (Vector3.Dot(Vector3.Cross(a, b), d) < 0f) d = -d; mb.Box(sm, c - a * 0.5f, a, b * 0.5f, d * 0.5f); }   // keep the box right-handed (faces out)
+    static void XbStrap(MB mb, Vector3 c, Vector3 ax, Vector3 fwd, Vector3[] anchors, Vector3[] extra)
     {
         var f = (fwd - ax * Vector3.Dot(fwd, ax)).normalized; var u = Vector3.right; u = (u - ax * Vector3.Dot(u, ax) - f * Vector3.Dot(u, f)).normalized;
         System.Func<Vector3, Vector2> to2 = p => new Vector2((float)System.Math.Round(Vector3.Dot(p - c, u), 4), (float)System.Math.Round(Vector3.Dot(p - c, f), 4));
         var sec = new List<Vector2>();
         for (int i = 0; i < 48; i++) { float a = i * Mathf.PI * 2f / 48f; sec.Add(new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * 0.190f); }
-        sec.AddRange(extra);
+        sec.AddRange(extra.Select(to2));
         Vector2 A = to2(anchors[0]), B = to2(anchors[1]); sec.Add(A); sec.Add(B);
         var H = Hull2(sec); int ia = H.IndexOf(A), ib = H.IndexOf(B);
         var ch1 = new List<Vector2>(); for (int k = 0; k <= ((ib - ia) % H.Count + H.Count) % H.Count; k++) ch1.Add(H[(ia + k) % H.Count]);
@@ -430,7 +460,9 @@ public static partial class UL2Builder
         }
         // red ratchet block on the right tail, part way along
         {
-            var a0 = P[P.Count - 1]; var b0 = P[P.Count - 2]; var p = Vector3.Lerp(a0, b0, 0.45f); var t = (b0 - a0).normalized; var n = Vector3.Cross(ax, t).normalized;
+            int bi = P.Count - 2; float bl = -1f;   // longest run on the right side of the can
+            for (int i = 0; i < P.Count - 1; i++) { if (Vector3.Dot(P[i] - c, u) < 0.15f || Vector3.Dot(P[i + 1] - c, u) < 0.15f) continue; float L = (P[i + 1] - P[i]).magnitude; if (L > bl) { bl = L; bi = i; } }
+            var a0 = P[bi + 1]; var b0 = P[bi]; var p = Vector3.Lerp(a0, b0, 0.5f); var t = (b0 - a0).normalized; var n = Vector3.Cross(ax, t).normalized;
             if (Vector3.Dot(p - c, n) < 0) n = -n;
             BoxC(mb, 2, p + n * 0.025f, t * 0.17f, ax * (XW + 0.03f), n * 0.035f);
             foreach (var sg in new[] { -1f, 1f }) BoxC(mb, 1, p + n * 0.035f + ax * sg * (XW * 0.5f + 0.018f), t * 0.15f, ax * 0.008f, n * 0.06f);
@@ -451,10 +483,13 @@ public static partial class UL2Builder
         }
         // lower strap: round the can and the seat 3 back, hooks on the seat back frame edges
         var cL = B + A * 0.55f;
-        XbStrap(mb, cL, A, F, new[] { new Vector3(-0.09f, cL.y, -0.48f), new Vector3(0.09f, cL.y, -0.48f) }, new[] { new Vector2(-0.27f, -0.42f), new Vector2(0.27f, -0.42f) });
+        // (0.15.41, Nick 00:30: it clipped the seat) seat 3 back is x +-0.27, z -0.27..-0.37 with the centre spine (x +-0.08)
+        // behind it, so the strap runs outside the side wings, round the back corners and hooks onto the spine
+        XbStrap(mb, cL, A, F, new[] { new Vector3(-0.09f, cL.y, -0.43f), new Vector3(0.09f, cL.y, -0.43f) },
+            new[] { new Vector3(-0.279f, cL.y, -0.262f), new Vector3(0.279f, cL.y, -0.262f), new Vector3(-0.279f, cL.y, -0.379f), new Vector3(0.279f, cL.y, -0.379f) });
         // upper strap: round the can to D-rings on a clamp round the mast
         var cU = B + A * 1.18f;
-        XbStrap(mb, cU, A, F, new[] { new Vector3(-0.11f, cU.y, -0.43f), new Vector3(0.16f, cU.y, -0.43f) }, new Vector2[0]);
+        XbStrap(mb, cU, A, F, new[] { new Vector3(-0.11f, cU.y, -0.43f), new Vector3(0.16f, cU.y, -0.43f) }, new Vector3[0]);
         foreach (var dy in new[] { -0.06f, 0.06f }) mb.Tube(1, new Vector3(0.0f, cU.y + dy, -0.53f), X, Zf, Y, 0.065f, -0.008f, 0.008f, 16);   // mast clamp bands
         foreach (var dx in new[] { -0.11f, 0.16f }) BoxC(mb, 1, new Vector3(dx * 0.5f, cU.y, -0.47f), X * (Mathf.Abs(dx) + 0.02f), Y * 0.03f, Zf * 0.03f);   // clamp ears to the D-rings
         var mesh = SaveMesh(mb.Make("UL2_xb_kit"), ART + "UL2_xb_kit.asset");
