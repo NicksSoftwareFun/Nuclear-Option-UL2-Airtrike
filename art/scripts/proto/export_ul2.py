@@ -1,8 +1,10 @@
-"""Export the UL-2 parts for Unity. Usage: python3 -I export_ul2.py -- <ul2_proto.blend> <out_dir>
+"""Export the UL-2 parts for Unity. Usage: python3 -I export_ul2.py -- <ul2_uv_kit.blend> <out_dir>
 Writes UL2_parts.fbx (every part mesh and its convex hull collider at the origin, vertices in the part's pivot frame,
 pre-rotated 180 deg about Z so the FBX import lands Blender (x, y, z) at Unity (x, z, y)) and UL2_layout.json (name,
 kind, Blender world position of every part, collider and reference point)."""
 import bpy, sys, os, json, math, bmesh
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'wx'))
+from ul2_kit_unwrap_mats import KIT
 from mathutils import Matrix, Vector
 a = sys.argv[sys.argv.index('--') + 1:]
 src, outdir = a[0], a[1]; os.makedirs(outdir, exist_ok=True)
@@ -47,14 +49,11 @@ for o in parts:
     bmesh.ops.triangulate(bm, faces=bm.faces, quad_method='BEAUTY', ngon_method='BEAUTY')
     uvl = bm.loops.layers.uv.active or bm.loops.layers.uv.new('UVMap')
     gl = [i for i, m in enumerate(me.materials) if m and m.name == 'UL2_glass']
-    st = [i for i, m in enumerate(me.materials) if m and m.name in ('UL2_mech', 'UL2_frame')]
     sk = [i for i, m in enumerate(me.materials) if m and m.name == 'UL2_skin']
+    # 0.15.52: the non-skin airframe materials keep their weathering atlas UVs (wx/ul2_kit_unwrap.py, ul2_uv_kit.blend)
+    kt = [i for i, m in enumerate(me.materials) if m and m.name in KIT]
     for f in ([] if o.name.startswith(('x_mfd', 'x_inst', 'x_gf')) else bm.faces):
-        if f.material_index in sk: continue                      # skin keeps its livery atlas UVs (from ul2_uv.blend)
-        if f.material_index in st:
-            nn = f.normal; ax = max(range(3), key=lambda i: abs(nn[i]))
-            for lp in f.loops:
-                c = lp.vert.co; u, v = [(c.y, c.z), (c.x, c.z), (c.x, c.y)][ax]; lp[uvl].uv = (u / 2.5, v / 2.5)
+        if f.material_index in sk or f.material_index in kt: continue   # skin: livery atlas; kit: weathering atlas
         else:
             for lp in f.loops: lp[uvl].uv = (0.25, 0.5) if f.material_index in gl else (0.0, 0.0)
     if sk and sk[0] != 0:

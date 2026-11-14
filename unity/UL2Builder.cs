@@ -244,6 +244,21 @@ public static partial class UL2Builder
         EditorUtility.SetDirty(m);
         return m;
     }
+    // 0.15.52 weathering (Nick 2026-11-14): every non-skin part of the airframe shares one weathering atlas (UL2_kit_*,
+    // like the stock Cricket's shared grime maps). The material colours are painted into the atlas, so base colour is white
+    // and the smoothness slider is 1 (URP Lit reads metallic from R and smoothness from A of the metallic map).
+    static Texture2D kitB, kitM, kitAO;
+    static Material KitMat(string name)
+    {
+        var m = LitMat(name, Color.white, 1f, 0f);
+        if (kitB == null) { kitB = SkinTex("UL2_kit_b", true, false, false); kitM = SkinTex("UL2_kit_m", false, false, true); kitAO = SkinTex("UL2_kit_ao", false, false, false); }
+        m.SetTexture("_BaseMap", kitB); if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", kitB);
+        m.SetTexture("_MetallicGlossMap", kitM); m.EnableKeyword("_METALLICSPECGLOSSMAP");
+        m.SetTexture("_OcclusionMap", kitAO); m.SetFloat("_OcclusionStrength", 1f); m.EnableKeyword("_OCCLUSIONMAP");
+        m.SetTextureScale("_BaseMap", Vector2.one); m.SetTextureOffset("_BaseMap", Vector2.zero);
+        EditorUtility.SetDirty(m);
+        return m;
+    }
     static string Placeholder(string name, string type)
     {
         foreach (var g in AssetDatabase.FindAssets(name + "_PLACEHOLDER t:" + type))
@@ -311,23 +326,23 @@ public static partial class UL2Builder
         L = JsonUtility.FromJson<W>("{\"items\":" + System.IO.File.ReadAllText(ART + "UL2_layout.json") + "}").items.ToDictionary(e => e.name);
         M = new Dictionary<string, Mesh>();
         foreach (var o in AssetDatabase.LoadAllAssetsAtPath(ART + "UL2_parts.fbx")) if (o is Mesh) M[o.name] = (Mesh)o;
-        MAT = new Dictionary<string, Material>();
+        MAT = new Dictionary<string, Material>(); kitB = kitM = kitAO = null;
         // untextured grey until the texture passes (Nick)
         MAT["UL2_skin"] = SkinMat();
-        MAT["UL2_frame"] = LitMat("UL2_frame", new Color32(175, 177, 180, 255), 0.4f, 0.2f);
-        MAT["UL2_mech"] = LitMat("UL2_mech", new Color32(110, 112, 115, 255), 0.35f, 0.4f);
-        MAT["UL2_dark"] = LitMat("UL2_dark", new Color32(42, 44, 47, 255), 0.4f, 0f);
+        MAT["UL2_frame"] = KitMat("UL2_frame");
+        MAT["UL2_mech"] = KitMat("UL2_mech");
+        MAT["UL2_dark"] = KitMat("UL2_dark");
         // engine internals where a cylinder bank meets the crankcase (Nick 04:29): the stock engine mechanism trim sheet itself,
         // which Blueprinter swaps for the game's own material (stock parts carry it as their mechanical submesh)
         MAT["UL2_enginternal"] = AssetDatabase.LoadAssetAtPath<Material>(PH + "Material/jet_mechanical_PLACEHOLDER.mat");
-        MAT["UL2_tyre"] = LitMat("UL2_tyre", new Color32(22, 22, 22, 255), 0.15f, 0f);
-        MAT["UL2_seat"] = LitMat("UL2_seat", new Color32(70, 72, 74, 255), 0.25f, 0f);
-        MAT["UL2_cockpit"] = LitMat("UL2_cockpit", new Color32(60, 62, 65, 255), 0.3f, 0f);
+        MAT["UL2_tyre"] = KitMat("UL2_tyre");
+        MAT["UL2_seat"] = KitMat("UL2_seat");
+        MAT["UL2_cockpit"] = KitMat("UL2_cockpit");
         MAT["UL2_screen"] = LitMat("UL2_screen", new Color32(12, 14, 16, 255), 0.85f, 0f);
         // seat rifles in the seat 3 gunners' FDE scheme (Nick 2026-11-12 21:23)
-        MAT["UL2_fde"] = LitMat("UL2_fde", new Color32(150, 126, 96, 255), 0.32f, 0f);   // lighter FDE, less bronze (Nick 04:04 11-13)
+        MAT["UL2_fde"] = KitMat("UL2_fde");   // lighter FDE, less bronze (Nick 04:04 11-13)
         MAT["UL2_bronze"] = LitMat("UL2_bronze", new Color32(150, 128, 100, 255), 0.45f, 0.10f);   // FDE cerakote, was bronze
-        MAT["UL2_black"] = LitMat("UL2_black", new Color32(34, 34, 33, 255), 0.52f, 0.4f);
+        MAT["UL2_black"] = KitMat("UL2_black");
         MAT["UL2_fabric"] = LitMat("UL2_fabric", new Color32(166, 134, 94, 255), 0.03f, 0f);
         MAT["UL2_red"] = LitMat("UL2_red", new Color32(200, 36, 28, 255), 0.4f, 0f);   // compass lubber pointer (Nick 04:56)
         MAT["UL2_rotorblur"] = BlurMat("UL2_rotorblur"); MAT["UL2_propblur"] = BlurMat("UL2_propblur");
