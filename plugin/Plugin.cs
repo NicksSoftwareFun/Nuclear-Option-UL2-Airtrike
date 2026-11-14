@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.42")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.43")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -40,8 +40,30 @@ namespace UL2Airtrike
                 // our rotor head both see the limited pitch
                 var filt = AccessTools.Method(ac, "FilterInputs");
                 if (filt != null) h.Patch(filt, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreFilter)));
+                // 0.15.43 (Nick 01:05): the nose gun is a fixed gun. The stock turret in manual mode with no target locked
+                // points along the cockpit camera (head tracked); for our nose gun only, that vector is replaced by the gun's
+                // own dead-ahead line. With a target locked the stock aim solver still leads it inside the +-5 deg travel.
+                var setVec = AccessTools.Method(AccessTools.TypeByName("Turret"), "SetVector");
+                if (setVec != null) h.Patch(setVec, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreSetVector)));
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
+        }
+        static readonly System.Collections.Generic.Dictionary<int, Transform> noseGunBase = new System.Collections.Generic.Dictionary<int, Transform>();
+        static void PreSetVector(Component __instance, ref Vector3 vector)
+        {
+            try
+            {
+                if (__instance == null) return;
+                int id = __instance.GetInstanceID();
+                if (!noseGunBase.TryGetValue(id, out var bt))
+                {
+                    bt = null;   // the mount root of our nose gun (UL2_sidegun), never the seat 3 gunner turret
+                    for (var t = __instance.transform.parent; t != null; t = t.parent) if (t.name.StartsWith("UL2_sidegun")) { bt = t; break; }
+                    noseGunBase[id] = bt;
+                }
+                if (bt != null) vector = bt.forward;
+            }
+            catch (Exception e) { Log.LogError("UL-2 nose gun: " + e); }
         }
         static FieldInfo fParentUnit;
         static void PostBailOut(Component __instance, Rigidbody cockpit)
