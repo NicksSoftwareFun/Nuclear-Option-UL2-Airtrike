@@ -307,9 +307,11 @@ public static partial class UL2Builder
     const string XB_NAME = "Expedient 1.5kt Bomb";
     const string XB_DESC = "Volunteers needed. Single men only. Over 40 preferred.";
     // can pose in seat3_hp space: base centre on the blocks, axis leaned 12 deg back (toward the mast)
-    static readonly Vector3 XB_BASE = new Vector3(0f, -0.44f, 0.13f);   // foot on the ECM pod's chock, front face where the pod front sits
-    static readonly Vector3 XB_AX = new Vector3(0f, 0.978f, -0.208f);
-    static readonly Vector3 XB_FW = new Vector3(0f, 0.208f, 0.978f);
+    // 0.15.42 (Nick 00:43: it clipped the seat 3 cushion): slid 0.16 m forward and leaned 19 deg back (was 12). Clearance
+    // scan against every aircraft mesh: 4.9 cm to the seat back top edge, more everywhere else (cushion, cockpit_F, mast)
+    static readonly Vector3 XB_BASE = new Vector3(0f, -0.44f, 0.29f);
+    static readonly Vector3 XB_AX = new Vector3(0f, 0.94552f, -0.32557f);   // 19 deg back from vertical
+    static readonly Vector3 XB_FW = new Vector3(0f, 0.32557f, 0.94552f);
     class MB
     {
         public List<Vector3> v = new List<Vector3>(); public List<Vector3> n = new List<Vector3>(); public List<List<int>> t = new List<List<int>>();
@@ -376,12 +378,12 @@ public static partial class UL2Builder
             for (int k = 0; k < 6; k++)                                                        // cap bolts
             { float a = k * Mathf.PI / 3f; var p = (X * Mathf.Cos(a) + Y * Mathf.Sin(a)) * 0.13f + Z * g; mb.Box(2, p, Z * 0.012f * sgn, X * 0.012f, Y * 0.012f); }
         }
-        mb.Tube(1, o, X, Y, Z, 0.1865f, 0.46f, 0.52f, sg);   // yellow band (clear of the upper strap)
+        mb.Tube(1, o, X, Y, Z, 0.1865f, 0.53f, 0.59f, sg);   // yellow band (above the upper strap)
         // 0.15.41 (Nick 00:30): radiation trefoil on the left and right sides, between the straps: black on a yellow disc,
         // laid onto the curved skin (centre disc r, blades 60 deg wide from 1.5r to 5r, one blade pointing up the can)
         foreach (var th in new[] { 0f, Mathf.PI })
         {
-            float zc = 0.17f, R1 = 0.1875f, R2 = 0.1890f, r = 0.021f;
+            float zc = 0.205f, R1 = 0.1875f, R2 = 0.1890f, r = 0.018f;
             System.Func<float, float, float, Vector3> P = (a, b, R) => { float q = th + a / R; return (X * Mathf.Cos(q) + Y * Mathf.Sin(q)) * R + Z * (zc + b); };
             System.Func<float, float, Vector3> N = (a, R) => { float q = th + a / R; return X * Mathf.Cos(q) + Y * Mathf.Sin(q); };
             // flip the 2D 'a' axis on the far side so both trefoils read the same way up
@@ -427,9 +429,12 @@ public static partial class UL2Builder
     }
     static void BoxC(MB mb, int sm, Vector3 c, Vector3 a, Vector3 b, Vector3 d)   // centre and full edge vectors
     { if (Vector3.Dot(Vector3.Cross(a, b), d) < 0f) d = -d; mb.Box(sm, c - a * 0.5f, a, b * 0.5f, d * 0.5f); }   // keep the box right-handed (faces out)
+    static Vector3 OnPlane(Vector3 p, Vector3 c, Vector3 ax) { p.y = c.y - ((p.x - c.x) * ax.x + (p.z - c.z) * ax.z) / ax.y; return p; }
     static void XbStrap(MB mb, Vector3 c, Vector3 ax, Vector3 fwd, Vector3[] anchors, Vector3[] extra)
     {
         var f = (fwd - ax * Vector3.Dot(fwd, ax)).normalized; var u = Vector3.right; u = (u - ax * Vector3.Dot(u, ax) - f * Vector3.Dot(u, f)).normalized;
+        for (int k = 0; k < anchors.Length; k++) anchors[k] = OnPlane(anchors[k], c, ax);
+        for (int k = 0; k < extra.Length; k++) extra[k] = OnPlane(extra[k], c, ax);
         System.Func<Vector3, Vector2> to2 = p => new Vector2((float)System.Math.Round(Vector3.Dot(p - c, u), 4), (float)System.Math.Round(Vector3.Dot(p - c, f), 4));
         var sec = new List<Vector2>();
         for (int i = 0; i < 48; i++) { float a = i * Mathf.PI * 2f / 48f; sec.Add(new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * 0.190f); }
@@ -473,25 +478,26 @@ public static partial class UL2Builder
     {
         var mb = new MB(5); var A = XB_AX; var F = XB_FW; var X = Vector3.right; var B = XB_BASE; var Y = Vector3.up; var Zf = Vector3.forward;
         // tray across the frame side rails (U clamps at both rails, front and back) and the rubber chock on it
-        BoxC(mb, 3, new Vector3(0f, -0.5165f, 0.13f), X * 0.66f, Y * 0.013f, Zf * 0.46f);
-        foreach (var sx in new[] { -1f, 1f }) foreach (var zz in new[] { -0.08f, 0.34f }) BoxC(mb, 3, new Vector3(sx * 0.30f, -0.535f, zz), X * 0.05f, Y * 0.045f, Zf * 0.03f);
-        {   // chock: flat on the tray, top sloped 12 deg to meet the leaned can foot
-            float z0 = -0.09f, z1 = 0.35f, yb = -0.51f; System.Func<float, float> yt = z => B.y + (z - B.z) * 0.2126f;   // plane square to the can axis through the foot
+        BoxC(mb, 3, new Vector3(0f, -0.5165f, B.z + 0.02f), X * 0.66f, Y * 0.013f, Zf * 0.40f);
+        foreach (var sx in new[] { -1f, 1f }) foreach (var zz in new[] { -0.16f, 0.20f }) BoxC(mb, 3, new Vector3(sx * 0.30f, -0.535f, B.z + zz), X * 0.05f, Y * 0.045f, Zf * 0.03f);
+        {   // chock: flat on the tray, top sloped to meet the leaned can foot
+            float z0 = B.z - 0.12f, z1 = B.z + 0.20f, yb = -0.51f; System.Func<float, float> yt = z => B.y - (z - B.z) * XB_AX.z / XB_AX.y;   // plane square to the can axis through the foot
             var v = new List<Vector3>(); foreach (var x in new[] { -0.15f, 0.15f }) { v.Add(new Vector3(x, yb, z0)); v.Add(new Vector3(x, yb, z1)); v.Add(new Vector3(x, yt(z1) - 0.004f, z1)); v.Add(new Vector3(x, yt(z0) - 0.004f, z0)); }
             int[][] fc = { new[] { 0, 1, 2, 3 }, new[] { 7, 6, 5, 4 }, new[] { 0, 4, 5, 1 }, new[] { 1, 5, 6, 2 }, new[] { 2, 6, 7, 3 }, new[] { 3, 7, 4, 0 } };
             foreach (var q in fc) mb.Quad(4, v[q[0]], v[q[1]], v[q[2]], v[q[3]]);
         }
         // lower strap: round the can and the seat 3 back, hooks on the seat back frame edges
-        var cL = B + A * 0.55f;
+        var cL = B + A * 0.70f;
         // (0.15.41, Nick 00:30: it clipped the seat) seat 3 back is x +-0.27, z -0.27..-0.37 with the centre spine (x +-0.08)
         // behind it, so the strap runs outside the side wings, round the back corners and hooks onto the spine
-        XbStrap(mb, cL, A, F, new[] { new Vector3(-0.09f, cL.y, -0.43f), new Vector3(0.09f, cL.y, -0.43f) },
+        XbStrap(mb, cL, A, F, new[] { new Vector3(-0.09f, cL.y, -0.40f), new Vector3(0.09f, cL.y, -0.40f) },
             new[] { new Vector3(-0.279f, cL.y, -0.262f), new Vector3(0.279f, cL.y, -0.262f), new Vector3(-0.279f, cL.y, -0.379f), new Vector3(0.279f, cL.y, -0.379f) });
         // upper strap: round the can to D-rings on a clamp round the mast
-        var cU = B + A * 1.18f;
+        var cU = B + A * 1.12f;
         XbStrap(mb, cU, A, F, new[] { new Vector3(-0.11f, cU.y, -0.43f), new Vector3(0.16f, cU.y, -0.43f) }, new Vector3[0]);
-        foreach (var dy in new[] { -0.06f, 0.06f }) mb.Tube(1, new Vector3(0.0f, cU.y + dy, -0.53f), X, Zf, Y, 0.065f, -0.008f, 0.008f, 16);   // mast clamp bands
-        foreach (var dx in new[] { -0.11f, 0.16f }) BoxC(mb, 1, new Vector3(dx * 0.5f, cU.y, -0.47f), X * (Mathf.Abs(dx) + 0.02f), Y * 0.03f, Zf * 0.03f);   // clamp ears to the D-rings
+        float yD = OnPlane(new Vector3(0f, 0f, -0.43f), cU, A).y;   // D-ring height where the strap ends
+        foreach (var dy in new[] { -0.06f, 0.06f }) mb.Tube(1, new Vector3(0.0f, yD + dy, -0.53f), X, Zf, Y, 0.065f, -0.008f, 0.008f, 16);   // mast clamp bands
+        foreach (var dx in new[] { -0.11f, 0.16f }) BoxC(mb, 1, new Vector3(dx * 0.5f, yD, -0.47f), X * (Mathf.Abs(dx) + 0.02f), Y * 0.03f, Zf * 0.03f);   // clamp ears to the D-rings
         var mesh = SaveMesh(mb.Make("UL2_xb_kit"), ART + "UL2_xb_kit.asset");
         return new KeyValuePair<Mesh, Material[]>(mesh, new[] {
             LitMat("UL2_xb_strap", new Color32(86, 92, 52, 255), 0.15f, 0f),
