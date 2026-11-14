@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.48")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.49")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -333,7 +333,7 @@ namespace UL2Airtrike
         // HUD rotor gauge (Nick 22:31/22:35/22:36): the Alkyon-style label from our HUD extras prefab (UL2_rotorGauge),
         // rpm readout and an idle (110) to full (450 rpm) bar, red until the rotor is fast enough to jump (400), then green
         // 0.15.20 (Nick 03:43): styled like the stock throttle gauge: carrot = set rpm, coloured arc bar + readout = actual rpm
-        Transform hud, carrotPiv, readPiv; UnityEngine.UI.Image barImg; TMPro.TMP_Text hudRead, hudLabel; float hudFind, hudShow, setRpm;
+        Transform hud, carrotPiv, readPiv; UnityEngine.UI.Image barImg; TMPro.TMP_Text hudRead, hudLabel, hudDash; float hudFind, hudShow, setRpm;
         void HudGauge(float dt, bool engOn)
         {
             try
@@ -351,6 +351,17 @@ namespace UL2Airtrike
                         else if (t.name == "readPivot") readPiv = t;
                     }
                     if (readPiv != null) foreach (var t in readPiv.GetComponentsInChildren<Transform>(true)) if (t.name == "throttleReading") hudRead = t.GetComponent<TMPro.TMP_Text>();
+                    // 0.15.49 (Nick 02:44): two markers, set rpm "<" (the stock bar pointer, on the carrot pivot) and actual rpm "-"
+                    // (on the readout pivot, same radius just outboard of the pointer), so they sit in a line when the rotor is at
+                    // the set rpm and split apart while it lags. The readout number moves out past the dash.
+                    if (hudRead != null && hudDash == null)
+                    {
+                        var d = Instantiate(hudRead.gameObject, hudRead.transform.parent, false); d.name = "UL2_rpmDash";
+                        hudDash = d.GetComponent<TMPro.TMP_Text>(); hudDash.text = "-"; hudDash.alignment = TMPro.TextAlignmentOptions.Center;
+                        var dr = (RectTransform)d.transform; var rr = (RectTransform)hudRead.transform;
+                        dr.sizeDelta = new Vector2(30f, rr.sizeDelta.y); dr.anchoredPosition = rr.anchoredPosition + new Vector2(-14f, 0f);
+                        rr.anchoredPosition += new Vector2(22f, 0f);
+                    }
                     Plugin.Log.LogInfo("UL-2 HUD rotor gauge found, bar " + (barImg != null) + " carrot " + (carrotPiv != null) + " readout " + (hudRead != null));
                 }
                 bool want = axis > 0.05f || autoSpin || (alt < 0.8f && engOn);
@@ -365,6 +376,7 @@ namespace UL2Airtrike
                 if (barImg != null) { barImg.fillAmount = f; barImg.color = col; }
                 if (carrotPiv != null) carrotPiv.localEulerAngles = new Vector3(0f, 0f, fs * 26f - 13f);
                 if (readPiv != null) { readPiv.localEulerAngles = new Vector3(0f, 0f, f * 26f - 13f); foreach (Transform ch in readPiv) ch.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }   // 0.15.29 (Nick 12:29): readout line stays flat like the throttle one
+                if (hudDash != null) hudDash.color = col;
                 if (hudRead != null) { hudRead.text = Mathf.RoundToInt(rpm) + " RPM"; hudRead.color = col; if (hudRead.transform.parent != readPiv) hudRead.transform.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }
                 if (hudLabel != null) hudLabel.text = axis > 0.05f ? "ROTOR MANUAL" : autoSpin ? "ROTOR AUTO" : "ROTOR";
             }
