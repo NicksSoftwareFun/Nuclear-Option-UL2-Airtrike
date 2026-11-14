@@ -298,7 +298,7 @@ public static partial class UL2Builder
         catch (System.Exception ex) { log.AppendLine("SEAT3 ecm ERROR " + ex); }
         finally { Object.DestroyImmediate(go); }
     }
-    // 0.15.38 (Nick 23:37): event content (a mount flagged isEventContent, hidden unless the mission allows event content).
+    // 0.15.38 (Nick 23:37), 0.15.39 (Nick 00:03: just the warhead can, wedged and strapped): event content (a mount flagged isEventContent, hidden unless the mission allows event content).
     // The stock GPO-N 1.5kt bomb strapped nose-down in seat 3. Firing it spawns the bomb as usual (it costs a warhead like
     // the stock bomb, its info is nuclear), but the plugin keeps it on the seat and plays a timer tick; the copy's own fuse
     // does the rest: arm delay 6 s and an altitude fuse so high that it goes off the moment it arms. It stays intangible
@@ -306,9 +306,122 @@ public static partial class UL2Builder
     // AI never picks it (effectiveness 0).
     const string XB_NAME = "Expedient 1.5kt Bomb";
     const string XB_DESC = "Volunteers needed. Single men only. Over 40 preferred.";
-    // pose in seat3_hp space: nose point and lean (deg, tail toward +x); set from the fit Nick picks
-    static readonly Vector3 XB_NOSE = new Vector3(-0.05f, -0.30f, 0.05f);   // Nick 23:42: nose on the seat 3 floor, leaned far right
-    const float XB_LEAN = 62f;   // tail fins stay clear under the rotor disc
+    // can pose in seat3_hp space: base centre on the blocks, axis leaned 12 deg back (toward the mast)
+    static readonly Vector3 XB_BASE = new Vector3(0f, -0.42f, 0.28f);   // foot where the ECM pod foot sits, ahead of the seat 3 cushion
+    static readonly Vector3 XB_AX = new Vector3(0f, 0.978f, -0.208f);
+    static readonly Vector3 XB_FW = new Vector3(0f, 0.208f, 0.978f);
+    class MB
+    {
+        public List<Vector3> v = new List<Vector3>(); public List<Vector3> n = new List<Vector3>(); public List<List<int>> t = new List<List<int>>();
+        public MB(int subs) { for (int i = 0; i < subs; i++) t.Add(new List<int>()); }
+        public void Quad(int sm, Vector3 a, Vector3 b, Vector3 c, Vector3 d)
+        {
+            var nn = Vector3.Cross(b - a, d - a).normalized; int k = v.Count;
+            v.Add(a); v.Add(b); v.Add(c); v.Add(d); n.Add(nn); n.Add(nn); n.Add(nn); n.Add(nn);
+            t[sm].AddRange(new[] { k, k + 2, k + 1, k, k + 3, k + 2 });
+        }
+        // ring band (smooth normals) from z0 to z1 at radius r, in a frame (o, x, y, z)
+        public void Tube(int sm, Vector3 o, Vector3 X, Vector3 Y, Vector3 Z, float r, float z0, float z1, int seg)
+        {
+            int k = v.Count;
+            for (int i = 0; i <= seg; i++) { float a = i * Mathf.PI * 2f / seg; var d = X * Mathf.Cos(a) + Y * Mathf.Sin(a); v.Add(o + d * r + Z * z0); n.Add(d); v.Add(o + d * r + Z * z1); n.Add(d); }
+            for (int i = 0; i < seg; i++) { int q = k + i * 2; t[sm].AddRange(new[] { q, q + 3, q + 1, q, q + 2, q + 3 }); }
+        }
+        public void Disc(int sm, Vector3 o, Vector3 X, Vector3 Y, Vector3 Z, float r, float z, bool up, int seg)
+        {
+            int c = v.Count; var nz = up ? Z : -Z; v.Add(o + Z * z); n.Add(nz);
+            for (int i = 0; i <= seg; i++) { float a = i * Mathf.PI * 2f / seg; v.Add(o + (X * Mathf.Cos(a) + Y * Mathf.Sin(a)) * r + Z * z); n.Add(nz); }
+            for (int i = 0; i < seg; i++) { if (up) t[sm].AddRange(new[] { c, c + 2 + i, c + 1 + i }); else t[sm].AddRange(new[] { c, c + 1 + i, c + 2 + i }); }
+        }
+        // a box from p0 to p1 (length axis), width w along wdir, thickness h
+        public void Strip(int sm, Vector3 p0, Vector3 p1, Vector3 wdir, float w, float h)
+        {
+            var L = p1 - p0; var W = Vector3.ProjectOnPlane(wdir, L.normalized).normalized * (w * 0.5f); var H = Vector3.Cross(L.normalized, W.normalized) * (h * 0.5f);
+            Box(sm, p0, L, W, H);
+        }
+        public void Box(int sm, Vector3 p0, Vector3 L, Vector3 W, Vector3 H)
+        {
+            Vector3 a = p0 - W - H, b = p0 + W - H, c = p0 + W + H, d = p0 - W + H;
+            Quad(sm, a, b, b + L, a + L); Quad(sm, b, c, c + L, b + L); Quad(sm, c, d, d + L, c + L); Quad(sm, d, a, a + L, d + L);
+            Quad(sm, a, d, c, b); Quad(sm, a + L, b + L, c + L, d + L);
+        }
+        public Mesh Make(string name)
+        {
+            var m = new Mesh(); m.name = name; m.SetVertices(v); m.SetNormals(n); m.subMeshCount = t.Count;
+            for (int i = 0; i < t.Count; i++) m.SetTriangles(t[i], i);
+            m.RecalculateBounds(); return m;
+        }
+    }
+    static Mesh SaveMesh(Mesh m, string path)
+    {
+        var old = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+        if (old == null) { AssetDatabase.CreateAsset(m, path); return m; }
+        old.Clear(); old.SetVertices(new List<Vector3>(m.vertices)); old.SetNormals(new List<Vector3>(m.normals)); old.subMeshCount = m.subMeshCount;
+        for (int i = 0; i < m.subMeshCount; i++) old.SetTriangles(m.GetTriangles(i), i);
+        old.RecalculateBounds(); EditorUtility.SetDirty(old); return old;
+    }
+    // the warhead can: the GPO-N centre body only (0.37 m across), 1.30 m long, with a slim lip and a small flat end
+    // cap at each end and a yellow band; matte mid-grey like the stock weapon bodies. Own mesh (local z = can axis).
+    static KeyValuePair<Mesh, Material[]> XbCan()
+    {
+        var mb = new MB(3); Vector3 o = Vector3.zero, X = Vector3.right, Y = Vector3.up, Z = Vector3.forward; int sg = 32;
+        mb.Tube(0, o, X, Y, Z, 0.185f, -0.63f, 0.63f, sg);
+        foreach (var sgn in new[] { -1f, 1f })
+        {
+            float e = 0.63f * sgn, f = 0.65f * sgn, g = 0.68f * sgn;
+            mb.Tube(2, o, X, Y, Z, 0.190f, Mathf.Min(e, f), Mathf.Max(e, f), sg);              // lip ring
+            mb.Disc(2, o, X, Y, Z, 0.190f, f, sgn > 0, sg);
+            mb.Tube(2, o, X, Y, Z, 0.165f, Mathf.Min(f, g), Mathf.Max(f, g), sg);              // end cap
+            mb.Disc(2, o, X, Y, Z, 0.165f, g, sgn > 0, sg);
+            for (int k = 0; k < 6; k++)                                                        // cap bolts
+            { float a = k * Mathf.PI / 3f; var p = (X * Mathf.Cos(a) + Y * Mathf.Sin(a)) * 0.13f + Z * g; mb.Box(2, p, Z * 0.012f * sgn, X * 0.012f, Y * 0.012f); }
+        }
+        mb.Tube(1, o, X, Y, Z, 0.1865f, 0.46f, 0.52f, sg);   // yellow band (clear of the upper strap)
+        var mesh = SaveMesh(mb.Make("UL2_xb_can"), ART + "UL2_xb_can.asset");
+        return new KeyValuePair<Mesh, Material[]>(mesh, new[] {
+            LitMat("UL2_xb_body", new Color32(84, 86, 84, 255), 0.45f, 0f),
+            LitMat("UL2_xb_yellow", new Color32(196, 160, 40, 255), 0.4f, 0f),
+            LitMat("UL2_xb_cap", new Color32(66, 68, 67, 255), 0.4f, 0.3f) });
+    }
+    // wood blocks and wedges under the can, two olive 6 in ratchet straps with steel ratchets, mast clamp and D-ring
+    static KeyValuePair<Mesh, Material[]> XbKit()
+    {
+        var mb = new MB(3); var A = XB_AX; var F = XB_FW; var X = Vector3.right; var B = XB_BASE;
+        // wood: two stacked blocks under the base, three wedges round it
+        mb.Box(2, B + new Vector3(0f, -0.095f, 0f), Vector3.up * 0.045f, X * 0.17f, Vector3.forward * 0.17f);
+        mb.Box(2, B + new Vector3(0f, -0.05f, 0f), Vector3.up * 0.04f, X * 0.15f, Vector3.forward * 0.15f);
+        for (int k = 0; k < 3; k++)
+        {
+            float a = Mathf.PI * 0.5f + k * Mathf.PI * 2f / 3f; var d = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+            var p = B + new Vector3(0f, -0.01f, 0f) + d * 0.24f; var side = Vector3.Cross(Vector3.up, d) * 0.05f;
+            Vector3 lo0 = p - side, lo1 = p + side, in0 = p - d * 0.12f - side, in1 = p - d * 0.12f + side, top0 = in0 + Vector3.up * 0.07f, top1 = in1 + Vector3.up * 0.07f;
+            mb.Quad(2, lo0, lo1, in1, in0); mb.Quad(2, lo1, lo0, top0, top1); mb.Quad(2, in0, in1, top1, top0);
+            mb.Quad(2, lo0, in0, top0, lo0); mb.Quad(2, lo1, top1, in1, lo1);
+        }
+        // straps: a ring round the can at 0.35 m and 1.00 m up its axis, then tails
+        foreach (var s in new[] { 0.35f, 1.00f })
+        {
+            var c = B + A * s; mb.Tube(0, c, X, F, A, 0.192f, -0.025f, 0.025f, 32); mb.Tube(0, c, X, F, A, 0.186f, 0.025f, -0.025f, 32);
+        }
+        var low = B + A * 0.35f;
+        foreach (var sx in new[] { -1f, 1f })
+        {
+            var p0 = low + X * 0.19f * sx; var p1 = new Vector3(0.085f * sx, -0.15f, -0.55f);
+            mb.Strip(0, p0, p1, A, 0.05f, 0.006f);
+            var mid = Vector3.Lerp(p0, p1, 0.45f); var dir = (p1 - p0).normalized;
+            mb.Box(1, mid - dir * 0.05f, dir * 0.10f, Vector3.ProjectOnPlane(A, dir).normalized * 0.035f, Vector3.Cross(dir, A).normalized * 0.018f * sx);   // ratchet
+            mb.Box(1, p1, -dir * 0.03f, X * 0.015f, Vector3.up * 0.015f);   // hook on the rail
+        }
+        var up0 = B + A * 1.00f - F * 0.19f; var up1 = new Vector3(0f, 0.56f, -0.50f);
+        mb.Strip(0, up0, up1, X, 0.05f, 0.006f);
+        mb.Box(1, new Vector3(0f, 0.56f, -0.53f) - Vector3.up * 0.03f, Vector3.up * 0.06f, X * 0.06f, Vector3.forward * 0.035f);   // mast clamp
+        mb.Tube(1, up1, X, Vector3.up, Vector3.forward, 0.025f, -0.006f, 0.006f, 12);                                              // D-ring
+        var mesh = SaveMesh(mb.Make("UL2_xb_kit"), ART + "UL2_xb_kit.asset");
+        return new KeyValuePair<Mesh, Material[]>(mesh, new[] {
+            LitMat("UL2_xb_strap", new Color32(86, 92, 52, 255), 0.15f, 0f),
+            LitMat("UL2_xb_steel", new Color32(150, 152, 155, 255), 0.5f, 0.8f),
+            LitMat("UL2_xb_wood", new Color32(150, 112, 68, 255), 0.2f, 0f) });
+    }
     static void Seat3XBomb()
     {
         // 1. the bomb itself: own prefab + definition + info, copied from the stock GPO-N
@@ -332,6 +445,11 @@ public static partial class UL2Builder
             sk.ApplyModifiedPropertiesWithoutUndo();
             foreach (var c in bgo.GetComponentsInChildren<Component>(true))
                 if (c != null && c.GetType().Name == "Parachute") { var ps = new SerializedObject(c); var od = ps.FindProperty("openDelayMin"); if (od != null) { od.floatValue = 999f; ps.ApplyModifiedPropertiesWithoutUndo(); } else log.AppendLine("xbomb: no openDelayMin"); }
+            // 0.15.39 (Nick 00:03): only the warhead can (centre section, small end caps), our own mesh
+            var can = XbCan();
+            var bmf = bgo.GetComponent<MeshFilter>(); bmf.sharedMesh = can.Key; bgo.GetComponent<MeshRenderer>().sharedMaterials = can.Value;
+            var cc = bgo.GetComponent<CapsuleCollider>(); if (cc != null) { cc.direction = 2; cc.center = Vector3.zero; cc.radius = 0.19f; cc.height = 1.36f; }
+            var blod = bgo.GetComponent<LODGroup>(); if (blod != null) Object.DestroyImmediate(blod);
             var tk = Find(bgo.transform, "UL2_tick"); if (tk == null) tk = New("UL2_tick", bgo.transform);
             tk.localPosition = Vector3.zero; tk.localRotation = Quaternion.identity;
             var src = tk.GetComponent<AudioSource>(); if (src == null) src = tk.gameObject.AddComponent<AudioSource>();
@@ -361,16 +479,24 @@ public static partial class UL2Builder
             var py = rt.Find("pylon");   // the stock bomb hangs under its pylon: lift it out, then drop the pylon
             var b = py.Find("bomb"); b.SetParent(rt, false); b.localScale = Vector3.one; b.name = "UL2_xbomb_mounted";   // the stock bomb carries an inverse of the pylon scale
             Object.DestroyImmediate(py.gameObject);
-            var n = new Vector3(-Mathf.Sin(XB_LEAN * Mathf.Deg2Rad), -Mathf.Cos(XB_LEAN * Mathf.Deg2Rad), 0f);
-            b.localRotation = Quaternion.LookRotation(n, Vector3.forward);
-            b.localPosition = XB_NOSE - n * 1.58f;   // bomb origin sits 1.58 m behind the nose tip (mesh z -2.02..1.58)
+            // the can stands on wood blocks and wedges on the seat 3 floor, leaned 12 deg back against the mast (like the
+            // ECM pod), held by two olive ratchet straps: the lower one round the seat back to the rear rails, the upper
+            // one to a D-ring clamped on the mast
+            var lod = b.GetComponent<LODGroup>(); if (lod != null) Object.DestroyImmediate(lod);
+            foreach (Transform ch in b) Object.DestroyImmediate(ch.gameObject);
+            var can2 = XbCan();
+            b.GetComponent<MeshFilter>().sharedMesh = can2.Key; b.GetComponent<MeshRenderer>().sharedMaterials = can2.Value;
+            b.localRotation = Quaternion.LookRotation(XB_AX, XB_FW); b.localPosition = XB_BASE + XB_AX * 0.68f;
+            var kit = New("UL2_xbkit", rt); kit.localPosition = Vector3.zero; kit.localRotation = Quaternion.identity;
+            var kv = XbKit();
+            kit.gameObject.AddComponent<MeshFilter>().sharedMesh = kv.Key; kit.gameObject.AddComponent<MeshRenderer>().sharedMaterials = kv.Value;
             var mm = C(b, "MountedMissile");
             var mso = new SerializedObject(mm); mso.FindProperty("info").objectReferenceValue = info; mso.ApplyModifiedPropertiesWithoutUndo();
             var m = SaveMount(go, "UL2_s3_xbomb", "nuclearBomb1_external", info, XB_NAME);
             var wso = new SerializedObject(m);
             wso.FindProperty("isEventContent").boolValue = true;
             wso.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
-            log.AppendLine("seat3 xbomb: def " + def.name + ", tick " + (tickClip != null) + ", nose " + XB_NOSE + " lean " + XB_LEAN);
+            log.AppendLine("seat3 xbomb: def " + def.name + ", tick " + (tickClip != null) + ", can on the seat, kit " + kv.Key.vertexCount + " verts");
         }
         catch (System.Exception ex) { log.AppendLine("SEAT3 xbomb ERROR " + ex); }
         finally { Object.DestroyImmediate(go); }
