@@ -21,7 +21,7 @@ FING = {   # x offset from the knuckle-line centre toward the thumb side, knuckl
     'ring': (-0.0105, 0.000, (0.045, 0.028, 0.023), 0.0107),
     'little': (-0.0300, -0.009, (0.035, 0.022, 0.020), 0.0096),
 }
-SPLIT = (0.42, 0.36, 0.22)         # how a finger's total curl spreads over its three joints
+SPLIT = (0.50, 0.32, 0.18)         # 0.15.53b: more curl at the base knuckle so the finger roots close on the object         # how a finger's total curl spreads over its three joints
 VOXEL = 0.0021
 LOG = []                           # build report (curl angles, triangle counts)
 
@@ -72,7 +72,8 @@ def _target_bvh(M):
     return BVHTree.FromPolygons(V, F) if F else None
 
 
-def glove(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top', palm_ang=-40.0, report=None):
+def glove(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top', palm_ang=-40.0, report=None, mat=None, cuff_mat=None):
+    mat = SEAT if mat is None else mat; cuff_mat = DARK if cuff_mat is None else cuff_mat
     if report is None: report = LOG
     M = Matrix(M) if M is not None else Matrix.Identity(4)
     top, bot = Vector(top), Vector(bot); ax = (bot - top).normalized()
@@ -88,17 +89,29 @@ def glove(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top', palm_ang=-40.0,
     cen = top + ax * 0.050
     O = cen + n * (rg + PALM_T * 0.5)                                            # palm centre, mid thickness
     bvh = _target_bvh(M)
+    # 0.15.53b (Nick 20:06: the hand must wrap, no open space at the base of the fingers): press the palm onto the held
+    # object. Sample the palm face and the knuckle line; slide the hand in along -n until the closest one is in contact
+    if bvh is not None:
+        best = None
+        for fy in (-0.35, 0.0, 0.30, 0.48):
+            for fx in (-0.028, 0.0, 0.028):
+                p = O + Y * (PALM_L * fy) + (-X * hs) * fx - n * (PALM_T * 0.5)
+                h = bvh.ray_cast(p + n * 0.05, -n, 0.30)
+                if h[0] is not None:
+                    gap = (h[0] - p).dot(-n)
+                    best = gap if best is None else min(best, gap)
+        if best is not None: O = O - n * (best - 0.0015)
     tmp = []                                                                     # capsules fused below
     def cap(p, q, r0, r1=None):
         r1 = r0 if r1 is None else r1
-        tmp.append(tube(f'_g_{len(tmp)}', p, q, r0, SEAT, segs=12, r1=r1, M=M))
-        tmp.append(ball(f'_g_{len(tmp)}', tuple(q), (r1, r1, r1), SEAT, M=M, seg=12))
+        tmp.append(tube(f'_g_{len(tmp)}', p, q, r0, mat, segs=12, r1=r1, M=M))
+        tmp.append(ball(f'_g_{len(tmp)}', tuple(q), (r1, r1, r1), mat, M=M, seg=12))
     # palm: a thick rounded slab, slightly cupped toward the grip at the heel
     K0 = O + Y * (PALM_L * 0.48)
     for fx in (-0.028, -0.009, 0.010, 0.028):
         a = O - Y * (PALM_L * 0.45) + T * fx * 0.85 - Z * 0.002; b = K0 + T * fx - Z * 0.001
         cap(a, b, PALM_T * 0.50, PALM_T * 0.46)
-    tmp.append(ball('_g_heel', tuple(O - Y * 0.030 - T * 0.020 - Z * 0.004), (0.026, 0.030, 0.016), SEAT, M=M, seg=14))
+    tmp.append(ball('_g_heel', tuple(O - Y * 0.030 - T * 0.020 - Z * 0.004), (0.026, 0.030, 0.016), mat, M=M, seg=14))
     # fingers
     curls = {}
     for nm, (fx, fy, lens, r) in FING.items():
@@ -109,9 +122,9 @@ def glove(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top', palm_ang=-40.0,
         ang = max(ang, math.radians(25))                                          # never dead straight
         curls[nm] = round(math.degrees(ang))
         P = _chain(root, Y, -X, lens, ang)
-        tmp.append(ball(f'_g_k{nm}', tuple(root), (r * 1.08, r * 1.08, r * 1.08), SEAT, M=M, seg=12))
+        tmp.append(ball(f'_g_k{nm}', tuple(root), (r * 1.08, r * 1.08, r * 1.08), mat, M=M, seg=12))
         for (p, q), r0, r1 in zip(zip(P, P[1:]), rads, rads[1:] + (r * 0.80,)): cap(p, q, r0, r1)
-        tmp.append(ball(f'_g_t{nm}', tuple(P[-1] + (P[-1] - P[-2]).normalized() * 0.002), (r * 0.82,) * 3, SEAT, M=M, seg=12))
+        tmp.append(ball(f'_g_t{nm}', tuple(P[-1] + (P[-1] - P[-2]).normalized() * 0.002), (r * 0.82,) * 3, mat, M=M, seg=12))
     # thumb: from the heel of the palm on the thumb side, opposing the fingers
     if thumb == 'top':        # pistol grip / binoculars: wraps the opposite way round the grip from the fingers
         tb = O + T * 0.036 - Y * 0.018 + Z * 0.002; d0 = (-Y * 0.30 + T * 0.80 - Z * 0.40).normalized()   # 0.15.53: starts clear of the grip
@@ -123,8 +136,8 @@ def glove(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top', palm_ang=-40.0,
     curls['thumb'] = round(math.degrees(ta))
     TP = _chain(tb, d0, t_ax, tl, ta, (0.25, 0.40, 0.35))
     for (p, q), r0, r1 in zip(zip(TP, TP[1:]), tr, tr[1:] + (0.0100,)): cap(p, q, r0, r1)
-    tmp.append(ball('_g_tt', tuple(TP[-1]), (0.0100,) * 3, SEAT, M=M, seg=12))
-    tmp.append(ball('_g_thenar', tuple((tb + TP[1]) / 2 - Z * 0.002), (0.020, 0.024, 0.016), SEAT, M=M, seg=12))
+    tmp.append(ball('_g_tt', tuple(TP[-1]), (0.0100,) * 3, mat, M=M, seg=12))
+    tmp.append(ball('_g_thenar', tuple((tb + TP[1]) / 2 - Z * 0.002), (0.020, 0.024, 0.016), mat, M=M, seg=12))
     # wrist toward the forearm
     ad = Vector(arm_dir).normalized(); W0 = O - Y * (PALM_L * 0.50) + Z * 0.002
     W1 = W0 + (ad * 0.7 - Y * 0.3).normalized() * 0.030
@@ -145,17 +158,17 @@ def glove(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top', palm_ang=-40.0,
     dg = bpy.context.evaluated_depsgraph_get(); ev = raw.evaluated_get(dg)
     bm = bmesh.new(); bm.from_mesh(ev.to_mesh()); raw.evaluated_get(dg).to_mesh_clear()
     bpy.data.objects.remove(raw); bpy.data.meshes.remove(me)
-    g = ul2lib.finish(tag, bm, SEAT, True, auto=False)
+    g = ul2lib.finish(tag, bm, mat, True, auto=False)
     # the wear: knuckle armour strip across the back of the knuckles, hook-and-loop wrist strap, cuff
     kc = K0 + Z * (PALM_T * 0.5 + 0.004) - Y * 0.004
     Rk = Matrix((T, Y, Z)).transposed()
     if Rk.determinant() < 0: Rk = Matrix((-T, Y, Z)).transposed()
     # (0.15.53 review: the flat knuckle slab did not follow the hand, removed)
     c1 = W1 + (W1 - W0).normalized() * 0.040
-    tube(f'{tag}_cuff', tuple(W1 - (W1 - W0).normalized() * 0.004), tuple(c1), 0.0305, DARK, segs=16, r1=0.0315, M=M)
-    ball(f'{tag}_cuff_cap', tuple(c1), (0.0315, 0.0315, 0.0315), DARK, M=M, seg=16)        # closed cuff end (no hollow tube from the front)
+    tube(f'{tag}_cuff', tuple(W1 - (W1 - W0).normalized() * 0.004), tuple(c1), 0.0305, cuff_mat, segs=16, r1=0.0315, M=M)
+    ball(f'{tag}_cuff_cap', tuple(c1), (0.0315, 0.0315, 0.0315), cuff_mat, M=M, seg=16)        # closed cuff end (no hollow tube from the front)
     sd = (W1 - W0).normalized(); sz = (Z - sd * Z.dot(sd)).normalized()
     Rs = Matrix((sd.cross(sz).normalized(), sd, sz)).transposed()
-    box(f'{tag}_cuff_strap', tuple(W1 + sd * 0.012 + sz * 0.030), (0.040, 0.020, 0.005), DARK, rot=tuple(Rs.to_euler()), bevel=0.0015, M=M)
+    box(f'{tag}_cuff_strap', tuple(W1 + sd * 0.012 + sz * 0.030), (0.040, 0.020, 0.005), cuff_mat, rot=tuple(Rs.to_euler()), bevel=0.0015, M=M)
     if report is not None: report.append(f'{tag}: curls {curls}, tris {sum(len(p.vertices) - 2 for p in g.data.polygons)}')
     return c1

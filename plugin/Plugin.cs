@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.53")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.54")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -48,6 +48,11 @@ namespace UL2Airtrike
                 var aimM = AccessTools.Method(AccessTools.TypeByName("Turret"), "AimTurret", new[] { typeof(Vector3) });
                 if (aimM != null) h.Patch(aimM, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreAimManual)));
                 Logger.LogInfo("UL-2 nose gun fixed-aim patch " + (aimM != null));
+                // 0.15.54 (Nick 20:59): the stock combat AI climbs its target height 5 m a second up to 200 m over the ground.
+                // For the UL-2 the target height is held low so it masks behind terrain; with the spotter aboard it may go higher.
+                var alt = AccessTools.Method(AccessTools.TypeByName("AIPilotCombatModes"), "ManageAltitude");
+                if (alt != null) h.Patch(alt, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostAltitude)));
+                Logger.LogInfo("UL-2 combat altitude patch " + (alt != null));
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
         }
@@ -109,6 +114,21 @@ namespace UL2Airtrike
             {
                 if (__instance == null || !__instance.name.StartsWith("UL2Airtrike")) return;
                 var rs = __instance.GetComponent<RotorSpinner>(); if (rs != null) rs.AiFilter();
+            }
+            catch { }
+        }
+        static FieldInfo fTh, fStAc;
+        static void PostAltitude(object __instance)
+        {
+            try
+            {
+                fStAc = fStAc ?? AccessTools.Field(__instance.GetType(), "aircraft");
+                var ac = fStAc?.GetValue(__instance) as Component;
+                if (ac == null || !ac.name.StartsWith("UL2Airtrike")) return;
+                var rs = ac.GetComponent<RotorSpinner>(); if (rs == null) return;
+                fTh = fTh ?? AccessTools.Field(__instance.GetType(), "targetHeight");
+                float th = (float)fTh.GetValue(__instance), cap = rs.SpotterAboard ? RotorSpinner.CAP_SPOT : RotorSpinner.CAP_LOW;
+                if (th > cap) fTh.SetValue(__instance, cap);
             }
             catch { }
         }
@@ -545,7 +565,7 @@ namespace UL2Airtrike
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 rotor lift: " + e); pRb = null; }
         }
-        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax, aiGamMin, aiObst = -1f; bool aiPilot;
+        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax, aiGamMin, aiObst = -1f; bool aiPilot, aiLanding;
         bool IsAI()
         {
             if ((aiChk -= Time.fixedDeltaTime) > 0f) return aiPilot; aiChk = 0.5f;
@@ -558,9 +578,10 @@ namespace UL2Airtrike
                     if (fState == null) fState = AccessTools.Field(p.GetType(), "currentState");
                     var st = fState?.GetValue(p);
                     aiPilot = st != null && st.GetType().Name.StartsWith("AI");
+                    aiLanding = aiPilot && st.GetType().Name.Contains("Landing");
                 }
             }
-            catch { aiPilot = false; }
+            catch { aiPilot = false; aiLanding = false; }
             return aiPilot;
         }
         // flight path limiter: the AI's pitch is kept at or nose-down of what holds the flight path at or below gammaMax
@@ -617,7 +638,18 @@ namespace UL2Airtrike
             if (alt < 1.5f) { aiGamMax = 0f; return spd < V80 ? Mathf.Max(p, 0f) : Mathf.Max(p, -0.3f); }   // no rotation before 80 km/h
             if (spd < V80) gMax = -4f * Mathf.InverseLerp(8f, 25f, alt);               // level near the ground, gentle dive with height
             else gMax = Mathf.Lerp(0f, 6f, Mathf.InverseLerp(V80, 30f, spd));          // shallow climb once speed builds
-            gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(120f, 220f, alt)));   // stay low: no climbing above ~150 m
+            // stay low (0.15.54, Nick 20:59: lower in combat, masking behind terrain): no climbing above ~45 m over the ground,
+            // or ~190 m with the spotter aboard so he can see over the terrain
+            if (SpotterAboard) gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(160f, 240f, alt)));
+            else gMax = Mathf.Min(gMax, Mathf.Lerp(6f, -2f, Mathf.InverseLerp(35f, 70f, alt)));
+            // 0.15.54 (Nick 20:21: AI held 20 m on the approach until it stalled): on a landing the floors below all read the
+            // runway ahead as ground to climb over, so the stock landing autopilot keeps the path and only the speed
+            // protection above stays on
+            if (aiLanding)
+            {
+                aiLevel = false; aiObst = -1f; aiGamMax = gMax; aiGamMin = -90f;
+                return Mathf.Max(p, Mathf.Clamp(0.08f * (gamma - gMax) + 0.02f * upRate, -0.35f, 0.7f));
+            }
             // 0.15.35 (Nick 22:05: lining up a seat 3 gun run it flies into the ground or obstacles): a floor on the flight
             // path from height above ground, plus a look-ahead along the flight path for terrain, trees and buildings
             float gMin = Mathf.Clamp(-(alt - 10f) * 0.5f, -15f, 0f);
@@ -695,18 +727,20 @@ namespace UL2Airtrike
         }
         void ScanKits()
         {
-            bool kit = false;
+            bool kit = false, spot = false;
             foreach (var c in partList)
             {
                 if (c == null) continue;
                 foreach (var t in c.GetComponentsInChildren<Transform>(true))
                 {
-                    if (t.name.StartsWith("UL2_s3kit_")) { if (t.GetComponent<Seat3Pose>() == null) t.gameObject.AddComponent<Seat3Pose>(); if (t.gameObject.activeInHierarchy) kit = true; }
+                    if (t.name.StartsWith("UL2_s3kit_")) { if (t.GetComponent<Seat3Pose>() == null) t.gameObject.AddComponent<Seat3Pose>(); if (t.gameObject.activeInHierarchy) { kit = true; if (t.name == "UL2_s3kit_spot") spot = true; } }
                     else if (t.name.StartsWith("UL2_harness") && t.name.Length == 12) { int k = t.name[11] - '1'; if (k >= 0 && k < 3) harness[k] = t.gameObject; }
                 }
             }
-            seat3Kit = kit;
+            seat3Kit = kit; spotKit = spot;
         }
+        bool spotKit; internal bool SpotterAboard => spotKit;
+        internal const float CAP_LOW = 35f, CAP_SPOT = 160f;   // combat target height over the ground, m
         // harnesses go with their occupant (Nick 21:58): pilot / copilot harness hides once that crewman has ejected,
         // the seat 3 lap belt shows only while a seat 3 kit (with its soldier) is loaded
         readonly GameObject[] harness = new GameObject[3]; bool seat3Kit; static FieldInfo fPilots, fEjected;
@@ -760,6 +794,7 @@ namespace UL2Airtrike
                     // right hand: wrist behind the grip, hand along it; left hand on the throttle knob
                     if (parms[1] != null) Reach(parms[1], jsT.TransformPoint(jsWrist), transform.TransformDirection(new Vector3(0.7f, -1f, -0.3f)), jsT.TransformDirection(new Vector3(-0.25f, 0.15f, 1f)).normalized);
                     if (parms[0] != null) Reach(parms[0], thT.TransformPoint(thWrist), transform.TransformDirection(new Vector3(-0.7f, -1f, -0.3f)), thT.TransformDirection(new Vector3(0.25f, 0.15f, 1f)).normalized);
+                    for (int i = 0; i < 2; i++) if (parms[i] != null) parms[i][2].localScale = Vector3.zero;
                     if (!parmsLogged) { parmsLogged = true; Plugin.Log.LogInfo("UL-2 pilot hands on stick and throttle, wrist miss R " + (parms[1] != null ? (parms[1][2].position - jsT.TransformPoint(jsWrist)).magnitude.ToString("0.000") : "-") + " L " + (parms[0] != null ? (parms[0][2].position - thT.TransformPoint(thWrist)).magnitude.ToString("0.000") : "-") + " m"); }
                 }
                 catch (Exception ex) { Plugin.Log.LogError("UL-2 pilot hands: " + ex); pil = null; }
@@ -773,10 +808,13 @@ namespace UL2Airtrike
                     float sx = i == 0 ? -1f : 1f;
                     // 0.15.31 (Nick 15:19): bigger handset with long handles; wrists sit behind and below the handles and the
                     // hands bend up along them, so the grip reads as holding a controller instead of clasped hands
-                    Reach(b, ctrl2.TransformPoint(new Vector3(sx * 0.103f, -0.109f, -0.072f)), ctrl2.TransformDirection(new Vector3(sx * 0.7f, -1f, -0.3f)),
+                    // 0.15.53b (Nick 19:03): his gloved hands are modelled on the handset (same gloves as the seat 3 kits); the
+                    // wrist goes to the glove cuff and the stock hand is folded away to nothing inside it
+                    Reach(b, ctrl2.TransformPoint(new Vector3(sx * 0.0868f, -0.0615f, -0.1683f)), ctrl2.TransformDirection(new Vector3(sx * 0.7f, -1f, -0.3f)),
                         ctrl2.TransformDirection(new Vector3(-sx * 0.31f, 0.86f, 0.42f)).normalized);
+                    b[2].localScale = Vector3.zero;
                 }
-                if (!armsLogged) { armsLogged = true; Plugin.Log.LogInfo("UL-2 copilot hands on the controller, wrist miss L " + (arms[0] != null ? (arms[0][2].position - ctrl2.TransformPoint(new Vector3(-0.103f, -0.109f, -0.072f))).magnitude.ToString("0.000") : "-") + " m"); }
+                if (!armsLogged) { armsLogged = true; Plugin.Log.LogInfo("UL-2 copilot hands on the controller, wrist miss L " + (arms[0] != null ? (arms[0][2].position - ctrl2.TransformPoint(new Vector3(-0.0868f, -0.0615f, -0.1683f))).magnitude.ToString("0.000") : "-") + " m"); }
             }
             catch (Exception ex) { Plugin.Log.LogError("UL-2 copilot hands: " + ex); ctrl2 = null; }
         }
@@ -1019,7 +1057,11 @@ namespace UL2Airtrike
                 }
             try
             {
-                foreach (var t in GetComponentsInChildren<Transform>(true))
+                // 0.15.54 (Nick 20:25: pilot hands not on the controls): the parts are detached from the root at spawn, so
+                // searching the root alone found no pilot, stick or throttle; search every part like the copilot does
+                var all = new List<Transform>(GetComponentsInChildren<Transform>(true));
+                foreach (var c in parts.Values) if (c != null) all.AddRange(c.GetComponentsInChildren<Transform>(true));
+                foreach (var t in all)
                 {
                     if (t.name == "pilot" && pil == null) pil = t;
                     else if (t.name == "joystick" && jsT == null) jsT = t;
@@ -1036,8 +1078,10 @@ namespace UL2Airtrike
                     }
                 // wrist points in the stick / throttle frames, from the aircraft-frame grip centres (stick grip 0, 0.193, 1.661;
                 // throttle knob 0.013, 0.163 above the lever root) with the wrist just behind and outboard of each grip
-                if (jsT != null) jsWrist = jsT.InverseTransformPoint(transform.TransformPoint(new Vector3(0.025f, 0.180f, 1.586f)));
-                if (thT != null) thWrist = thT.InverseTransformPoint(thT.position + transform.TransformDirection(new Vector3(-0.007f, 0.153f, -0.070f)));
+                // 0.15.54: gloved hands are modelled on the stick and throttle; the wrists go to the glove cuffs (mesh-local points
+                // in the stick / throttle frames, from the model) and the stock hands fold away inside them
+                jsWrist = new Vector3(0.0043f, 0.7555f, -0.2943f);
+                thWrist = new Vector3(0.0024f, 0.1243f, -0.1325f);
                 Plugin.Log.LogInfo("UL-2 pilot hands: pilot " + (pil != null) + " stick " + (jsT != null) + " throttle " + (thT != null) + " arms " + (parms[0] != null) + "/" + (parms[1] != null) + " exterior copies " + (exStick != null) + "/" + (exThr != null));
             }
             catch (Exception ex) { Plugin.Log.LogWarning("UL-2 pilot hands setup: " + ex.Message); }

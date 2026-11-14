@@ -149,12 +149,13 @@ class Gunner:
         # socket block bolted to the belt on the right hip
         # 2026-11-14 (Nick: the support clips through the gun and the body): the arm root runs on a rail round the front
         # of the belt, hip to hip, so a gun swung to the left side no longer drags the arm across the lap
-        for sx in (1, -1):
-            sk = Vector((sx * SOCKET.x, SOCKET.y, SOCKET.z))
-            box(f'hb_socket{sx}', tuple(sk), (0.06, 0.06, 0.07), DARK, bevel=0.008)
-            for k in range(2): tube(f'hb_bolt{sx}{k}', tuple(sk + Vector((sx * 0.028, -0.015 + 0.03 * k, -0.025))), tuple(sk + Vector((sx * 0.033, -0.015 + 0.03 * k, -0.025))), 0.006, MECH, segs=8)
-        for dz in (-0.022, 0.022):
-            pipe(f'hb_rail{dz > 0}', [tuple(q + Vector((0, 0, dz))) for q in RAIL], 0.0075, MECH, n=6, segs=8)
+        if mg.SUPPORT_ARM:   # 0.15.54: arm disabled (Nick 20:45), so no rail or sockets
+            for sx in (1, -1):
+                sk = Vector((sx * SOCKET.x, SOCKET.y, SOCKET.z))
+                box(f'hb_socket{sx}', tuple(sk), (0.06, 0.06, 0.07), DARK, bevel=0.008)
+                for k in range(2): tube(f'hb_bolt{sx}{k}', tuple(sk + Vector((sx * 0.028, -0.015 + 0.03 * k, -0.025))), tuple(sk + Vector((sx * 0.033, -0.015 + 0.03 * k, -0.025))), 0.006, MECH, segs=8)
+            for dz in (-0.022, 0.022):
+                pipe(f'hb_rail{dz > 0}', [tuple(q + Vector((0, 0, dz))) for q in RAIL], 0.0075, MECH, n=6, segs=8)
         hips_objs = list(ul2lib.PARTS['seat3_harness']['objs'])
         # back struts from the belt up to a shoulder yoke, straps over the shoulders to the chest plate
         st = []
@@ -474,6 +475,7 @@ class Gunner:
     def _arm(self):
         for o in self.arm_objs: bpy.data.objects.remove(o)
         part('seat3_arm'); ul2lib.PARTS['seat3_arm']['objs'] = []
+        if not mg.SUPPORT_ARM: self.arm_objs = []; self.arm_len = 0.0; return   # 0.15.54: support arm disabled (Nick 20:45)
         P = self.place
         hl = self._hinge_local(self.A); hinge = P @ hl
         hr = P.to_3x3() @ Vector((0, 0, 1))

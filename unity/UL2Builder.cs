@@ -1223,19 +1223,22 @@ public static partial class UL2Builder
         // 0.15.22 (Nick 04:05: a crash leaves it in one piece): the old strengths were 10x the Cricket's per kilogram
         // (an 8 kg blade on a 48 kN joint needs 600 g to come off). Now sized like the stock Cricket, about 20-35 g on
         // the mass each joint carries; control surfaces stay strong like stock; gear legs keep landing margin.
-        J("cockpit_R", "COIN_PLACEHOLDER", 12000f, "fuselage", 8000f);
-        J("cockpit_F", "COIN_PLACEHOLDER", 15000f, "cockpit_R", 8000f, "fuselage", 6000f);   // 0.15.5: every overlapping collider pair is jointed (stock joints switch their collision off), so nothing pushes apart at spawn
+        // 0.15.54 (Nick 20:32: a crash snaps the cockpit off and leaves the frame on): the pod is now tied hard to the keel (the
+        // root part) and the break line is in front of the engine: frame, mast, engine and tail hang on weaker joints, so a
+        // crash splits the aircraft there, and the tail booms come off behind the engine.
+        J("cockpit_R", "COIN_PLACEHOLDER", 26000f, "fuselage", 3500f);
+        J("cockpit_F", "COIN_PLACEHOLDER", 32000f, "cockpit_R", 20000f, "fuselage", 3000f);   // 0.15.5: every overlapping collider pair is jointed (stock joints switch their collision off), so nothing pushes apart at spawn
         J("nose", "cockpit_F", 3000f);
-        J("fuselage", "COIN_PLACEHOLDER", 15000f);
+        J("fuselage", "COIN_PLACEHOLDER", 9000f);
         J("intake", "fuselage", 5000f, "cockpit_R", 3000f, "COIN_PLACEHOLDER", 3000f);
-        J("mast", "fuselage", 25000f, "intake", 6000f, "COIN_PLACEHOLDER", 15000f, "cockpit_R", 8000f);   // carries head, blades and part of the engine
+        J("mast", "fuselage", 25000f, "intake", 6000f, "COIN_PLACEHOLDER", 8000f, "cockpit_R", 3000f);   // carries head, blades and part of the engine
         J("rotorHead", "mast", 15000f, "fuselage", 8000f);
-        J("engine_core", "mast", 15000f, "fuselage", 8000f, "COIN_PLACEHOLDER", 10000f);
+        J("engine_core", "mast", 15000f, "fuselage", 10000f, "COIN_PLACEHOLDER", 5000f);
         J("engine_L", "engine_core", 5000f); J("engine_R", "engine_core", 5000f);
         J("propHub", "engine_core", 6000f);
         J("gunmount_R", "COIN_PLACEHOLDER", 4000f, "cockpit_F", 2000f, "cockpit_R", 2000f);
         J("nacelle_L", "fuselage", 20000f, "COIN_PLACEHOLDER", 12000f); J("nacelle_R", "fuselage", 20000f, "COIN_PLACEHOLDER", 12000f);
-        J("tailboom_L", "fuselage", 7000f, "mast", 4000f, "engine_core", 3000f, "COIN_PLACEHOLDER", 4000f); J("tailboom_R", "tailboom_L", 8000f, "fuselage", 5000f, "mast", 4000f);
+        J("tailboom_L", "fuselage", 4500f, "mast", 2500f, "engine_core", 2000f, "COIN_PLACEHOLDER", 2500f); J("tailboom_R", "tailboom_L", 9000f, "fuselage", 3500f, "mast", 2500f);
         J("vstab1_L", "tailboom_R", 4000f, "tailboom_L", 2500f); J("vstab1_R", "vstab1_L", 2000f);
         J("rudder_L", "vstab1_L", 5000f); J("rudder_R", "vstab1_R", 5000f);
         foreach (var s in new[] { "L", "R" })
@@ -1387,7 +1390,7 @@ public static partial class UL2Builder
         so.FindProperty("maxSpeed").floatValue = 50f;
         so.FindProperty("takeoffSpeed").floatValue = 30f;          // 0.15.34: the AI rotates at 0.7x = 76 km/h (was 50)
         so.FindProperty("takeoffDistance").floatValue = 250f;
-        so.FindProperty("minimumRadarAlt").floatValue = 40f;       // 0.15.34: AI cruise floor, low-level flyer
+        so.FindProperty("minimumRadarAlt").floatValue = 20f;       // 0.15.54 (Nick 20:59: lower in combat): AI floor 40 -> 20 m
         so.FindProperty("verticalLanding").boolValue = false;
         so.FindProperty("turningRadius").floatValue = 300f;
         so.FindProperty("cornerSpeed").floatValue = 35f;

@@ -260,10 +260,12 @@ def windscreen3(name, y_end=2.03, ph=80, n=28, rows=6):
         col[0] = G[i][0] + (G[i][0] - G[i][1]).normalized() * 0.03
         ribbon(f'{name}_edge{k}', col, [G[i2][j] - G[i][j] for j in range(rows + 1)], [nrm_at(i, j) for j in range(rows + 1)], 0.020, 0.006)
 windscreen3('windscreen')
-# HUD combiner + projector on the glare shield
-box('hud_projector', (0, 2.19, 1.452), (0.10, 0.055, 0.032), DARK, bevel=0.008)
-box('hud_glass', (0, 2.135, 1.545), (0.13, 0.008, 0.11), GLASS, rot=(R(-22), 0, 0))
-for sx in (-1, 1): pipe(f'hud_arm{sx}', [(sx * 0.07, 2.19, 1.465), (sx * 0.072, 2.165, 1.50), (sx * 0.07, 2.142, 1.545)], 0.006, DARK, 4, segs=6)
+# HUD combiner + projector on the glare shield: off since 0.15.54 (Nick 20:40: the HUD is all on the helmet display)
+HUD_COMBINER = False
+if HUD_COMBINER:
+    box('hud_projector', (0, 2.19, 1.452), (0.10, 0.055, 0.032), DARK, bevel=0.008)
+    box('hud_glass', (0, 2.135, 1.545), (0.13, 0.008, 0.11), GLASS, rot=(R(-22), 0, 0))
+    for sx in (-1, 1): pipe(f'hud_arm{sx}', [(sx * 0.07, 2.19, 1.465), (sx * 0.072, 2.165, 1.50), (sx * 0.07, 2.142, 1.545)], 0.006, DARK, 4, segs=6)
 # instrument binnacle (initial): one MFD with side buttons, analog gauges around it
 # 0.15.5 (Nick 21:27): larger portrait MFD in the middle, smaller gauges either side, all inside the cowl skin
 # Nick 22:04: MFD as big as the red box (most of the panel), a Trident-style six-pack: three gauges stacked each side
@@ -391,6 +393,13 @@ ball('stick_castle_cap', (-0.0290, -0.004, 0.140), (0.0035, 0.0062, 0.0062), DAR
 # pinky lever: a curved paddle under the grip front
 sweep('stick_pinky', crom([(0, 0.022, 0.020), (0, 0.034, 0.015), (0, 0.040, 0.006), (0, 0.044, 0.004)], 6), rrect(0.024, 0.005, 0.002, 2), MECH, side=(1, 0, 0), M=GG)
 tube('stick_pinky_pivot', GG @ Vector((-0.015, 0.022, 0.020)), GG @ Vector((0.015, 0.022, 0.020)), 0.0032, MECH, 16)
+# 0.15.54 (Nick 20:25: the pilot's hands are not on the controls): gloved hands modelled on the stick and throttle like the
+# copilot handset; the plugin takes the wrists to the cuffs and folds the stock hands away
+sys.path.insert(0, '/mnt/project-files/ul2/art/scripts/seat3')
+import glove as _glove
+PILOT_CUFF = {}
+PILOT_CUFF['stick'] = _glove.glove('stick_glove_R', GG @ Vector((0, 0.002, 0.128)), GG @ Vector((0, 0.002, 0.0)), 1, GG.to_3x3() @ Vector((0, 1, 0)),
+                                   0.024, None, (0.30, -0.90, -0.35), 'front', mat=FDE_, cuff_mat=FABRIC_)
 part('cockpit_F')
 _bel = [(0.0, 0.060), (0.006, 0.060), (0.014, 0.046), (0.024, 0.052), (0.034, 0.036), (0.044, 0.042), (0.054, 0.027), (0.063, 0.032), (0.072, 0.020), (0.082, 0.018), (0.090, 0.017)]
 revolve('stick_boot', (0, 1.95, 0.445), (0.0, -0.06, 1), _bel, DARK, 28)
@@ -433,6 +442,10 @@ for k, (yy, zz) in enumerate(((0.016, 0.080), (-0.012, 0.068))):
 revolve('throttle_cursor', (0.0210, 0.002, 0.048), (1, 0, 0), [(-0.002, 0.0072), (0.0010, 0.0072), (0.0020, 0.0060), (0.0020, 0)], MECH, 20, M=TM)
 ball('throttle_cursor_nub', (0.0235, 0.002, 0.048), (0.0028, 0.0040, 0.0040), DARK, M=TM, seg=14)
 sweep('throttle_spdbrk', [TM @ Vector((0, 0.0315, 0.054)), TM @ Vector((0, 0.0335, 0.065)), TM @ Vector((0, 0.0315, 0.076))], rrect(0.013, 0.0045, 0.0018, 2), MECH, side=(1, 0, 0))
+PILOT_CUFF['throttle'] = _glove.glove('throttle_glove_L', TM @ Vector((0, 0, 0.082)), TM @ Vector((0, 0, 0.0)), -1, TM.to_3x3() @ Vector((0, 1, 0)),
+                                      0.024, None, (-0.30, -0.90, -0.35), 'front', mat=FDE_, cuff_mat=FABRIC_)
+_po = {'stick': Vector((0, 1.95, 0.47)), 'throttle': Vector((-0.32, 1.74, 1.17))}
+print('pilot glove cuffs, part local (model axes):', {k: tuple(round(c, 4) for c in (v - _po[k])) for k, v in PILOT_CUFF.items()}, _glove.LOG)
 part('cockpit_F')
 for sx in (-1, 1):
     # pedals 0.08 further aft so the stock pilot's boots reach them
@@ -823,6 +836,19 @@ for k in range(2):
 for k, (dx, dy) in enumerate(((0, 0.009), (0.009, 0), (0, -0.009), (-0.009, 0))):
     revolve(f'ctrl2_btn{k}', CS @ Vector((0.040 + dx, 0.010 + dy, 0.0105)), CN, [(0, 0.0042 * K2), (0.0055 * K2, 0.0042 * K2), (0.0065 * K2, 0.003 * K2), (0.0068 * K2, 0)], MECH if k % 2 else BLACK_, 16)
 box('ctrl2_cable', (0, 0.0, -0.028), (0.008, 0.008, 0.02), BLACK_, M=CS)
+# 0.15.53b (Nick 19:03: apply the improved hands to the copilot's controller): the copilot's own gloved hands are modelled
+# on the handset handles (the same contact-solved gloves as the seat 3 kits); the plugin hides the stock pilot hands
+# and puts his wrists on these cuffs. Palms under and behind each handle, fingers wrapping forward, thumbs at the sticks
+sys.path.insert(0, '/mnt/project-files/ul2/art/scripts/seat3')
+import glove as _glove
+CTRL2_CUFF = {}
+for sx in (-1, 1):
+    hp = crom([(sx * 0.030, -0.004, -0.006), (sx * 0.049, -0.030, -0.014), (sx * 0.057, -0.050, -0.025), (sx * 0.060, -0.066, -0.038)], 4)
+    top, bot = CS @ hp[3], CS @ hp[-1]
+    fwd = CM.to_3x3() @ Vector((0, 1, 0)) - CN * 0.6
+    arm = Vector((sx * 0.30, -0.90, -0.35))
+    CTRL2_CUFF[sx] = _glove.glove(f'ctrl2_glove_{"R" if sx > 0 else "L"}', top, bot, sx, fwd, 0.016, None, arm, 'top', mat=FDE_, cuff_mat=FABRIC_)
+print('ctrl2 glove cuffs (world, model coords):', {k: tuple(round(c, 4) for c in v) for k, v in CTRL2_CUFF.items()}, _glove.LOG)
 part('cockpit_R')
 # backup flight controls: short side stick on a right console, throttle lever on a left one
 for sx in (-1, 1):

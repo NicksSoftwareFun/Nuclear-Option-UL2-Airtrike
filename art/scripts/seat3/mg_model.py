@@ -28,6 +28,10 @@ def _bullet(name, x, y0, z, M):
 
 
 
+# 0.15.54 (Nick 20:45): with the better arm IK and hands the support arm is DISABLED for now (kept in the code; Nick decides
+# at release whether it is deleted). False: no arm, no belt rail / sockets on the harness, no yoke under the gun.
+SUPPORT_ARM = False
+
 NGAL_Y = 0.50   # laser aiming module centre on the front top rail, behind the backup sight (Nick 2026-11-12 13:01)
 
 
@@ -237,16 +241,19 @@ def build_gun(M):
         _bullet(f'mg_round{k}', x, 0.160, z, M)
         box(f'mg_link{k}', (x - 0.002, 0.185, z), (0.017, 0.012, 0.016), DARK, M=M)
     # flexible feed chute from the box mouth up the left side into the feed port
-    sweep('mg_chute', crom([(-W / 2 - 0.024, 0.205, -0.022), (-W / 2 - 0.022, 0.205, 0.010), (-W / 2 - 0.010, 0.205, 0.040), (-W / 2 + 0.004, 0.205, 0.058)], 6),
+    # 0.15.54 (Nick 21:04: something clips through the bullets): the chute ran straight through the belt once the pouch got
+    # shorter in 0.15.53; it is off, the belt itself climbs from the pouch mouth into the feed port
+    if False: sweep('mg_chute', crom([(-W / 2 - 0.024, 0.205, -0.022), (-W / 2 - 0.022, 0.205, 0.010), (-W / 2 - 0.010, 0.205, 0.040), (-W / 2 + 0.004, 0.205, 0.058)], 6),
           rect(0.008, 0.052), DARK, side=(0, 1, 0), smooth=False, M=M)
     box('mg_feedport', (-W / 2 - 0.002, 0.205, 0.058), (0.008, 0.06, 0.020), DARK, bevel=0.002, M=M)
     # support arm interface: rail clamp + U-yoke holding a ball (the arm post rises into it)
-    box('mg_mount_rail', (0, MOUNT.y, MOUNT.z + 0.002), (0.030, 0.06, 0.012), DARK, bevel=0.002, M=M)
-    for sx in (-1, 1):
-        box(f'mg_yoke{sx}', (sx * 0.026, MOUNT.y, MOUNT.z - 0.022), (0.008, 0.040, 0.050), DARK, bevel=0.002, M=M)
-    box('mg_yoke_top', (0, MOUNT.y, MOUNT.z), (0.060, 0.040, 0.008), DARK, bevel=0.002, M=M)
-    ball('mg_gimbal', tuple(MOUNT + Vector((0, 0, -0.028))), (0.0175, 0.0175, 0.0175), MECH, M=M, seg=14)
-    tube('mg_yoke_pin', (-0.030, MOUNT.y, MOUNT.z - 0.028), (0.030, MOUNT.y, MOUNT.z - 0.028), 0.005, MECH, segs=8, M=M)
+    if SUPPORT_ARM:
+        box('mg_mount_rail', (0, MOUNT.y, MOUNT.z + 0.002), (0.030, 0.06, 0.012), DARK, bevel=0.002, M=M)
+        for sx in (-1, 1):
+            box(f'mg_yoke{sx}', (sx * 0.026, MOUNT.y, MOUNT.z - 0.022), (0.008, 0.040, 0.050), DARK, bevel=0.002, M=M)
+        box('mg_yoke_top', (0, MOUNT.y, MOUNT.z), (0.060, 0.040, 0.008), DARK, bevel=0.002, M=M)
+        ball('mg_gimbal', tuple(MOUNT + Vector((0, 0, -0.028))), (0.0175, 0.0175, 0.0175), MECH, M=M, seg=14)
+        tube('mg_yoke_pin', (-0.030, MOUNT.y, MOUNT.z - 0.028), (0.030, MOUNT.y, MOUNT.z - 0.028), 0.005, MECH, segs=8, M=M)
 
 
 def _glove_wrap(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top'):

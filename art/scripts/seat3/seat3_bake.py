@@ -50,7 +50,7 @@ g = Gunner(Matrix.Identity(4), kind=KIND)
 look.crew(g); look.gun(g.gun_objs); look.gear(g)
 ao, so, pb = g.ao, g.so, g.ao.pose.bones
 DEF = [b.name for b in ao.data.bones if b.name in so.vertex_groups]
-BONES = DEF + ['gun'] + (['armU', 'armL'] if KIND == 'mg' else [])
+BONES = DEF + ['gun'] + (['armU', 'armL'] if KIND == 'mg' and mg.SUPPORT_ARM else [])   # 0.15.54: no arm bones while the arm is off
 S = Matrix(((1, 0, 0), (0, 0, 1), (0, 1, 0)))
 def U(v): return [round(v[0], 5), round(v[2], 5), round(v[1], 5)]
 
@@ -154,7 +154,7 @@ for o in g.harness_objs:
     if o.type == 'MESH':
         bn = o.parent_bone if o.parent_type == 'BONE' and o.parent_bone in BONES else 'chest'
         add_mesh(o, lambda vi, p, bn=bn: [[BONES.index(bn), 1.0]])
-if KIND == 'mg':
+if KIND == 'mg' and ARMREC:
     h, e, b = ARMREC['hip'], ARMREC['elbow'], ARMREC['bot']
     def seg_d(p, a0, a1):
         d = a1 - a0; t = max(0.0, min(1.0, (p - a0).dot(d) / d.length_squared)); return (a0 + d * t - p).length
