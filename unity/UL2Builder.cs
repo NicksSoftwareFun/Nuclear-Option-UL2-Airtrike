@@ -528,6 +528,26 @@ public static partial class UL2Builder
             keep.AddRange(ex); ObjArray(acx, "exteriorRenderers", keep.ToArray());
             log.AppendLine("exterior control copies " + ex.Count + ", exteriorRenderers " + keep.Count);
         }
+        // 0.15.65 (Nick 03:34): the gloves are part of the stick, throttle and handset meshes, so the cockpit view showed the
+        // pilot's gloves (and cuffs) floating on the controls. The cockpit-layer controls get a copy of the mesh without the
+        // glove submeshes; the exterior copies keep them, so the hands still show from outside like the stock pilots.
+        foreach (var nm in new[] { "joystick", "throttle", "UL2_ctrl2" })
+        {
+            var t = Need(nm); var mf = t.GetComponent<MeshFilter>(); var mr = t.GetComponent<MeshRenderer>(); if (mf == null || mr == null) continue;
+            var src = mf.sharedMesh; var mats = mr.sharedMaterials;
+            if (src.name.EndsWith("_bare")) continue;
+            var keepIdx = Enumerable.Range(0, Mathf.Min(src.subMeshCount, mats.Length)).Where(i => mats[i] == null || !mats[i].name.StartsWith("UL2_glove")).ToList();
+            string path = ART + src.name + "_bare.asset";
+            var me = AssetDatabase.LoadAssetAtPath<Mesh>(path); if (me == null) { me = new Mesh(); AssetDatabase.CreateAsset(me, path); }
+            me.Clear(); me.name = src.name + "_bare"; me.indexFormat = src.indexFormat;
+            me.vertices = src.vertices; me.normals = src.normals; me.tangents = src.tangents; me.uv = src.uv;
+            if (src.uv2 != null && src.uv2.Length > 0) me.uv2 = src.uv2;
+            me.subMeshCount = keepIdx.Count;
+            for (int k = 0; k < keepIdx.Count; k++) me.SetTriangles(src.GetTriangles(keepIdx[k]), k);
+            me.RecalculateBounds(); EditorUtility.SetDirty(me);
+            mf.sharedMesh = me; mr.sharedMaterials = keepIdx.Select(i => mats[i]).ToArray();
+            log.AppendLine("cockpit " + nm + ": gloves off (" + (src.subMeshCount - keepIdx.Count) + " submeshes)");
+        }
         // 0.15.63 (Nick 02:49): sleeve bridges. The stock hand is folded away inside our glove, which pinches the end of the
         // stock sleeve; a short tapered sleeve (glove cuff to forearm) covers the joint. The plugin puts each one on its wrist
         // every frame, pointing up the forearm. Exterior renderers like the pilots, so the cockpit view hides them too.

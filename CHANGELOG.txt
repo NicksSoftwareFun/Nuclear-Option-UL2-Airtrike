@@ -2,6 +2,7 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.66: with Lynchpin or Kingpin rockets selected, an AI UL-2 runs in and lases from 150 m instead of hugging the ground at 35 m (the rockets need a clear line to the laser spot the whole way in), and each rocket logs its lock, range and height every second. The pilots' gloves are no longer drawn in the cockpit view (the exterior view still shows them).
 - 0.15.65: the HUD rotor gauge is driven only by the aircraft you fly. Every UL-2 in the mission, AI ones too, was adding its own rpm dash to your gauge and pushing the readout further right, then writing its own rpm into it.
 - 0.15.64: AI UL-2s now wait until the nose laser is on the target before firing Lynchpin/Kingpin laser rockets (a rocket fired before the target was lased never found it and flew straight), and keep their height while the rockets are in flight so terrain doesn't cut the laser; the AGM-48 x2 now sits on the stock twin rack, so the pair no longer floats over the stub.
 - 0.15.63: pilot and copilot gloves now match the stock flight gloves (olive) and a short sleeve joins each glove to the forearm; AI UL-2s now fly the seven set loadouts (they were in the wrong list, so the game made up random ones such as triple ECM); AI landings no longer abort on touchdown (the landing AI read the height of the aircraft centre, 1.15 m above the wheels, as a bounce), same fix as the PB-22 and P220.
