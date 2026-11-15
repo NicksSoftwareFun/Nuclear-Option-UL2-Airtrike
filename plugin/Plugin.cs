@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.71")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.72")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -346,7 +346,7 @@ namespace UL2Airtrike
         readonly Dictionary<string, Quaternion> pedal2Rest = new Dictionary<string, Quaternion>();
         readonly Transform[][] arms = new Transform[2][]; bool armsLogged;
         // 0.15.35 (Nick 22:04): front pilot's right hand on the centre stick, left hand on the throttle (third person)
-        readonly Transform[][] parms = new Transform[2][]; Transform pil, jsT, thT, exStick, exThr; Vector3 jsWrist, thWrist; bool parmsLogged;
+        readonly Transform[][] parms = new Transform[2][]; Transform pil, jsT, thT, exStick, exThr; Vector3 jsWrist, thWrist; Quaternion jsHand, thHand; bool parmsLogged;
         readonly Transform[] slP = new Transform[2], slC = new Transform[2];   // 0.15.63 sleeve bridges (L, R)
         void Update()
         {
@@ -1026,11 +1026,12 @@ namespace UL2Airtrike
             {
                 try
                 {
-                    // right hand: wrist behind the grip, hand along it; left hand on the throttle knob
-                    if (parms[1] != null) Reach(parms[1], jsT.TransformPoint(jsWrist), transform.TransformDirection(new Vector3(0.7f, -1f, -0.3f)), jsT.TransformDirection(new Vector3(-0.25f, 0.15f, 1f)).normalized);
-                    if (parms[0] != null) Reach(parms[0], thT.TransformPoint(thWrist), transform.TransformDirection(new Vector3(-0.7f, -1f, -0.3f)), thT.TransformDirection(new Vector3(0.25f, 0.15f, 1f)).normalized);
-                    for (int i = 0; i < 2; i++) if (parms[i] != null) parms[i][2].localScale = Vector3.zero;
-                    Sleeves(slP, parms, true);
+                    // 0.15.72 (Nick 16:51): the stock skinned hand holds each grip, like the stock pilot does; the wrist goes to the
+                    // fitted point and the hand takes the fitted turn in the stick / throttle frame so its curled fist closes round
+                    // the grip, and the stock skin stretches the sleeve to it (no modelled gloves or sleeve bridges)
+                    if (parms[1] != null) { Reach(parms[1], jsT.TransformPoint(jsWrist), transform.TransformDirection(new Vector3(0.7f, -1f, -0.3f)), jsT.up); parms[1][2].rotation = jsT.rotation * jsHand; }
+                    if (parms[0] != null) { Reach(parms[0], thT.TransformPoint(thWrist), transform.TransformDirection(new Vector3(-0.7f, -1f, -0.3f)), thT.up); parms[0][2].rotation = thT.rotation * thHand; }
+                    Sleeves(slP, parms, false);
                     if (!parmsLogged) { parmsLogged = true; Plugin.Log.LogInfo("UL-2 pilot hands on stick and throttle, wrist miss R " + (parms[1] != null ? (parms[1][2].position - jsT.TransformPoint(jsWrist)).magnitude.ToString("0.000") : "-") + " L " + (parms[0] != null ? (parms[0][2].position - thT.TransformPoint(thWrist)).magnitude.ToString("0.000") : "-") + " m"); }
                 }
                 catch (Exception ex) { Plugin.Log.LogError("UL-2 pilot hands: " + ex); pil = null; }
@@ -1045,19 +1046,19 @@ namespace UL2Airtrike
                     float sx = i == 0 ? -1f : 1f;
                     // 0.15.31 (Nick 15:19): bigger handset with long handles; wrists sit behind and below the handles and the
                     // hands bend up along them, so the grip reads as holding a controller instead of clasped hands
-                    // 0.15.53b (Nick 19:03): his gloved hands are modelled on the handset (same gloves as the seat 3 kits); the
-                    // wrist goes to the glove cuff and the stock hand is folded away to nothing inside it
-                    Reach(b, ctrl2.TransformPoint(new Vector3(sx * 0.0868f, -0.0615f, -0.1683f)), ctrl2.TransformDirection(new Vector3(sx * 0.7f, -1f, -0.3f)),
-                        ctrl2.TransformDirection(new Vector3(-sx * 0.31f, 0.86f, 0.42f)).normalized);
-                    b[2].localScale = Vector3.zero;
+                    // 0.15.72: the stock hand holds each handle (fitted wrist point and turn in the handset frame)
+                    Reach(b, ctrl2.TransformPoint(i == 0 ? copWristL : copWristR), ctrl2.TransformDirection(new Vector3(sx * 0.7f, -1f, -0.3f)), ctrl2.up);
+                    b[2].rotation = ctrl2.rotation * (i == 0 ? copHandL : copHandR);
                 }
-                Sleeves(slC, arms, true);
-                if (!armsLogged) { armsLogged = true; Plugin.Log.LogInfo("UL-2 copilot hands on the controller, wrist miss L " + (arms[0] != null ? (arms[0][2].position - ctrl2.TransformPoint(new Vector3(-0.0868f, -0.0615f, -0.1683f))).magnitude.ToString("0.000") : "-") + " m"); }
+                Sleeves(slC, arms, false);
+                if (!armsLogged) { armsLogged = true; Plugin.Log.LogInfo("UL-2 copilot hands on the controller, wrist miss L " + (arms[0] != null ? (arms[0][2].position - ctrl2.TransformPoint(copWristL)).magnitude.ToString("0.000") : "-") + " m"); }
             }
             catch (Exception ex) { Plugin.Log.LogError("UL-2 copilot hands: " + ex); ctrl2 = null; }
         }
         // 0.15.63 (Nick 02:49): each sleeve bridge sits on its wrist and points up the forearm to the elbow, covering the
         // pinched end of the stock sleeve where the folded-away hand used to be
+        static readonly Vector3 copWristL = new Vector3(-0.09466f, -0.04383f, -0.15973f), copWristR = new Vector3(0.08807f, -0.06404f, -0.16565f);
+        static readonly Quaternion copHandL = new Quaternion(0.71101f, -0.17799f, -0.12251f, 0.66917f), copHandR = new Quaternion(0.67799f, 0.16489f, 0.02893f, 0.71576f);
         static void Sleeves(Transform[] sl, Transform[][] b, bool on)
         {
             for (int i = 0; i < 2; i++)
@@ -1346,8 +1347,9 @@ namespace UL2Airtrike
                 // throttle knob 0.013, 0.163 above the lever root) with the wrist just behind and outboard of each grip
                 // 0.15.54: gloved hands are modelled on the stick and throttle; the wrists go to the glove cuffs (mesh-local points
                 // in the stick / throttle frames, from the model) and the stock hands fold away inside them
-                jsWrist = new Vector3(0.0043f, 0.7555f, -0.2943f);
-                thWrist = new Vector3(0.0024f, 0.1243f, -0.1325f);
+                // 0.15.72: stock hands on the grips; the hand's grip hole (index side up) sits on each grip axis
+                jsWrist = new Vector3(0.03875f, 0.80026f, -0.29020f); jsHand = new Quaternion(-0.12153f, 0.71428f, 0.67946f, 0.11561f);
+                thWrist = new Vector3(-0.01908f, 0.14400f, -0.11770f); thHand = new Quaternion(0.11847f, 0.69711f, 0.69711f, -0.11847f);
                 Plugin.Log.LogInfo("UL-2 pilot hands: pilot " + (pil != null) + " stick " + (jsT != null) + " throttle " + (thT != null) + " arms " + (parms[0] != null) + "/" + (parms[1] != null) + " exterior copies " + (exStick != null) + "/" + (exThr != null));
             }
             catch (Exception ex) { Plugin.Log.LogWarning("UL-2 pilot hands setup: " + ex.Message); }

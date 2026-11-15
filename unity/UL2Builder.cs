@@ -571,18 +571,22 @@ public static partial class UL2Builder
                 var f = t.GetComponent<MeshFilter>(); if (f == null) f = t.gameObject.AddComponent<MeshFilter>();
                 var r = t.GetComponent<MeshRenderer>(); if (r == null) r = t.gameObject.AddComponent<MeshRenderer>();
                 f.sharedMesh = mf.sharedMesh; r.sharedMaterials = mr.sharedMaterials; r.shadowCastingMode = mr.shadowCastingMode; r.enabled = true;
-                {   // 0.15.68: a copy of the mesh with fabric UVs on the glove submeshes (the Blender UVs there are empty)
-                    var src2 = mf.sharedMesh; var gl = new HashSet<int>();
-                    for (int si = 0; si < src2.subMeshCount && si < mr.sharedMaterials.Length; si++)
-                        if (mr.sharedMaterials[si] != null && mr.sharedMaterials[si].name.StartsWith("UL2_glove")) foreach (var ix in src2.GetTriangles(si)) gl.Add(ix);
-                    string up = ART + src2.name + "_fabric.asset";
-                    var me = AssetDatabase.LoadAssetAtPath<Mesh>(up); if (me == null) { me = new Mesh(); AssetDatabase.CreateAsset(me, up); }
-                    me.Clear(); me.name = src2.name + "_fabric"; me.indexFormat = src2.indexFormat;
-                    var vv = src2.vertices; var nn = src2.normals; me.vertices = vv; me.normals = nn;
-                    if (src2.uv2 != null && src2.uv2.Length > 0) me.uv2 = src2.uv2;
-                    me.subMeshCount = src2.subMeshCount; for (int si = 0; si < src2.subMeshCount; si++) me.SetTriangles(src2.GetTriangles(si), si);
-                    me.SetUVs(0, BoxUV(vv, nn, src2.uv, gl)); me.RecalculateBounds(); me.RecalculateTangents(); EditorUtility.SetDirty(me);
-                    f.sharedMesh = me;
+                {   // 0.15.72 (Nick 16:51): the stock pilot hands hold the controls now, so the exterior copies drop the modelled
+                    // glove submeshes too (same mesh as the cockpit copy)
+                    var src2 = mf.sharedMesh; var mats2 = mr.sharedMaterials;
+                    var keep2 = Enumerable.Range(0, Mathf.Min(src2.subMeshCount, mats2.Length)).Where(i => mats2[i] == null || !mats2[i].name.StartsWith("UL2_glove")).ToList();
+                    string up = ART + src2.name.Replace("_bare", "") + "_bare.asset";
+                    var me = AssetDatabase.LoadAssetAtPath<Mesh>(up);
+                    if (me == null || !src2.name.EndsWith("_bare"))
+                    {
+                        if (me == null) { me = new Mesh(); AssetDatabase.CreateAsset(me, up); }
+                        me.Clear(); me.name = src2.name + "_bare"; me.indexFormat = src2.indexFormat;
+                        me.vertices = src2.vertices; me.normals = src2.normals; me.tangents = src2.tangents; me.uv = src2.uv;
+                        if (src2.uv2 != null && src2.uv2.Length > 0) me.uv2 = src2.uv2;
+                        me.subMeshCount = keep2.Count; for (int k = 0; k < keep2.Count; k++) me.SetTriangles(src2.GetTriangles(keep2[k]), k);
+                        me.RecalculateBounds(); EditorUtility.SetDirty(me);
+                    }
+                    f.sharedMesh = me; r.sharedMaterials = keep2.Select(i => mats2[i]).ToArray();
                 }
                 ex.Add(r);
             }
@@ -611,22 +615,14 @@ public static partial class UL2Builder
             mf.sharedMesh = me; mr.sharedMaterials = keepIdx.Select(i => mats[i]).ToArray();
             log.AppendLine("cockpit " + nm + ": gloves off (" + (src.subMeshCount - keepIdx.Count) + " submeshes)");
         }
-        // 0.15.63 (Nick 02:49): sleeve bridges. The stock hand is folded away inside our glove, which pinches the end of the
-        // stock sleeve; a short tapered sleeve (glove cuff to forearm) covers the joint. The plugin puts each one on its wrist
-        // every frame, pointing up the forearm. Exterior renderers like the pilots, so the cockpit view hides them too.
+        // 0.15.72 (Nick 16:51): the sleeve bridges are gone; the stock hand shows and its skin stretches the sleeve
+        foreach (var nm in new[] { "UL2_sleeve_PL", "UL2_sleeve_PR", "UL2_sleeve_CL", "UL2_sleeve_CR" })
+        { var t = Find(root, nm); if (t != null) Object.DestroyImmediate(t.gameObject); }
         {
-            var sl = new List<Object>(); var mesh = SleeveMesh();
-            foreach (var nm in new[] { "UL2_sleeve_PL", "UL2_sleeve_PR", "UL2_sleeve_CL", "UL2_sleeve_CR" })
-            {
-                var t = Find(root, nm) ?? New(nm, root); t.localPosition = Vector3.zero; t.localRotation = Quaternion.identity; t.localScale = Vector3.one; t.gameObject.layer = 0;
-                var f = t.GetComponent<MeshFilter>(); if (f == null) f = t.gameObject.AddComponent<MeshFilter>();
-                var r = t.GetComponent<MeshRenderer>(); if (r == null) r = t.gameObject.AddComponent<MeshRenderer>();
-                f.sharedMesh = mesh; r.sharedMaterials = new[] { MAT["UL2_sleeve"] }; sl.Add(r);
-            }
             var acx = C(root, "Aircraft"); var so = new SerializedObject(acx); var er = so.FindProperty("exteriorRenderers"); var keep = new List<Object>();
-            for (int i = 0; i < er.arraySize; i++) { var o = er.GetArrayElementAtIndex(i).objectReferenceValue; if (o != null && !sl.Contains(o)) keep.Add(o); }
-            keep.AddRange(sl); ObjArray(acx, "exteriorRenderers", keep.ToArray());
-            log.AppendLine("sleeve bridges " + sl.Count + ", exteriorRenderers " + keep.Count);
+            for (int i = 0; i < er.arraySize; i++) { var o = er.GetArrayElementAtIndex(i).objectReferenceValue; if (o != null) keep.Add(o); }
+            ObjArray(acx, "exteriorRenderers", keep.ToArray());
+            log.AppendLine("sleeve bridges removed, exteriorRenderers " + keep.Count);
         }
         // 5-point harnesses: own objects on the exterior renderer list, so the cockpit view hides them with the pilots (stock)
         {
