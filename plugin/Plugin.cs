@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.61")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.62")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -142,24 +142,27 @@ namespace UL2Airtrike
         }
         // ---------------------------------------------------------------- 0.15.56 tactics (Nick 23:14 / 23:15)
         internal static FieldInfo fMode, fEvade, fDest, fTkp, fWi, fObsc, fFollow, fLastFired, fName, fReq, fMaxR, fMissile, fGx, fGy, fGz;
-        internal static MethodInfo mGlobal; internal static Type tGP;
+        internal static MethodInfo mGlobal; internal static Type tGP; static bool tacFailed;
+        // stock GlobalPosition is an extension method (GlobalPositionExtensions.GlobalPosition(Transform)), not a Unit method
+        internal static Vector3 GlobalOf(Component c) { return GP(mGlobal.Invoke(null, new object[] { c.transform })); }
         internal static Vector3 GP(object g) { return new Vector3((float)fGx.GetValue(g), (float)fGy.GetValue(g), (float)fGz.GetValue(g)); }
         internal static object MakeGP(Vector3 v) { var g = Activator.CreateInstance(tGP); fGx.SetValue(g, v.x); fGy.SetValue(g, v.y); fGz.SetValue(g, v.z); return g; }
         static bool TacInit(object st)
         {
             if (fMode != null) return true;
+            if (tacFailed) return false;   // 0.15.62: look up once; a failed lookup retried every frame dropped the game to single-digit fps
             var t = st.GetType();
             fMode = AccessTools.Field(t, "attackMode"); fEvade = AccessTools.Field(t, "evadeMode"); fDest = AccessTools.Field(t, "destination");
             fTkp = AccessTools.Field(t, "targetKnownPosition"); fWi = AccessTools.Field(t, "currentWeaponInfo"); fObsc = AccessTools.Field(t, "targetObscured");
             fFollow = AccessTools.Field(t, "followTerrain"); fLastFired = AccessTools.Field(t, "lastFiredTime"); fName = AccessTools.Field(t, "stateDisplayName");
             fCurT = fCurT ?? AccessTools.Field(t, "currentTarget"); fTh = fTh ?? AccessTools.Field(t, "targetHeight");
             tGP = AccessTools.TypeByName("GlobalPosition"); fGx = AccessTools.Field(tGP, "x"); fGy = AccessTools.Field(tGP, "y"); fGz = AccessTools.Field(tGP, "z");
-            mGlobal = AccessTools.Method(AccessTools.TypeByName("Unit"), "GlobalPosition", Type.EmptyTypes);
+            mGlobal = AccessTools.Method(AccessTools.TypeByName("GlobalPositionExtensions"), "GlobalPosition", new[] { typeof(Transform) });
             var tWi = AccessTools.TypeByName("WeaponInfo"); fReq = AccessTools.Field(tWi, "targetRequirements"); fMissile = AccessTools.Field(tWi, "missile");
             fMaxR = AccessTools.Field(AccessTools.TypeByName("TargetRequirements"), "maxRange");
             bool ok = fMode != null && fEvade != null && fDest != null && fTkp != null && fName != null && mGlobal != null && fGx != null && fMaxR != null;
             Log.LogInfo("UL-2 tactics fields " + ok + (fDest == null ? " (no destination field)" : ""));
-            if (!ok) fMode = null;
+            if (!ok) { fMode = null; tacFailed = true; }
             return ok;
         }
         static void PostRadarWarning(object __instance, object source)
@@ -171,7 +174,7 @@ namespace UL2Airtrike
                 if (!(bool)t.GetField("detected").GetValue(source) || !(bool)t.GetField("isTarget").GetValue(source)) return;
                 var em = t.GetField("emitter").GetValue(source) as Component; if (em == null) return;
                 if (!TacInit(__instance)) return;
-                rs.RadarLock(GP(mGlobal.Invoke(em, null)));
+                rs.RadarLock(GlobalOf(em));
             }
             catch (Exception e) { Log.LogWarning("UL-2 radar warning: " + e.Message); }
         }
@@ -186,7 +189,7 @@ namespace UL2Airtrike
                 string tac = ev == "None" ? rs.Tactic(__instance, mode) : null;
                 fName.SetValue(__instance, tac != null ? "UL-2: " + tac : rs.stockName);  // spectator status box
             }
-            catch (Exception e) { Log.LogWarning("UL-2 tactics: " + e.Message); fMode = null; }
+            catch (Exception e) { Log.LogWarning("UL-2 tactics: " + e.Message); fMode = null; tacFailed = true; }
         }
         static void PostAltitude(object __instance)
         {
@@ -852,7 +855,7 @@ namespace UL2Airtrike
         }
         internal string Tactic(object st, string mode)
         {
-            Vector3 own = Plugin.GP(Plugin.mGlobal.Invoke(unit, null)), fwd = Flat(transform.forward).normalized;
+            Vector3 own = Plugin.GlobalOf(unit), fwd = Flat(transform.forward).normalized;
             var tgt = Plugin.fCurT.GetValue(st) as Component;
             Vector3 tpos = tgt != null ? Plugin.GP(Plugin.fTkp.GetValue(st)) : own;
             // RADAR SHY: a radar locked on, so turn side-on to it (beam it, so it loses the closing speed) and get down low.
