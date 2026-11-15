@@ -1167,6 +1167,10 @@ public static partial class UL2Builder
             // (0.15.5 destroyed the pylon with the missile inside it, so nothing spawned - Nick 22:02)
             var ms = go.GetComponentsInChildren<MonoBehaviour>(true).Where(mm => mm.GetType().Name == "MountedMissile").Select(mm => mm.transform).Distinct().ToList();
             foreach (var mt in ms) { mt.SetParent(go.transform, true); var lp = mt.localPosition; mt.localPosition = new Vector3(lp.x, y, lp.z); }
+            // 0.15.60 (Nick 02:07): the twin rack's two missiles were both named "agm1"; in game the second one came out with no
+            // info/mesh (only one AGM-48 showed and MountedMissile.AttachToHardpoint threw, breaking the whole loadout).
+            // Every missile gets its own name so each one resolves on its own path.
+            if (ms.Count > 1) foreach (var mt in ms) mt.name = "agm1_" + (mt.localPosition.x < 0f ? "L" : "R");
             var py = go.transform.Find("pylon"); if (py != null) Object.DestroyImmediate(py.gameObject);
             log.AppendLine(key + ": " + ms.Count + " missile(s) kept");
             var srcM = AssetDatabase.LoadMainAssetAtPath(Placeholder(src, "WeaponMount"));
