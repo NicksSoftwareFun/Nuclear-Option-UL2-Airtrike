@@ -61,7 +61,19 @@ public static partial class UL2Builder
     static Material[] Mats(string mesh)
     {
         bool g = GLOVED.Contains(mesh);
-        return Lget(mesh).mats.Select(m => g && (m == "UL2_fde" || m == "UL2_fabric") ? MAT["UL2_glove"] : MAT[m]).ToArray();
+        // 0.15.70 (Nick 16:44, tan bleed on the stick hat): the hand controls are tiny islands in the shared weathering atlas,
+        // a few texels each, so the tan glove islands next to them bled in. Close to the eye they use plain colours instead.
+        return Lget(mesh).mats.Select(m => g && (m == "UL2_fde" || m == "UL2_fabric") ? MAT["UL2_glove"] : g && CTL.ContainsKey(m) ? CtlMat(m) : MAT[m]).ToArray();
+    }
+    // the weathering atlas base colours (art/scripts/wx/ul2_kit_paint.py BASE): colour, smoothness, metallic
+    static readonly Dictionary<string, (Color32 c, float s, float m)> CTL = new Dictionary<string, (Color32, float, float)> {
+        { "UL2_dark", (new Color32(42, 44, 47, 255), 0.40f, 0f) }, { "UL2_mech", (new Color32(110, 112, 115, 255), 0.35f, 0.40f) },
+        { "UL2_black", (new Color32(34, 34, 33, 255), 0.52f, 0.40f) }, { "UL2_cockpit", (new Color32(60, 62, 65, 255), 0.30f, 0f) },
+        { "UL2_seat", (new Color32(70, 72, 74, 255), 0.25f, 0f) }, { "UL2_frame", (new Color32(175, 177, 180, 255), 0.40f, 0.20f) } };
+    static Material CtlMat(string m)
+    {
+        string k = m + "_ctl"; if (!MAT.ContainsKey(k)) { var v = CTL[m]; MAT[k] = LitMat(k, v.c, v.s, v.m); }
+        return MAT[k];
     }
     static void SetMesh(Transform t, string mesh)
     {
@@ -351,8 +363,8 @@ public static partial class UL2Builder
         MAT["UL2_fabric"] = LitMat("UL2_fabric", new Color32(166, 134, 94, 255), 0.03f, 0f);
         // 0.15.63 (Nick 02:49): pilot and copilot gloves in the stock flight glove olive, the sleeve bridges in the stock sleeve
         // green (both sampled from the stock pilot texture: hand 62,68,56, forearm 41,50,41)
-        MAT["UL2_glove"] = LitMat("UL2_glove", new Color32(62, 68, 56, 255), 0.18f, 0f);
-        MAT["UL2_sleeve"] = LitMat("UL2_sleeve", new Color32(41, 50, 41, 255), 0.10f, 0f);
+        MAT["UL2_glove"] = LitMat("UL2_glove", new Color32(50, 55, 45, 255), 0.18f, 0f);   // 0.15.70 (Nick 16:47): a little darker
+        MAT["UL2_sleeve"] = LitMat("UL2_sleeve", new Color32(36, 44, 36, 255), 0.10f, 0f);
         // 0.15.68 (Nick 04:14): textile weave on gloves and sleeves (own tiling twill, like the flight suit cloth)
         {
             string nP = ART + "UL2_fabric_n.png", bP = ART + "UL2_fabric_b.png";
@@ -363,7 +375,7 @@ public static partial class UL2Builder
             {
                 var m = MAT[k];
                 if (bT != null) { if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", bT); if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", bT); }
-                if (nT != null && m.HasProperty("_BumpMap")) { m.SetTexture("_BumpMap", nT); m.SetFloat("_BumpScale", 1f); m.EnableKeyword("_NORMALMAP"); }
+                if (nT != null && m.HasProperty("_BumpMap")) { m.SetTexture("_BumpMap", nT); m.SetFloat("_BumpScale", 0.35f); m.EnableKeyword("_NORMALMAP"); }   // 0.15.70 (Nick 16:47): weave was too deep for a glove
                 EditorUtility.SetDirty(m);
             }
             log.AppendLine("fabric on gloves/sleeves: normal " + (nT != null) + ", weave " + (bT != null));
@@ -394,6 +406,8 @@ public static partial class UL2Builder
             AeroAndDamage();
             Lods();
             SkinRegister();
+            TreadTyres(root);   // 0.15.70: after Gear() has put the main gear meshes on
+            FlatBezel(root);
             root.name = "UL2Airtrike";
             PrefabUtility.SaveAsPrefabAsset(root.gameObject, DST);
             log.AppendLine("saved " + DST);
@@ -508,11 +522,12 @@ public static partial class UL2Builder
             {
                 var o = Find(cf, "UL2_gauge_adi"); if (o) Object.DestroyImmediate(o.gameObject);
                 Vector3 c0 = P("x_gf_adi"); var rot = Quaternion.LookRotation(nrm, Vector3.up);
-                var bp = Find(cf, "UL2_gauge_adiball") ?? New("UL2_gauge_adiball", cf); bp.position = c0; bp.rotation = rot;
+                // 0.15.70 (Nick 16:55, half the pitch shown): the pivot sits at the sphere centre, so the ball turns about itself
+                var bp = Find(cf, "UL2_gauge_adiball") ?? New("UL2_gauge_adiball", cf); bp.position = c0 + rot * new Vector3(0f, 0f, -0.0155f); bp.rotation = rot;
                 var bm = Find(bp, "ball") ?? New("ball", bp); bm.localPosition = Vector3.zero; bm.localRotation = Quaternion.identity;
                 var bf = bm.GetComponent<MeshFilter>(); if (bf == null) bf = bm.gameObject.AddComponent<MeshFilter>();
                 var br = bm.GetComponent<MeshRenderer>(); if (br == null) br = bm.gameObject.AddComponent<MeshRenderer>();
-                bf.sharedMesh = AdiBall(0.0235f, -0.0155f); br.sharedMaterial = PicMat("UL2_adi_ball_img");
+                bf.sharedMesh = AdiBall(0.0235f, 0f); br.sharedMaterial = PicMat("UL2_adi_ball_img");
                 var sy = Find(cf, "UL2_gface_adisym") ?? New("UL2_gface_adisym", cf); sy.position = c0; sy.rotation = rot;
                 var sf = sy.GetComponent<MeshFilter>(); if (sf == null) sf = sy.gameObject.AddComponent<MeshFilter>();
                 var sr = sy.GetComponent<MeshRenderer>(); if (sr == null) sr = sy.gameObject.AddComponent<MeshRenderer>();
@@ -914,7 +929,7 @@ public static partial class UL2Builder
             // never retracts: the gear key only switches the aircraft's gear state (lights, weapon safeties, AI)
             Set(lg, "foldDegrees", 0f); Set(lg, "foldSpeed", 1000f); Set(lg, "hingeFoldMotion", Vector3.zero);
             Size(lg, "gearDoors", 0);
-            Set(lg, "extendedDrag", 0.1f);   // 0.15.9: fixed gear drag 0.3 -> 0.1
+            Set(lg, "extendedDrag", 0.2f);   // 0.15.9: fixed gear drag 0.3 -> 0.1; 0.15.71: 0.2
             // Cricket rough-field values kept (travel, friction, contact area); springs scaled to the lighter aircraft
             if (g == "F") { Set(lg, "wheelRadius", 0.24f); Set(lg, "springRate", 60000f); Set(lg, "dampingRate", 5000f); Set(lg, "mass", 15f); }
             // 0.15.7 (Nick 22:36: tips over while taxiing): stiffer, better damped mains and less nose steering lock
@@ -1042,6 +1057,172 @@ public static partial class UL2Builder
         var nn = new Vector3[vs.Count]; for (int i = 0; i < nn.Length; i++) nn[i] = Vector3.forward; me.normals = nn;
         me.RecalculateBounds(); EditorUtility.SetDirty(me); return me;
     }
+    // 0.15.70 (Nick 16:42, wheels too bland): each tyre is rebuilt from its old size with a rounder profile (sidewall bulge,
+    // rim protector ridge, shoulders, 64 segments) in two submeshes: the tread band with a tiling block tread (u round the
+    // tyre, v across it) and the sidewalls as flat discs carrying moulded lettering. Own colour + normal maps (tyre_tex.py).
+    static Material TyreMat(string name, string tex)
+    {
+        var m = LitMat(name, Color.white, 0.18f, 0f);
+        string bP = ART + tex + "_b.png", nP = ART + tex + "_n.png";
+        var ti = AssetImporter.GetAtPath(nP) as TextureImporter;
+        if (ti != null && ti.textureType != TextureImporterType.NormalMap) { ti.textureType = TextureImporterType.NormalMap; ti.SaveAndReimport(); }
+        var tb = AssetImporter.GetAtPath(bP) as TextureImporter;
+        if (tb != null && tb.anisoLevel != 8) { tb.anisoLevel = 8; tb.SaveAndReimport(); }
+        var bT = AssetDatabase.LoadAssetAtPath<Texture2D>(bP); var nT = AssetDatabase.LoadAssetAtPath<Texture2D>(nP);
+        if (bT != null) { m.SetTexture("_BaseMap", bT); if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", bT); }
+        if (nT != null) { m.SetTexture("_BumpMap", nT); m.SetFloat("_BumpScale", 1f); m.EnableKeyword("_NORMALMAP"); }
+        EditorUtility.SetDirty(m); return m;
+    }
+    // 0.15.70 (Nick 16:51): the MFD bezel was smooth shaded across its flat faces and hard edges, so light rolled over it like
+    // a curved surface. Around the pilot MFD the cockpit mesh gets 30 degree auto-smooth normals: faces flat, edges crisp.
+    static void FlatBezel(Transform root)
+    {
+        var scr = root.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "targetScreen");
+        var mr = root.GetComponentsInChildren<MeshRenderer>(true).FirstOrDefault(r => r.name == "cockpit_F");
+        if (scr == null || mr == null || scr.GetComponent<Renderer>() == null) { log.AppendLine("bezel: screen or cockpit_F missing"); return; }
+        var mf = mr.GetComponent<MeshFilter>(); var src = mf.sharedMesh; if (src.name.EndsWith("_bz")) return;
+        var wb = scr.GetComponent<Renderer>().bounds; var tr = mr.transform;
+        System.Func<Vector3, bool> inside = p => { var w = tr.TransformPoint(p) - wb.center; return Mathf.Abs(w.x) < wb.extents.x + 0.05f && Mathf.Abs(w.y) < wb.extents.y + 0.05f && Mathf.Abs(w.z) < 0.08f; };
+        var V = new List<Vector3>(src.vertices); var N = new List<Vector3>(src.normals); var U = new List<Vector2>(src.uv);
+        var U2 = src.uv2 != null && src.uv2.Length == V.Count ? new List<Vector2>(src.uv2) : null;
+        var subs = new List<int[]>(); for (int si = 0; si < src.subMeshCount; si++) subs.Add(src.GetTriangles(si));
+        // region faces and their normals, grouped by welded corner position
+        var faces = new List<(int s, int t, Vector3 n)>(); var byPos = new Dictionary<Vector3Int, List<int>>();
+        System.Func<Vector3, Vector3Int> key = p => new Vector3Int(Mathf.RoundToInt(p.x * 2000f), Mathf.RoundToInt(p.y * 2000f), Mathf.RoundToInt(p.z * 2000f));
+        for (int si = 0; si < subs.Count; si++)
+        {
+            var T = subs[si];
+            for (int t = 0; t < T.Length; t += 3)
+            {
+                Vector3 a = V[T[t]], b = V[T[t + 1]], c = V[T[t + 2]];
+                if (!(inside(a) && inside(b) && inside(c))) continue;
+                var cr = Vector3.Cross(b - a, c - a); if (cr.sqrMagnitude < 1e-14f) continue;
+                int fi = faces.Count; faces.Add((si, t, cr));   // area-weighted
+                foreach (var p in new[] { a, b, c }) { var k = key(p); if (!byPos.TryGetValue(k, out var l)) byPos[k] = l = new List<int>(); l.Add(fi); }
+            }
+        }
+        float cos = Mathf.Cos(30f * Mathf.Deg2Rad); int added = 0;
+        foreach (var f in faces)
+        {
+            var T = subs[f.s]; var fn = f.n.normalized;
+            for (int j = 0; j < 3; j++)
+            {
+                int vi = T[f.t + j]; var sum = Vector3.zero;
+                foreach (var o in byPos[key(V[vi])]) if (Vector3.Dot(faces[o].n.normalized, fn) > cos) sum += faces[o].n;
+                V.Add(V[vi]); N.Add(sum.normalized); U.Add(vi < U.Count ? U[vi] : Vector2.zero); if (U2 != null) U2.Add(U2[vi]);
+                T[f.t + j] = V.Count - 1; added++;
+            }
+        }
+        string path = ART + src.name + "_bz.asset";
+        var me = AssetDatabase.LoadAssetAtPath<Mesh>(path); if (me == null) { me = new Mesh(); AssetDatabase.CreateAsset(me, path); }
+        me.Clear(); me.name = src.name + "_bz"; me.indexFormat = V.Count > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : src.indexFormat;
+        me.SetVertices(V); me.SetNormals(N); me.SetUVs(0, U); if (U2 != null) me.SetUVs(1, U2);
+        me.subMeshCount = subs.Count; for (int si = 0; si < subs.Count; si++) me.SetTriangles(subs[si], si);
+        me.RecalculateBounds(); me.RecalculateTangents(); EditorUtility.SetDirty(me); mf.sharedMesh = me;
+        log.AppendLine("bezel: " + faces.Count + " faces re-shaded round the MFD, verts " + src.vertexCount + " -> " + V.Count);
+    }
+    static void TreadTyres(Transform root)
+    {
+        var tread = TyreMat("UL2_tread", "UL2_tread"); var side = TyreMat("UL2_tyreside", "UL2_tyreside");
+        foreach (var mr in root.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            var mats = mr.sharedMaterials; int ti = System.Array.FindIndex(mats, x => x != null && x.name == "UL2_tyre"); if (ti < 0) continue;
+            var mf = mr.GetComponent<MeshFilter>(); var src = mf.sharedMesh; if (src.name.EndsWith("_tread")) continue;
+            var sv = src.vertices; var ids = src.GetTriangles(ti).Distinct().ToArray();
+            var bb = new Bounds(sv[ids[0]], Vector3.zero); foreach (var i in ids) bb.Encapsulate(sv[i]);
+            Vector3 c = bb.center; float r = Mathf.Max(bb.size.y, bb.size.z) * 0.5f, w = bb.size.x, hub = 9f;
+            foreach (var i in ids) hub = Mathf.Min(hub, new Vector2(sv[i].y - c.y, sv[i].z - c.z).magnitude);
+            hub /= 1.02f;
+            // profile (x across, radius), from one bead to the other; tread band = the points between the shoulders
+            var pr = new List<Vector2> {
+                new Vector2(-w / 2 + 0.012f, hub * 1.02f), new Vector2(-w / 2 + 0.001f, hub * 1.10f), new Vector2(-w / 2 - 0.003f, r * 0.70f),
+                new Vector2(-w / 2 - 0.006f, r * 0.80f), new Vector2(-w / 2 - 0.004f, r * 0.84f), new Vector2(-w / 2 - 0.008f, r * 0.865f),
+                new Vector2(-w / 2 - 0.004f, r * 0.89f), new Vector2(-w / 2 + 0.003f, r * 0.935f), new Vector2(-w * 0.44f, r * 0.968f) };
+            int nSide = pr.Count;
+            var crown = new[] { new Vector2(-w * 0.36f, r * 0.990f), new Vector2(-w * 0.18f, r * 0.999f), new Vector2(0f, r) };
+            var full = new List<Vector2>(pr); full.AddRange(crown);
+            for (int k = crown.Length - 2; k >= 0; k--) full.Add(new Vector2(-crown[k].x, crown[k].y));
+            for (int k = pr.Count - 1; k >= 0; k--) full.Add(new Vector2(-pr[k].x, pr[k].y));
+            int P = full.Count, S = 64, reps = r > 0.25f ? 12 : 10;
+            // profile normals (2D, outward) from neighbours
+            var pn = new Vector2[P];
+            for (int k = 0; k < P; k++) { var a = full[Mathf.Max(k - 1, 0)]; var b = full[Mathf.Min(k + 1, P - 1)]; var t = (b - a).normalized; pn[k] = new Vector2(t.y, -t.x); }
+            // the tread runs from the last sidewall point on one side to the first on the other; sidewall rings are shared by
+            // index ranges, the tread band gets its own copy of the edge rings (different UVs)
+            float vx0 = full[nSide - 1].x, vx1 = -vx0;
+            var V = new List<Vector3>(sv); var N = new List<Vector3>(src.normals); var U = new List<Vector2>(src.uv);
+            while (U.Count < V.Count) U.Add(Vector2.zero);
+            var triT = new List<int>(); var triS = new List<int>();
+            System.Func<int, int, bool, int> add = null;
+            var map = new Dictionary<long, int>();
+            add = (k, j, isTread) =>
+            {
+                long key = ((long)k * 1000 + j) * 2 + (isTread ? 1 : 0); if (map.TryGetValue(key, out var idx)) return idx;
+                float ang = 2f * Mathf.PI * j / S; float ca = Mathf.Cos(ang), sa = Mathf.Sin(ang);
+                var q = full[k]; var p = new Vector3(c.x + q.x, c.y + q.y * ca, c.z + q.y * sa);
+                var nn = new Vector3(pn[k].x, pn[k].y * ca, pn[k].y * sa).normalized;
+                Vector2 uv;
+                if (isTread) uv = new Vector2((float)j / S * reps, Mathf.InverseLerp(vx0, vx1, q.x));
+                else { float sgn = q.x < 0f ? -1f : 1f; uv = new Vector2(0.5f + sgn * q.y * ca / (2f * r), 0.5f + q.y * sa / (2f * r)); }
+                V.Add(p); N.Add(nn); U.Add(uv); idx = V.Count - 1; map[key] = idx; return idx;
+            };
+            for (int k = 0; k < P - 1; k++)
+            {
+                bool isTread = k >= nSide - 1 && k + 1 <= P - nSide;
+                for (int j = 0; j < S; j++)
+                {
+                    int a0 = add(k, j, isTread), a1 = add(k, j + 1, isTread), b0 = add(k + 1, j, isTread), b1 = add(k + 1, j + 1, isTread);
+                    (isTread ? triT : triS).AddRange(new[] { a0, b0, a1, a1, b0, b1 });
+                }
+            }
+            // winding: outward normal must agree with the triangle normal; test one tread triangle and flip all if not
+            {
+                var t0 = triT; Vector3 cr = Vector3.Cross(V[t0[1]] - V[t0[0]], V[t0[2]] - V[t0[0]]);
+                if (Vector3.Dot(cr, N[t0[0]]) < 0f) foreach (var L in new[] { triT, triS }) for (int q = 0; q < L.Count; q += 3) { int tmp = L[q + 1]; L[q + 1] = L[q + 2]; L[q + 2] = tmp; }
+            }
+            // rim detail (same pass): a rounded flange lip where the tyre bead sits and a pressed ring on the wheel face, both sides
+            var triR = new List<int>();
+            foreach (var sg in new[] { -1f, 1f })
+            {
+                float x0 = sg * w * 0.46f;
+                var rp = new[] {   // (x offset outward from the rim face, radius)
+                    new Vector2(0f, hub * 1.10f), new Vector2(0.004f, hub * 1.09f), new Vector2(0.007f, hub * 1.05f), new Vector2(0.006f, hub * 1.00f), new Vector2(0f, hub * 0.97f),
+                    new Vector2(0f, hub * 0.91f), new Vector2(0.003f, hub * 0.89f), new Vector2(0.004f, hub * 0.85f), new Vector2(0.003f, hub * 0.81f), new Vector2(0f, hub * 0.79f) };
+                for (int seg = 0; seg < 2; seg++)
+                {
+                    int o = seg * 5; var ring = new List<int>[5];
+                    for (int k = 0; k < 5; k++)
+                    {
+                        ring[k] = new List<int>();
+                        var a2 = rp[o + Mathf.Max(k - 1, 0)]; var b2 = rp[o + Mathf.Min(k + 1, 4)]; var tg = (b2 - a2).normalized; var pn2 = new Vector2(tg.y, -tg.x);
+                        if (pn2.x < 0f) pn2 = -pn2;   // outward = away from the wheel centre plane
+                        for (int j = 0; j <= S; j++)
+                        {
+                            float ang = 2f * Mathf.PI * j / S; float ca = Mathf.Cos(ang), sa = Mathf.Sin(ang); var q = rp[o + k];
+                            V.Add(new Vector3(c.x + x0 + sg * q.x, c.y + q.y * ca, c.z + q.y * sa));
+                            N.Add(new Vector3(sg * pn2.x, pn2.y * ca, pn2.y * sa).normalized); U.Add(Vector2.zero); ring[k].Add(V.Count - 1);
+                        }
+                    }
+                    var tl = new List<int>();
+                    for (int k = 0; k < 4; k++) for (int j = 0; j < S; j++) tl.AddRange(new[] { ring[k][j], ring[k + 1][j], ring[k][j + 1], ring[k][j + 1], ring[k + 1][j], ring[k + 1][j + 1] });
+                    Vector3 cr2 = Vector3.Cross(V[tl[1]] - V[tl[0]], V[tl[2]] - V[tl[0]]);
+                    if (Vector3.Dot(cr2, N[tl[0]]) < 0f) for (int q = 0; q < tl.Count; q += 3) { int tmp = tl[q + 1]; tl[q + 1] = tl[q + 2]; tl[q + 2] = tmp; }
+                    triR.AddRange(tl);
+                }
+            }
+            string path = ART + src.name + "_tread.asset";
+            var me = AssetDatabase.LoadAssetAtPath<Mesh>(path); if (me == null) { me = new Mesh(); AssetDatabase.CreateAsset(me, path); }
+            me.Clear(); me.name = src.name + "_tread"; me.indexFormat = V.Count > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : src.indexFormat;
+            me.SetVertices(V); me.SetNormals(N); me.SetUVs(0, U);
+            var subs = new List<int[]>(); var nm = new List<Material>();
+            for (int si = 0; si < src.subMeshCount; si++) { if (si == ti) continue; subs.Add(src.GetTriangles(si)); nm.Add(si < mats.Length ? mats[si] : null); }
+            subs.Add(triT.ToArray()); nm.Add(tread); subs.Add(triS.ToArray()); nm.Add(side); subs.Add(triR.ToArray()); nm.Add(CtlMat("UL2_mech"));
+            me.subMeshCount = subs.Count; for (int si = 0; si < subs.Count; si++) me.SetTriangles(subs[si], si);
+            me.RecalculateBounds(); me.RecalculateTangents(); EditorUtility.SetDirty(me);
+            mf.sharedMesh = me; mr.sharedMaterials = nm.ToArray();
+            log.AppendLine("tyre " + mr.name + ": r " + r.ToString("0.000") + " w " + w.ToString("0.000") + " hub " + hub.ToString("0.000") + ", tris " + (triT.Count + triS.Count) / 3 + " (was " + src.GetTriangles(ti).Length / 3 + ")");
+        }
+    }
     static Mesh SleeveMesh()
     {
         string path = ART + "UL2_sleeve.asset";
@@ -1075,7 +1256,7 @@ public static partial class UL2Builder
     }
     // 0.15.68 (Nick 04:14, gloves need the uniform's textile look): box-projected UVs, 1 UV = 2 cm, so the tiling fabric
     // weave has the same thread size on every glove and sleeve. keep = UVs to leave alone (other submeshes)
-    const float WEAVE = 0.02f;
+    const float WEAVE = 0.012f;   // 0.15.70: finer threads
     static List<Vector2> BoxUV(IList<Vector3> v, IList<Vector3> n, IList<Vector2> keep, HashSet<int> only = null)
     {
         var uv = new List<Vector2>(v.Count);
@@ -1395,8 +1576,8 @@ public static partial class UL2Builder
     static void AeroAndDamage()
     {
         // ~680 kg empty with the gun; 60 kg fuel in the frame tank
-        Part("", 120f, 0f, 0.05f, -1f);   // 0.15.9: drag areas roughly halved
-        Part("cockpit_F", 75f, 0.4f, 0.04f, -1f); Part("nose", 10f, 0f, 0.025f, -1f);
+        Part("", 120f, 0f, 0.10f, -1f);   // 0.15.9: drag areas roughly halved; 0.15.71 (Nick 17:04: no speed loss on an idle approach): total drag about 1.7x
+        Part("cockpit_F", 75f, 0.4f, 0.08f, -1f); Part("nose", 10f, 0f, 0.025f, -1f);
         Part("cockpit_R", 40f, 0f, 0.04f, -1f);
         Part("fuselage", 60f, 0f, 0.03f, 60f);
         Part("intake", 15f, 0f, 0.05f, -1f);
@@ -1405,13 +1586,13 @@ public static partial class UL2Builder
         Part("propHub", 15f, 0f, 0.02f, -1f);
         // 0.15.8: gun mount 25 -> 10 kg (it sits 0.30 m right of centre), the 15 kg moves to the centred cockpit_F
         Part("gunmount_R", 10f, 0f, 0.05f, -1f);
-        Part("nacelle_L", 20f, 0f, 0.04f, -1f); Part("nacelle_R", 20f, 0f, 0.04f, -1f);
+        Part("nacelle_L", 20f, 0f, 0.06f, -1f); Part("nacelle_R", 20f, 0f, 0.06f, -1f);
         Part("tailboom_L", 15f, 0f, 0.02f, -1f); Part("tailboom_R", 12f, 0f, 0.02f, -1f);
         // rotor: ~31 m2 of lifting blade for the gyro's low stall (blade aero is a fixed span; the head spins only visually)
         foreach (var s in new[] { "L", "R" })
         {
             // 0.15.9 (Nick 23:10: never lifts off; game aircraft need much more lift and less drag than real): blade area x1.6
-            Part("wing1_" + s, 8f, 7f, 0.005f, -1f); Part("wing2_" + s, 8f, 10f, 0.005f, -1f); Part("wing3_" + s, 6f, 7f, 0.005f, -1f);
+            Part("wing1_" + s, 8f, 7f, 0.03f, -1f); Part("wing2_" + s, 8f, 10f, 0.03f, -1f); Part("wing3_" + s, 6f, 7f, 0.03f, -1f);   // 0.15.71: rotor profile drag
             Part("aileron_" + s, 2f, 3f, 0f, -1f);
             Part("hstab_" + s, 5f, 0.9f, 0.01f, -1f); Part("hstabTip_" + s, 3f, 0.5f, 0.01f, -1f);
             Part("elevator_" + s, 3f, 0.7f, 0f, -1f); Part("elevatorTip_" + s, 2f, 0.4f, 0f, -1f);
@@ -1441,7 +1622,9 @@ public static partial class UL2Builder
         J("engine_L", "engine_core", 5000f); J("engine_R", "engine_core", 5000f);
         J("propHub", "engine_core", 6000f);
         J("gunmount_R", "COIN_PLACEHOLDER", 4000f, "cockpit_F", 2000f, "cockpit_R", 2000f);
-        J("nacelle_L", "fuselage", 20000f, "COIN_PLACEHOLDER", 12000f); J("nacelle_R", "fuselage", 20000f, "COIN_PLACEHOLDER", 12000f);
+        // 0.15.71 (Nick 17:04: a normal touchdown broke the gear off): the gear dampers alone push 9 kN per m/s of sink, so a
+        // 3 m/s arrival put ~35 kN through joints rated 32 kN. Gear legs now hold ~3x that.
+        J("nacelle_L", "fuselage", 60000f, "COIN_PLACEHOLDER", 40000f); J("nacelle_R", "fuselage", 60000f, "COIN_PLACEHOLDER", 40000f);
         J("tailboom_L", "fuselage", 4500f, "mast", 2500f, "engine_core", 2000f, "COIN_PLACEHOLDER", 2500f); J("tailboom_R", "tailboom_L", 9000f, "fuselage", 3500f, "mast", 2500f);
         J("vstab1_L", "tailboom_R", 4000f, "tailboom_L", 2500f); J("vstab1_R", "vstab1_L", 2000f);
         J("rudder_L", "vstab1_L", 5000f); J("rudder_R", "vstab1_R", 5000f);
@@ -1463,6 +1646,8 @@ public static partial class UL2Builder
         foreach (var n in new[] { "tailboom_L", "tailboom_R", "nose", "vstab1_L" }) ObjArray(AP(n), "disintegrationEffects", fragSrc);
         foreach (var n in new[] { "nose", "cockpit_F", "cockpit_R", "mast", "rotorHead", "engine_core", "tailboom_L", "tailboom_R", "nacelle_L", "nacelle_R", "wing1_L", "wing1_R" })
         { Set(AP(n), "impactDamage.threshold", 25f); Set(AP(n), "impactDamage.multiplier", 2f); }
+        // 0.15.71: the gear legs and the pod they land on take a firm touchdown (40 g) before impact damage starts
+        foreach (var n in new[] { "nacelle_L", "nacelle_R", "cockpit_F", "nose" }) Set(AP(n), "impactDamage.threshold", 40f);
         // 0.15.37 (Nick 23:17: too durable, the cockpit breaks and the rest stays intact): the armor values came over
         // unchanged from the Cricket, whose cockpit tub takes about a fifth of the damage of the rest (pierce tolerance
         // 30-50). The UL-2 is a fibreglass pod on a tube frame, so every part now takes 1.5-2x the Cricket's damage per hit

@@ -45,9 +45,9 @@ def arc(d, a0, a1, col, r=RR * 0.9, w=7):   # clock angles (0 = 12 o'clock)
 faces = {}
 # airspeed 0-320 km/h over -135..+135 (plugin); 0.15.69 (Nick 16:30): green 50-240, yellow 240-280, red line at 280
 def kmh(v): return -135 + 270 * v / 320
-im, d = base(); arc(d, kmh(50), kmh(240), GREEN); arc(d, kmh(240), kmh(280), AMBER)
+im, d = base(); arc(d, kmh(50), kmh(240), GREEN); arc(d, kmh(240), kmh(280), AMBER); arc(d, kmh(280), kmh(320), RED)   # 0.15.70 (Nick 16:43): red band to the end of the scale
 a = math.radians(kmh(280)); d.line((C + RR * 0.74 * math.sin(a), C - RR * 0.74 * math.cos(a), C + RR * 0.97 * math.sin(a), C - RR * 0.97 * math.cos(a)), fill=RED, width=6)
-ticks(d, -135, 135, 8, 4); numbers(d, -135, 135, [0, 40, 80, 120, 160, 200, 240, 280, 320], 18); text(d, C, C + 18, 'KM/H', 16, GREY); faces['asi'] = im
+ticks(d, -135, 135, 8, 4); numbers(d, -135, 135, [0, 40, 80, 120, 160, 200, 240, 280, 320], 18); text(d, C, C + 66, 'KM/H', 16, GREY); faces['asi'] = im
 # attitude (0.15.68, Nick 04:07): the globe (UL2_adi_ball, built in Unity) shows pitch and roll through the middle;
 # the face keeps the bank scale round the rim and a fixed amber bank index at the top
 im, d = base()
@@ -62,7 +62,7 @@ faces['alt'] = im
 # engine rpm (0.15.26, Nick 04:56, replaces the turn coordinator): 0-7000 rpm over -135..+135, green 1400-5500,
 # yellow 5500-5800 (5 min take-off power), red line 5800
 def erpm(v): return -135 + 270 * v / 7000
-im, d = base(); arc(d, erpm(1400), erpm(5500), GREEN); arc(d, erpm(5500), erpm(5800), AMBER)
+im, d = base(); arc(d, erpm(1400), erpm(5500), GREEN); arc(d, erpm(5500), erpm(5800), AMBER); arc(d, erpm(5800), erpm(7000), RED)   # 0.15.70 (Nick 16:59): red band to the end
 a = math.radians(erpm(5800)); d.line((C + RR * 0.74 * math.sin(a), C - RR * 0.74 * math.cos(a), C + RR * 0.97 * math.sin(a), C - RR * 0.97 * math.cos(a)), fill=RED, width=6)
 ticks(d, -135, 135, 7, 2); numbers(d, -135, 135, list(range(8)), 22); text(d, C, C + 46, 'RPM', 16, GREY); text(d, C, C + 64, 'x1000', 13, GREY)
 faces['eng'] = im

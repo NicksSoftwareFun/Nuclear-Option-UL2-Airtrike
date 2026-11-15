@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.69")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.71")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -392,6 +392,8 @@ namespace UL2Airtrike
                     if (rpm > 250f) upRate = 30f;
                 }
                 target = Mathf.Max(autoT, drive);
+                // 0.15.70 (Nick 17:03): the pre-rotator loads the engine; driving the rotor past 380 rpm takes it into the yellow
+                preLoad = drive > 0f ? Mathf.Clamp01((rpm - 380f) / 70f) : 0f;
                 float sp = manual ? 110f + 340f * axis : 0f;
                 bool braking = headOn && brakeIn > 0.1f && rpm > sp + 0.5f;
                 if (manual && (dbgT -= dt) <= 0f) { dbgT = 2f; Plugin.Log.LogInfo($"UL-2 pre-rotator axis {axis:0.00} rpm {rpm:0} alt {alt:0.00} engine {er:0.00} thr {thr:0.00} clutch {clutch} brake {braking}"); }
@@ -454,7 +456,7 @@ namespace UL2Airtrike
             }
             catch (Exception e) { if (!inErr) { inErr = true; Plugin.Log.LogWarning("UL-2 inputs: " + e.Message); } }
         }
-        bool inErr; float engDisp;
+        bool inErr; float engDisp, preLoad;
         // HUD rotor gauge (Nick 22:31/22:35/22:36): the Alkyon-style label from our HUD extras prefab (UL2_rotorGauge),
         // rpm readout and an idle (110) to full (450 rpm) bar, red until the rotor is fast enough to jump (400), then green
         // 0.15.20 (Nick 03:43): styled like the stock throttle gauge: carrot = set rpm, coloured arc bar + readout = actual rpm
@@ -588,6 +590,23 @@ namespace UL2Airtrike
         // 0.15.24 (Nick 04:39): rotor swoosh. Stock RotorShaft plays its loop at pitch = rpm/nominal * pitch and volume = rpm/nominal.
         // The clip is the attack helicopter's (4 blades at 280 rpm, pitch 0.7); matched to our 2-blade beat that is 0.7 * rpm / 560.
         AudioSource rotorAudio; bool audioSearched;
+        // 0.15.70 (Nick 17:03): the engine note rises (up to +14 % pitch, a little louder) while the pre-rotator drives the
+        // rotor past 380 rpm. The engine's own audio sources keep whatever the game sets; we scale on top each frame.
+        readonly List<AudioSource> engAudio = new List<AudioSource>(); readonly Dictionary<AudioSource, (float p, float v, float sp, float sv)> engBase = new Dictionary<AudioSource, (float, float, float, float)>();
+        bool engAudioSearched; float loadAud;
+        void EngineAudio(float dt)
+        {
+            if (!engAudioSearched && engine != null) { engAudioSearched = true; foreach (var a in ((Component)engine).GetComponentsInChildren<AudioSource>(true)) if (a != null && a.name != "UL2_rotorAudio") engAudio.Add(a); Plugin.Log.LogInfo("UL-2 engine audio sources " + engAudio.Count); }
+            loadAud = Mathf.MoveTowards(loadAud, preLoad, dt * 1.5f);
+            foreach (var a in engAudio)
+            {
+                if (a == null) continue;
+                // the base is whatever the game last wrote: if the value is not the one we set, the game changed it
+                if (!engBase.TryGetValue(a, out var b) || Mathf.Abs(a.pitch - b.sp) > 1e-4f || Mathf.Abs(a.volume - b.sv) > 1e-4f) b = (a.pitch, a.volume, 0f, 0f);
+                float np = b.p * (1f + 0.14f * loadAud), nv = Mathf.Min(1f, b.v * (1f + 0.15f * loadAud));
+                a.pitch = np; a.volume = nv; engBase[a] = (b.p, b.v, np, nv);
+            }
+        }
         void RotorAudio(bool headOn)
         {
             if (!audioSearched) { audioSearched = true; foreach (var a in unit.GetComponentsInChildren<AudioSource>(true)) if (a.name == "UL2_rotorAudio") { rotorAudio = a; break; }
@@ -996,6 +1015,7 @@ namespace UL2Airtrike
         void LateUpdate()
         {
             if (!ready) return;
+            try { EngineAudio(Time.deltaTime); } catch (Exception ex) { Plugin.Log.LogError("UL-2 engine audio: " + ex.Message); engAudio.Clear(); }
             try
             {
                 if (exStick != null && jsT != null) exStick.localRotation = jsT.localRotation;
@@ -1104,7 +1124,10 @@ namespace UL2Airtrike
             // so the dial shows 1400 rpm idle to 5800 at full throttle, with a little lag like a real engine
             // 0.15.68 (Nick 04:07: full throttle sat on the red line): full throttle reads 5500, the top of the green arc
             // (max continuous); yellow 5500-5800 and the red line stay on the dial
-            engDisp = Mathf.MoveTowards(engDisp, er > 0.05f ? Mathf.Lerp(1400f, 5500f, thr) * Mathf.Clamp01(er) : 0f, 3000f * dt);
+            // 0.15.70 (Nick 17:03): pre-rotator driving the rotor past 380 rpm pushes it up through the yellow (5500-5780)
+            float engWant = er > 0.05f ? Mathf.Lerp(1400f, 5500f, thr) * Mathf.Clamp01(er) : 0f;
+            if (er > 0.05f && preLoad > 0f) engWant = Mathf.Max(engWant, Mathf.Lerp(5500f, 5780f, preLoad));
+            engDisp = Mathf.MoveTowards(engDisp, engWant, 3000f * dt);
             Needle("eng", -135f + 270f * Mathf.Clamp01(engDisp / 7000f), dt);
             Needle("hdgcard", -e.y, dt);                                                     // compass card turns under the fixed red pointer
             Needle("rotor", -135f + 270f * Mathf.Clamp01(rpm / 450f), dt);                   // rotor rpm, 0-450
