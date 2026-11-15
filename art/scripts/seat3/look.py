@@ -128,8 +128,6 @@ def gun(objs):
 
 
 WEB = dict(rgb=(62, 64, 52), rough=0.95, noise=0.10, scale=500.0)     # harness webbing, ranger green
-ARMB = dict(rgb=(30, 30, 30), rough=0.45, metal=0.5, wear=0.5)        # support arm links, black anodised
-GLOVE = dict(rgb=(92, 80, 62), rough=0.85, noise=0.08, scale=400.0)   # coyote gloves, darker cuffs
 
 
 def _set(objs, fin, keep_screen=True):
@@ -143,14 +141,6 @@ def _set(objs, fin, keep_screen=True):
 
 
 def gear(g):
-    """harness, gloves and the support arm (re-applied after every pose, the arm is rebuilt each time)"""
+    """harness / chest kit (0.15.76: no gloves and no support arm any more)"""
     if getattr(g, 'kind', 'mg') == 'spot': gun(g.harness_objs)
     else: _set(g.harness_objs, WEB)
-    _set([o for o in g.gun_objs if o.name.startswith('glove_') and '_cuff' not in o.name], GLOVE)
-    _set([o for o in g.gun_objs if '_cuff' in o.name], WEB)
-    _set(g.arm_objs, ARMB)
-    if not getattr(g, '_look_wrapped', False):
-        orig = g._arm
-        def _arm2():
-            orig(); _set(g.arm_objs, ARMB)
-        g._arm = _arm2; g._look_wrapped = True

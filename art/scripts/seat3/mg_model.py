@@ -1,6 +1,6 @@
 """Seat 3 light machine gun (original design in the spirit of a modern .338 belt-fed LMG) and the
 harness support arm. Gun frame: origin under the receiver above the pistol grip, +Y muzzle, +Z up,
-bore at z 0.045. build_gun(M) / build_arm(hip, elbow, post_top) add to the current ul2lib part."""
+bore at z 0.045. build_gun(M) add to the current ul2lib part."""
 import math, sys
 sys.path.insert(0, '/mnt/project-files/ul2/art/scripts/proto')
 from ul2lib import *
@@ -9,7 +9,6 @@ from mathutils import Vector, Matrix
 BORE = 0.060
 GRIP = Vector((0, -0.01, -0.06))      # pistol grip centre (under the rear of the receiver)
 FORE = Vector((0, 0.27, -0.075))      # vertical foregrip centre under the handguard (left hand, Nick 2026-11-12)
-MOUNT = Vector((0, 0.37, 0.008))      # support arm U-yoke under the handguard, ahead of the foregrip (Nick 2026-11-12 12:38)
 REC_Y0, REC_Y1, HG_Y1 = -0.10, 0.30, 0.64
 W = 0.064
 GUN_CUTTERS = []
@@ -28,9 +27,7 @@ def _bullet(name, x, y0, z, M):
 
 
 
-# 0.15.54 (Nick 20:45): with the better arm IK and hands the support arm is DISABLED for now (kept in the code; Nick decides
-# at release whether it is deleted). False: no arm, no belt rail / sockets on the harness, no yoke under the gun.
-SUPPORT_ARM = False
+# 0.15.76 (Nick 2026-11-15, RC2): the support arm, its belt rail / sockets and the yoke under the gun are removed.
 
 NGAL_Y = 0.50   # laser aiming module centre on the front top rail, behind the backup sight (Nick 2026-11-12 13:01)
 
@@ -246,14 +243,6 @@ def build_gun(M):
     if False: sweep('mg_chute', crom([(-W / 2 - 0.024, 0.205, -0.022), (-W / 2 - 0.022, 0.205, 0.010), (-W / 2 - 0.010, 0.205, 0.040), (-W / 2 + 0.004, 0.205, 0.058)], 6),
           rect(0.008, 0.052), DARK, side=(0, 1, 0), smooth=False, M=M)
     box('mg_feedport', (-W / 2 - 0.002, 0.205, 0.058), (0.008, 0.06, 0.020), DARK, bevel=0.002, M=M)
-    # support arm interface: rail clamp + U-yoke holding a ball (the arm post rises into it)
-    if SUPPORT_ARM:
-        box('mg_mount_rail', (0, MOUNT.y, MOUNT.z + 0.002), (0.030, 0.06, 0.012), DARK, bevel=0.002, M=M)
-        for sx in (-1, 1):
-            box(f'mg_yoke{sx}', (sx * 0.026, MOUNT.y, MOUNT.z - 0.022), (0.008, 0.040, 0.050), DARK, bevel=0.002, M=M)
-        box('mg_yoke_top', (0, MOUNT.y, MOUNT.z), (0.060, 0.040, 0.008), DARK, bevel=0.002, M=M)
-        ball('mg_gimbal', tuple(MOUNT + Vector((0, 0, -0.028))), (0.0175, 0.0175, 0.0175), MECH, M=M, seg=14)
-        tube('mg_yoke_pin', (-0.030, MOUNT.y, MOUNT.z - 0.028), (0.030, MOUNT.y, MOUNT.z - 0.028), 0.005, MECH, segs=8, M=M)
 
 
 def _glove_wrap(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top'):
@@ -306,49 +295,8 @@ def _glove_wrap_box(tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top'):
 
 
 def build_hands(M):
-    """the gunner's gloved hands, modelled closed on the pistol grip (right) and the vertical foregrip (left).
-    They ride with the gun; the soldier's own hands are removed and the arm IK targets the returned cuff points."""
+    """the two grips the gunner holds: pistol grip (right) and vertical foregrip (left). 0.15.76: gunner_rig records
+    these calls and closes the soldier's own hands round them (no modelled gloves)."""
     wR = _glove_wrap('glove_R', GRIP_TOP, GRIP_BOT, 1, (0, 1, 0), 0.018, M, (0.30, -0.92, -0.18), 'top')
     wL = _glove_wrap('glove_L', VG_TOP + Vector((0, 0, -0.008)), VG_BOT, -1, (0, 1, 0), 0.017, M, (-0.35, -0.70, -0.60), 'front')
     return wR, wL
-
-
-def link(name, a, b, w=0.024):
-    """one parallelogram arm section: two bars stacked vertically 0.05 apart (18 mm), knuckle blocks at both ends,
-    a diagonal gas-spring housing with its rod and a tension knob"""
-    a, b = Vector(a), Vector(b); d = (b - a); u = d.normalized(); up = Vector((0, 0, 1))
-    side = u.cross(up); side = side.normalized() if side.length > 1e-4 else Vector((1, 0, 0)); nrm = side.cross(u).normalized()
-    for k, off in enumerate((nrm * 0.025, -nrm * 0.025)):
-        tube(f'{name}_bar{k}', a + off + u * 0.025, b + off - u * 0.025, 0.009, FRAME, segs=10)
-    for e_, nm in ((a, 'a'), (b, 'b')):
-        box(f'{name}_knuckle_{nm}', tuple(e_ + u * (0.028 if nm == 'a' else -0.028)), (0.040, 0.040, 0.075), DARK,
-            rot=tuple(Matrix((side, u, nrm)).transposed().to_euler()), bevel=0.006)
-    s0 = a + u * 0.05 - nrm * 0.022; s1 = a + u * (d.length * 0.62) + nrm * 0.022
-    tube(f'{name}_spring', s0, s0 + (s1 - s0).normalized() * 0.16, 0.016, DARK, segs=12)
-    tube(f'{name}_rod', s0 + (s1 - s0).normalized() * 0.15, b - u * 0.05 + nrm * 0.022, 0.007, MECH, segs=8)
-    tube(f'{name}_knob', s0 - (s1 - s0).normalized() * 0.012, s0 + (s1 - s0).normalized() * 0.004, 0.015, MECH, segs=12)
-    return side, nrm
-
-
-def hinge(name, c, h=0.06, r=0.020):
-    c = Vector(c); tube(name, c - Vector((0, 0, h / 2)), c + Vector((0, 0, h / 2)), r, MECH, segs=12)
-    tube(name + '_cap', c + Vector((0, 0, h / 2)), c + Vector((0, 0, h / 2 + 0.006)), r * 0.7, DARK, segs=12)
-
-
-def build_arm(hip, elbow, post_bot, post_top=None):
-    """harness hinge (on the hip socket block) -> elbow -> wrist hinge -> post up into the gun's U-yoke ball"""
-    hip, elbow, post_bot = Vector(hip), Vector(elbow), Vector(post_bot)
-    post_top = Vector(post_top) if post_top is not None else post_bot + Vector((0, 0, 0.08))
-    hinge('arm_elbow', elbow, 0.10, 0.024)
-    hinge('arm_wrist', post_bot, 0.06, 0.020)
-    link('arm_upper', hip, elbow)
-    link('arm_lower', elbow, post_bot)
-    tube('arm_post', post_bot, post_top, 0.0125, MECH, segs=12)
-    tube('arm_post_collar', post_top - Vector((0, 0, 0.022)), post_top - Vector((0, 0, 0.012)), 0.017, DARK, segs=12)
-    # cable from the gun down the upper bar into the socket block, with p-clips
-    side, nrm = (elbow - hip).normalized().cross(Vector((0, 0, 1))).normalized(), None
-    pts = [post_top + Vector((0, 0, 0.01)), post_bot + Vector((0, 0, 0.02)), elbow + Vector((0, 0, 0.05)), hip + Vector((0, 0, 0.06)), hip + Vector((0, 0, 0.02))]
-    pipe('arm_cable', [tuple(q) for q in pts], 0.004, DARK, n=5, segs=6)
-    for k in range(1, 4):
-        q = elbow + (hip - elbow) * (k / 4.0) + Vector((0, 0, 0.05))
-        tube(f'arm_clip{k}', q - Vector((0, 0, 0.006)), q + Vector((0, 0, 0.006)), 0.007, MECH, segs=6)

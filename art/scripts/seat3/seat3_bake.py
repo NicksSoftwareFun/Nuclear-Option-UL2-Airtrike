@@ -11,12 +11,6 @@ a = sys.argv[sys.argv.index('--') + 1:]; KIND = a[0]; OUT = a[1]
 STEP = float(sys.argv[sys.argv.index('--step') + 1]) if '--step' in sys.argv else 10.0
 bpy.ops.wm.read_factory_settings(use_empty=True)
 import mg_model as mg
-ARMREC = {}
-_orig_build_arm = mg.build_arm
-def _rec_arm(hip, elbow, post_bot, post_top=None):
-    ARMREC.update(hip=Vector(hip), elbow=Vector(elbow), bot=Vector(post_bot), top=Vector(post_top) if post_top is not None else Vector(post_bot) + Vector((0, 0, 0.08)))
-    return _orig_build_arm(hip, elbow, post_bot, post_top)
-mg.build_arm = _rec_arm
 from gunner_rig import Gunner
 import look
 
@@ -50,7 +44,7 @@ g = Gunner(Matrix.Identity(4), kind=KIND)
 look.crew(g); look.gun(g.gun_objs); look.gear(g)
 ao, so, pb = g.ao, g.so, g.ao.pose.bones
 DEF = [b.name for b in ao.data.bones if b.name in so.vertex_groups]
-BONES = DEF + ['gun'] + (['armU', 'armL'] if KIND == 'mg' and mg.SUPPORT_ARM else [])   # 0.15.54: no arm bones while the arm is off
+BONES = DEF + ['gun']
 S = Matrix(((1, 0, 0), (0, 0, 1), (0, 1, 0)))
 def U(v): return [round(v[0], 5), round(v[2], 5), round(v[1], 5)]
 
@@ -64,11 +58,6 @@ def bone_mats():
     W = ao.matrix_world; out = {}
     for n in DEF: out[n] = W @ pb[n].matrix
     out['gun'] = g.gun.matrix_world.copy()
-    if KIND == 'mg' and ARMREC:
-        h, e, b = ARMREC['hip'], ARMREC['elbow'], ARMREC['bot']
-        nrm = (e - h).cross(b - e)
-        if nrm.length < 1e-6: nrm = Vector((0, 0, 1))
-        out['armU'] = frame(h, e, nrm.normalized()); out['armL'] = frame(e, b, nrm.normalized())
     return out
 
 
@@ -142,28 +131,18 @@ add_mesh(so, body_w)
 # triangle diet (Nick 04:36, no visible change): merge coplanar triangles on the rigid pieces (planar dissolve 0.5 deg, never
 # across materials, seams or sharp edges). Their weights depend only on position, so the vertex renumbering is harmless.
 _n = 0
-for o in list(g.gun_objs) + list(g.harness_objs) + list(getattr(g, 'arm_objs', [])):
+for o in list(g.gun_objs) + list(g.harness_objs):
     if o.type == 'MESH' and len(o.data.polygons) > 3:
         d = o.modifiers.new('diet', 'DECIMATE'); d.decimate_type = 'DISSOLVE'; d.angle_limit = math.radians(0.5)
         d.delimit = {'MATERIAL', 'SEAM', 'SHARP'}; _n += 1
 dg = bpy.context.evaluated_depsgraph_get(); dg.update(); print('planar diet on', _n, 'objects')
-# rigid pieces: gun + gloves -> gun; harness / chest kit -> their parent bone; support arm pieces -> nearest link
+# rigid pieces: gun -> gun; harness / chest kit -> their parent bone
 for o in g.gun_objs:
     if o.type == 'MESH': add_mesh(o, lambda vi, p: [[BONES.index('gun'), 1.0]])
 for o in g.harness_objs:
     if o.type == 'MESH':
         bn = o.parent_bone if o.parent_type == 'BONE' and o.parent_bone in BONES else 'chest'
         add_mesh(o, lambda vi, p, bn=bn: [[BONES.index(bn), 1.0]])
-if KIND == 'mg' and ARMREC:
-    h, e, b = ARMREC['hip'], ARMREC['elbow'], ARMREC['bot']
-    def seg_d(p, a0, a1):
-        d = a1 - a0; t = max(0.0, min(1.0, (p - a0).dot(d) / d.length_squared)); return (a0 + d * t - p).length
-    def arm_w(vi, p):
-        du, dl = seg_d(p, h, e), seg_d(p, e, b)
-        if (p - b).length < 0.03 or p.z > b.z + 0.005 and (p - b).length < 0.12: return [[BONES.index('gun'), 1.0]]
-        return [[BONES.index('armU' if du <= dl else 'armL'), 1.0]]
-    for o in g.arm_objs:
-        if o.type == 'MESH': add_mesh(o, arm_w)
 # neck gaiter: collar ring on the chest -> head ring on the head
 if hasattr(g, 'neck_obj'):
     hz = (ao.matrix_world @ pb['head'].head).z
@@ -172,15 +151,6 @@ if hasattr(g, 'neck_obj'):
         f = max(0.0, min(1.0, (p.z - cz) / 0.13))
         return [[BONES.index('chest'), round(1 - f, 3)], [BONES.index('head'), round(f, 3)]] if f < 0.999 else [[BONES.index('head'), 1.0]]
     add_mesh(g.neck_obj, neck_w)
-# wrist gaiters: sleeve end on the forearm, cuff end on the weapon
-for o, s in zip(getattr(g, 'wrist_objs', []), 'RL'):
-    cuff = g.GM @ (g.wR if s == 'R' else g.wL)
-    el = ao.matrix_world @ pb[f'forearm_{s}'].head
-    L = max(1e-4, (cuff - el).length)
-    def wr_w(vi, p, cuff=cuff, el=el, s=s):
-        f = max(0.0, min(1.0, 1.0 - (p - cuff).length / 0.06))
-        return [[BONES.index(f'forearm_{s}'), round(1 - f, 3)], [BONES.index('gun'), round(f, 3)]]
-    add_mesh(o, wr_w)
 print('verts', len(V), 'tris', sum(len(t) for t in sub.values()), 'submeshes', {k: len(t) for k, t in sub.items()})
 
 # ------------------------------------------------------------------ pose table

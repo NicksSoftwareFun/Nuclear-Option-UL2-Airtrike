@@ -53,7 +53,7 @@ if mode == 'still':
         L.new(tr.outputs[0], mx.inputs[1]); L.new(e.outputs[0], mx.inputs[2]); L.new(mx.outputs[0], out_.inputs[0]); bm_.materials.append(em)
         win = Vector((0.018, mg.NGAL_Y + 0.0612, 0.1155 + 0.018))
         o.matrix_world = g.GM @ Matrix.Translation(win + Vector((0, 30.0, 0))) @ Matrix.Rotation(math.pi / 2, 4, 'X') @ Matrix.Rotation(math.pi, 4, 'X')
-    print('pose', A, E, 'miss', {k: round(v, 3) for k, v in miss.items()}, 'arm', round(g.arm_len, 3), 'copilot clearance', round(g.clearance(copilot), 3))
+    print('pose', A, E, 'miss', {k: round(v, 3) for k, v in miss.items()}, 'arm', 'copilot clearance', round(g.clearance(copilot), 3))
     tag = ('' if KIND == 'mg' else KIND + '_') + ('above_' if ABOVE else '') + ('laser_' if '--laser' in sys.argv else '') + f'{int(A)}_{int(E)}'
     shot(sc, cam, f'{out}/air_{tag}_3q.png', (4.6, 5.6, 3.3), (0, -0.2, 1.35), 42, res=(1600, 1000), scale=1.0)
     shot(sc, cam, f'{out}/air_{tag}_rear.png', (4.4, -5.2, 3.0), (0, -0.3, 1.35), 42, res=(1600, 1000), scale=1.0)
@@ -72,7 +72,7 @@ else:
     sc.cycles.samples = 10
     for k in range(N + 1):
         A, E = interp(k / N); miss = g.pose(A, E); cl = g.clearance(copilot)
-        log.append(f'{k:02d} A {A:6.1f} E {E:5.1f} T {g.T:5.1f} missR {miss["R"]:.3f} missL {miss["L"]:.3f} arm {g.arm_len:.3f} copilot {cl:.3f}')
+        log.append(f'{k:02d} A {A:6.1f} E {E:5.1f} T {g.T:5.1f} missR {miss["R"]:.3f} missL {miss["L"]:.3f} copilot {cl:.3f}')
         if '--dry' in sys.argv: continue
         if '--bonly' not in sys.argv: shot(sc, cam, f'{out}/swap_{k:03d}.png', (3.4, 3.0, 3.1), (0, -0.25, 1.75), 40, res=(900, 640), scale=1.0)
         if KIND == 'gl': shot(sc, cam, f'{out}/swapB_{k:03d}.png', (-3.4, 3.0, 3.1), (0, -0.25, 1.75), 40, res=(900, 640), scale=1.0)   # mirrored view from the left front
