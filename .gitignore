@@ -12,3 +12,5 @@ plugin/lib/
 plugin/bin/
 plugin/obj/
 *.nobp
+
+!Livery Bundle/*.fbx

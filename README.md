@@ -63,3 +63,7 @@ Download the UL-2 DLL from the [Releases](../../releases) page and put it in `Nu
 | `docs/media/` | Screenshots and videos |
 
 See `CHANGELOG.txt` for the version history and `LICENSE` for the licence.
+
+## Livery painting
+
+The `Livery Bundle` folder has the complete exterior as an FBX with the in-game texture layout, a blank base, the UV layout, the surface maps and the five shipped liveries. See `Livery Bundle/README.txt`.
