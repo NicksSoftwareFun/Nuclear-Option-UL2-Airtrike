@@ -891,6 +891,8 @@ public static partial class UL2Builder
         // 0.15.25 (Nick 04:29): extra liveries the stock way, colour map only (normal/metallic/AO/damage maps are shared).
         // Glossiness is the stock LiveryData field the game puts on the skin's _Glossiness; the steel one sets it for a shine.
         ExtraLivery("steel", 0.6f); ExtraLivery("tiger", 0f);
+        // 0.15.59 (Nick 01:53): faction liveries, PALA Camel Corps (desert tan) and BDF Orca
+        ExtraLivery("tan", 0f); ExtraLivery("orca", 0f);
         return mat;
     }
     static string LiveryPath(string k) { return MOD + "Art/UL2_livery_" + k + ".asset"; }
@@ -1405,14 +1407,16 @@ public static partial class UL2Builder
         var sdp = StatusDisplayUL2(); if (sdp != null) so.FindProperty("StatusDisplay").objectReferenceValue = sdp;
         so.FindProperty("DefaultFuelLevel").floatValue = 1f;
         so.FindProperty("cruiseThrottle").floatValue = 0.75f;
-        var liv = so.FindProperty("liveries"); liv.arraySize = 3;
-        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger" };
-        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger") };
-        for (int i = 0; i < 3; i++)
+        var liv = so.FindProperty("liveries"); liv.arraySize = 5;
+        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger", "PALA Camel Corps", "BDF Orca" };
+        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger"), LiveryPath("tan"), LiveryPath("orca") };
+        // 0.15.59 (Nick 01:53): faction locked like stock faction liveries (PALA = Primeva, BDF = Boscali)
+        string[] livFac = { null, null, null, PH + "MonoBehaviour/Primeva_PLACEHOLDER.asset", PH + "MonoBehaviour/Boscali_PLACEHOLDER.asset" };
+        for (int i = 0; i < 5; i++)
         {
             var li = liv.GetArrayElementAtIndex(i);
             li.FindPropertyRelative("name").stringValue = livName[i];
-            li.FindPropertyRelative("faction").objectReferenceValue = null;
+            li.FindPropertyRelative("faction").objectReferenceValue = livFac[i] == null ? null : AssetDatabase.LoadMainAssetAtPath(livFac[i]);
             li.FindPropertyRelative("assetReference.m_AssetGUID").stringValue = AssetDatabase.AssetPathToGUID(livPath[i]);
             li.FindPropertyRelative("assetReference.m_SubObjectName").stringValue = "";
         }

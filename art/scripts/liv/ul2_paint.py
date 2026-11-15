@@ -64,12 +64,64 @@ elif LIV == 'tiger':
     gate = np.clip((vnoise(P, 0.5, 55) + 0.45) / 0.04 + 0.5, 0, 1)
     stripe = (band * (1 - fork) * gate).astype(np.float32)
     col = col * (1 - stripe[:, None]) + ORANGE * stripe[:, None] * (1 + 0.04 * vnoise(P, 0.3, 56))[:, None]
+elif LIV == 'tan':
+    # 0.15.59 (Nick 00:47): PALA Camel Corps, desert tan, the Camel Corps badge big on the fin (black, red, white, gold)
+    col = np.tile(np.array([176, 156, 118], np.float32) / 255, (len(P), 1))
+    col *= (1 + 0.035 * vnoise(P, 1.2, 3) + 0.02 * vnoise(P, 0.25, 7))[:, None]
+elif LIV == 'orca':
+    # 0.15.59 (Nick 01:19): BDF orca. Black back, white chin/belly with the flank sweep at the rear of the pod, white eye
+    # patch, small dark eye, grey saddle patch behind the cockpit, an open mouth with teeth, white tailplane undersides.
+    BLK = np.array([22, 23, 25], np.float32) / 255; WHT = np.array([226, 228, 226], np.float32) / 255
+    col = np.tile(BLK, (len(P), 1)) * (1 + 0.03 * vnoise(P, 1.2, 3))[:, None]
+    PODO = ids('cockpit_F', 'nose', 'gunmount_R')
+    AAo = 0.004
+    zw = np.interp(P[:, 1], [-0.2, 0.05, 0.30, 0.65, 1.2, 1.8, 2.20, 2.32, 2.50, 2.70, 2.90], [0.80, 1.04, 1.02, 0.86, 0.80, 0.78, 0.76, 0.74, 0.72, 0.70, 0.70])
+    belly = PODO * np.clip((zw - P[:, 2]) / AAo + 0.5, 0, 1)
+    belly = np.maximum(belly, (ids('hstab_L', 'hstab_R', 'elevator_L', 'elevator_R', 'hstabTip_L', 'hstabTip_R', 'elevatorTip_L', 'elevatorTip_R', 'UL2Airtrike') * np.clip((-N[:, 2] - 0.3) / 0.1, 0, 1)))
+    col = col * (1 - belly[:, None]) + WHT * belly[:, None]
+    side = PODO & (np.abs(N[:, 0]) > 0.35)
+    # eye patch: tilted ellipse behind and above the eye
+    ey, ez, ea, eb, et = 1.74, 0.955, 0.32, 0.105, np.radians(11)
+    dy, dz = P[:, 1] - ey, P[:, 2] - ez
+    lu, lv = dy * np.cos(et) + dz * np.sin(et), -dy * np.sin(et) + dz * np.cos(et)
+    taper = 0.45 + 0.55 * np.clip((ea - lu) / (2 * ea), 0, 1) ** 0.5          # narrow at the front, full at the back (orca shape)
+    r = np.hypot(lu / ea, lv / (eb * np.maximum(taper, 0.2)))
+    patch = side * np.clip((1 - r) / (AAo / eb) + 0.5, 0, 1)
+    col = col * (1 - patch[:, None]) + WHT * patch[:, None]
+    # saddle patch: soft grey on the top of the pod behind the cockpit
+    sad = PODO * np.clip((N[:, 2] - 0.35) / 0.15, 0, 1) * np.clip((0.40 - P[:, 1]) / 0.12, 0, 1) * np.clip((P[:, 1] + 0.14) / 0.06, 0, 1)
+    sad *= np.clip(0.75 + 0.25 * vnoise(P, 0.15, 71), 0, 1)
+    col = col * (1 - 0.85 * sad[:, None]) + np.array([128, 131, 136], np.float32) / 255 * 0.85 * sad[:, None]
+    # mouth: open gap along the jaw line from the corner (y 2.30) round the nose, red inside, white teeth top and bottom
+    mo = ids('nose', 'cockpit_F') & (np.abs(N[:, 0]) > 0.35) & (N[:, 2] > -0.6) & (P[:, 1] < 2.80)   # sides only: never round the front into the headlight dome (Nick 01:28)
+    zm = zw + 0.040 * np.clip((P[:, 1] - 2.20) / 0.30, 0, 1)                 # Nick 01:33: the mouth comes to its point on the black/white line
+    hg = 0.056 * np.clip((P[:, 1] - 2.20) / 0.26, 0, 1) ** 0.85            # taller mouth
+    t = (zm + hg - P[:, 2]) / np.maximum(2 * hg, 1e-4)
+    inm = mo & (hg > 0.002) & (t > 0) & (t < 1)
+    sarc = P[:, 1] - np.abs(P[:, 0]); f1 = (sarc / 0.042) % 1; f2 = (sarc / 0.042 + 0.5) % 1
+    tri1 = np.clip(1 - 3.2 * np.abs(f1 - 0.5), 0, 1); tri2 = np.clip(1 - 3.2 * np.abs(f2 - 0.5), 0, 1)   # spaced conical teeth
+    tooth = (t < 0.48 * tri1) | ((1 - t) < 0.42 * tri2)
+    mcol = np.where(tooth[:, None], np.array([236, 234, 222], np.float32) / 255, np.array([118, 28, 36], np.float32) / 255)
+    col[inm] = mcol[inm]
+    lip = mo & (hg > 0.002) & (np.abs(P[:, 2] - (zm - hg - 0.004)) < 0.004) | (mo & (np.abs(P[:, 1] - 2.195) < 0.005) & (np.abs(P[:, 2] - 0.76) < 0.008))
+    col[lip] = BLK
+    # eye: small glossy dark eye with a thin grey ring and a highlight, at the end of the mouth line
+    EY, EZ = 2.12, 0.875                                                     # Nick 01:33: larger and a bit higher
+    re_ = np.hypot(P[:, 1] - EY, P[:, 2] - EZ)
+    lid = (P[:, 2] - EZ) < 0.012 - 0.55 * (P[:, 1] - EY)                    # brow line: lower at the front = a hard stare
+    eyem = side & (re_ < 0.050) & lid
+    col[side & (re_ < 0.058) & ~eyem & lid] = np.array([90, 92, 96], np.float32) / 255
+    browl = side & (np.abs((P[:, 2] - EZ) - (0.012 - 0.55 * (P[:, 1] - EY))) < 0.006) & (re_ < 0.072)
+    col[browl] = np.array([90, 92, 96], np.float32) / 255
+    col[eyem] = np.array([8, 8, 10], np.float32) / 255
+    col[side & (np.hypot(P[:, 1] - 2.10, P[:, 2] - 0.866) < 0.010)] = np.array([235, 235, 235], np.float32) / 255
+    print('orca: belly', int((belly > 0.5).sum()), 'patch', int((patch > 0.5).sum()), 'mouth', int(inm.sum()), 'eye', int(eyem.sum()))
 else:
     col = np.tile(OLIVE, (len(P), 1))
     col *= (1 + 0.035 * vnoise(P, 1.2, 3) + 0.02 * vnoise(P, 0.25, 7))[:, None]      # faint mottling of matte paint
 col *= (1 - 0.06 * np.clip((0.75 - P[:, 2]) / 0.3, 0, 1) * ids('cockpit_F', 'nose', 'gunmount_R'))[:, None]   # slightly dusty belly
-MARK = {'olive': WHITE, 'steel': BLACK, 'tiger': WHITE}[LIV]   # 0.15.29 (Nick 12:29): tiger text white
-STEP = {'olive': BLACK, 'steel': BLACK, 'tiger': WHITE}[LIV]
+MARK = {'olive': WHITE, 'steel': BLACK, 'tiger': WHITE, 'tan': BLACK, 'orca': WHITE}[LIV]   # 0.15.29 (Nick 12:29): tiger text white
+STEP = {'olive': BLACK, 'steel': BLACK, 'tiger': WHITE, 'tan': BLACK, 'orca': WHITE}[LIV]
 smooth = np.full(len(P), 0.28, np.float32)
 
 def text_mask(txt, font, px=400):
@@ -116,12 +168,60 @@ if LIV == 'tiger':
     for sd in (-1, 1):
         n += stamp(ids('vstab'), '\u2588\u2588\u2588', FONT, (-2.91, 1.397), 0.24, sd, np.array([20, 20, 21], np.float32) / 255)
         n += stamp(ids('cockpit_F', 'nose'), '\u2588\u2588', FONT, (2.30, 0.95), 0.22, sd, np.array([20, 20, 21], np.float32) / 255)
-NUM = {'olive': '214', 'steel': '237', 'tiger': '251'}[LIV]     # 0.15.35 (Nick 22:15): 2 = the unit, then the airframe's own two digits
-for sd in (-1, 1): n += stamp(ids('vstab'), NUM, FONT, (-2.91, 1.397), 0.19, sd, MARK)          # big tail number, both sides (0.15.29: centred on the fin chord, clear of the leading edge)
-for sd in (-1, 1): n += stamp(ids('vstabTip'), 'UL-2', FONT_S, (-2.95, 1.967), 0.066, sd, MARK)
-for sd in (-1, 1): n += stamp(ids('cockpit_F', 'nose'), NUM[1:], FONT, (2.30, 0.95), 0.18, sd, MARK)  # tactical number on the pod
+NUM = {'olive': '214', 'steel': '237', 'tiger': '251', 'tan': '262', 'orca': '271'}[LIV]     # 0.15.35 (Nick 22:15): 2 = the unit, then the airframe's own two digits
+def stamp_img(sel, path, centre, h, side, mirror=False):
+    """RGBA badge on a side face (like stamp); mirror=True flips it so it faces forward on the right side."""
+    im = np.asarray(Image.open(path).convert('RGBA'), np.float32) / 255
+    if mirror: im = im[:, ::-1]
+    th, tw = im.shape[:2]; w = h * tw / th
+    face = sel & (np.sign(N[:, 0]) == side) & (np.abs(N[:, 0]) > 0.5)
+    u = (P[:, 1] - centre[0]) * side / w + 0.5; v = 0.5 - (P[:, 2] - centre[1]) / h
+    ok = face & (u >= 0) & (u < 1) & (v >= 0) & (v < 1)
+    pm = np.concatenate([im[..., :3] ** 2.2 * im[..., 3:], im[..., 3:]], 2)        # premultiplied, linear-ish for filtering
+    sg = max(0.5, 0.5 * th / (h * TPM))                                      # prefilter to the texel size
+    rgba = np.stack([samp(gaussian_filter(pm[..., c], sg), u[ok], v[ok]) for c in range(4)], 1)
+    a = rgba[:, 3:]; rgb = (rgba[:, :3] / np.maximum(a, 1e-4)) ** (1 / 2.2)
+    col[ok] = col[ok] * (1 - a) + rgb * a
+    return ok.sum()
+if LIV == 'tan':
+    BADGE = os.environ.get('UL2_BADGE', '/mnt/project-files/ul2/art/camel/camel_badge_2048.png')
+    for sd in (-1, 1): n += stamp_img(ids('vstab', 'rudder'), BADGE, (-3.03, 1.43), 0.70, sd, mirror=(sd > 0))   # across the fin and rudder, as big as the fin allows
+    # third badge (Nick 01:11): centred on the nose looking forward, its top just under the windscreen. Projected along a
+    # line tilted 45 deg up from straight ahead (square to the upper nose), so it is not stretched where the nose curves back.
+    im = np.asarray(Image.open(BADGE.replace('_512', '_2048')).convert('RGBA'), np.float32) / 255; th, tw = im.shape[:2]
+    NH = float(os.environ.get('UL2_NOSE_H', '0.42')); nw = NH * tw / th
+    D = np.array([0, np.cos(np.radians(45)), np.sin(np.radians(45))], np.float32); E = np.array([0, -D[2], D[1]], np.float32)
+    vt = E[1] * 2.12 + E[2] * 1.56                                          # badge top: just under the windscreen (glass base ~y 2.05)
+    face = ids('nose', 'cockpit_F') & (N @ D > 0.2) & (P[:, 1] > 1.9)
+    u = 0.5 - P[:, 0] / nw; v = (vt - P @ E) / NH
+    ok = face & (u >= 0) & (u < 1) & (v >= 0) & (v < 1)
+    pm = np.concatenate([im[..., :3] ** 2.2 * im[..., 3:], im[..., 3:]], 2); sg = max(0.5, 0.5 * th / (NH * TPM))
+    rgba = np.stack([samp(gaussian_filter(pm[..., c], sg), u[ok], v[ok]) for c in range(4)], 1)
+    a = rgba[:, 3:]; col[ok] = col[ok] * (1 - a) + (rgba[:, :3] / np.maximum(a, 1e-4)) ** (1 / 2.2) * a; n += ok.sum()
+    RED = np.array([146, 4, 0], np.float32) / 255
+    col[ids('vstabTip', 'rudderTip')] = RED                                            # PALA red fin cap
+if LIV == 'orca':
+    # BDF roundel on the fin (dorsal fin), with a thin white keyline so its black outline shows on the black fin
+    from scipy.ndimage import distance_transform_edt
+    rim = np.asarray(Image.open('/mnt/project-files/tu22/art/logos/bdf_roundel_color_2048.png').convert('RGBA')).copy()
+    # Nick 01:27: black and white. blue -> black, green -> white, white -> white on the wings and black for the shield triangle
+    c3 = rim[..., :3].astype(np.int32); xs = np.arange(rim.shape[1])[None, :] / rim.shape[1]
+    blue = (c3[..., 2] > c3[..., 1] + 30) & (c3[..., 2] > 70); green = (c3[..., 1] > c3[..., 0] + 30) & (c3[..., 1] > c3[..., 2] + 30)
+    wht = (c3.min(2) > 150); bw = np.zeros_like(c3)
+    bw[green] = 230; bw[wht & ((xs < 0.3) | (xs > 0.7))] = 230
+    rim[..., :3] = bw.astype(np.uint8)
+    k = distance_transform_edt(rim[..., 3] < 128) <= 34
+    rk = rim.copy(); rk[k & (rim[..., 3] < 255), :3] = (230, 230, 230); rk[k, 3] = 255
+    a0 = rim[..., 3:4].astype(np.float32) / 255; rk[..., :3] = (rim[..., :3] * a0 + rk[..., :3] * (1 - a0)).astype(np.uint8)
+    Image.fromarray(rk).save('/tmp/bdf_keyline.png')
+    for sd in (-1, 1): n += stamp_img(ids('vstab', 'rudder'), '/tmp/bdf_keyline.png', (-3.02, 1.40), 0.36, sd)
+for sd in (-1, 1):
+    if LIV not in ('tan', 'orca'): n += stamp(ids('vstab'), NUM, FONT, (-2.91, 1.397), 0.19, sd, MARK)          # big tail number, both sides (0.15.29: centred on the fin chord, clear of the leading edge)
+for sd in (-1, 1): n += stamp(ids('vstabTip'), 'UL-2', FONT_S, (-2.95, 1.967), 0.066, sd, WHITE if LIV == 'tan' else MARK)
+POD_NUM = (0.50, 1.00, 0.15) if LIV == 'orca' else (2.30, 0.95, 0.18)
+for sd in (-1, 1): n += stamp(ids('cockpit_F', 'nose'), NUM[1:], FONT, POD_NUM[:2], POD_NUM[2], sd, MARK)  # tactical number on the pod
 for sx in (-1, 1): n += stamp_top(ids('hstab_L' if sx < 0 else 'hstab_R'), 'NO STEP', FONT_S, (sx * 0.28, -2.80), 0.055, STEP)
-for sd in (-1, 1): n += stamp(ids('cockpit_F'), 'RESCUE', FONT_S, (1.28, 0.72), 0.045, sd, np.array([210, 170, 40], np.float32) / 255)
+for sd in (-1, 1): n += stamp(ids('cockpit_F'), 'RESCUE', FONT_S, (1.28, 0.80 if LIV == 'orca' else 0.72), 0.045, sd, np.array([210, 170, 40], np.float32) / 255)
 print('stamped texels', n)
 # ---- 0.15.35 weathering (Nick 22:16): a worked engine. Oil mist and drips settle on the skin around and under the engine
 # (the rear pod, the keel frame, the stub), thrown back and down by the prop wash; exhaust soot fans aft from the stack
@@ -147,9 +247,9 @@ rain = side * np.clip(vnoise(P * np.array([9, 9, 0.7], np.float32), 0.05, 65) * 
 col *= (1 - rain)[:, None]
 sill = PODS * (P[:, 2] > 1.30) * (np.abs(P[:, 0]) > 0.24) * (P[:, 1] > -0.10) * (P[:, 1] < 2.10) * (up > 0.3)
 wear = sill * np.clip((vnoise(P, 0.025, 66) + 0.25 * vnoise(P, 0.12, 67) - 0.15) / 0.12, 0, 1) * 0.35
-WEAR = {'olive': np.array([104, 106, 84], np.float32) / 255, 'steel': np.array([150, 152, 154], np.float32) / 255, 'tiger': np.array([58, 56, 52], np.float32) / 255}[LIV]
+WEAR = {'olive': np.array([104, 106, 84], np.float32) / 255, 'steel': np.array([150, 152, 154], np.float32) / 255, 'tiger': np.array([58, 56, 52], np.float32) / 255, 'tan': np.array([206, 188, 152], np.float32) / 255, 'orca': np.array([64, 64, 66], np.float32) / 255}[LIV]
 col = col * (1 - wear[:, None]) + WEAR * wear[:, None]
-if LIV == 'olive': col = col * (1 + 0.05 * np.clip(up, 0, 1))[:, None]                 # a touch of sun fade on top
+if LIV in ('olive', 'tan'): col = col * (1 + 0.05 * np.clip(up, 0, 1))[:, None]                 # a touch of sun fade on top
 print('weathering: oil', int((oil > 0.1).sum()), 'soot', int((soot > 0.08).sum()), 'rain', int((rain > 0.02).sum()), 'sill wear', int((wear > 0.1).sum()))
 
 def save_rgb(a, name):
