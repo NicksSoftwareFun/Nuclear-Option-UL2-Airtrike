@@ -353,6 +353,21 @@ public static partial class UL2Builder
         // green (both sampled from the stock pilot texture: hand 62,68,56, forearm 41,50,41)
         MAT["UL2_glove"] = LitMat("UL2_glove", new Color32(62, 68, 56, 255), 0.18f, 0f);
         MAT["UL2_sleeve"] = LitMat("UL2_sleeve", new Color32(41, 50, 41, 255), 0.10f, 0f);
+        // 0.15.68 (Nick 04:14): textile weave on gloves and sleeves (own tiling twill, like the flight suit cloth)
+        {
+            string nP = ART + "UL2_fabric_n.png", bP = ART + "UL2_fabric_b.png";
+            var ti = AssetImporter.GetAtPath(nP) as TextureImporter;
+            if (ti != null && ti.textureType != TextureImporterType.NormalMap) { ti.textureType = TextureImporterType.NormalMap; ti.SaveAndReimport(); }
+            var nT = AssetDatabase.LoadAssetAtPath<Texture2D>(nP); var bT = AssetDatabase.LoadAssetAtPath<Texture2D>(bP);
+            foreach (var k in new[] { "UL2_glove", "UL2_sleeve" })
+            {
+                var m = MAT[k];
+                if (bT != null) { if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", bT); if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", bT); }
+                if (nT != null && m.HasProperty("_BumpMap")) { m.SetTexture("_BumpMap", nT); m.SetFloat("_BumpScale", 1f); m.EnableKeyword("_NORMALMAP"); }
+                EditorUtility.SetDirty(m);
+            }
+            log.AppendLine("fabric on gloves/sleeves: normal " + (nT != null) + ", weave " + (bT != null));
+        }
         MAT["UL2_red"] = LitMat("UL2_red", new Color32(200, 36, 28, 255), 0.4f, 0f);   // compass lubber pointer (Nick 04:56)
         MAT["UL2_rotorblur"] = BlurMat("UL2_rotorblur"); MAT["UL2_propblur"] = BlurMat("UL2_propblur");
         MAT["UL2_white"] = LitMat("UL2_white", new Color32(232, 234, 232, 255), 0.75f, 0f);   // spinner tip and spiral (Nick 05:12)
@@ -487,6 +502,26 @@ public static partial class UL2Builder
                 nd.position = pv.position; nd.rotation = Quaternion.identity; SetMesh(nd, "x_g_" + id); ng++;
             }
             foreach (var old in new[] { "UL2_gauge_turn", "UL2_gface_turn" }) { var o = Find(cf, old); if (o) Object.DestroyImmediate(o.gameObject); }   // turn coordinator gone (0.15.26)
+            // 0.15.68 (Nick 04:07): globe attitude indicator like the PB-22's. A ball sits behind the dial with its front
+            // standing proud through the face; the plugin turns it for pitch and roll. The old rolling horizon bar is gone,
+            // the face keeps the bank scale, and a fixed amber aircraft symbol sits in front of the ball.
+            {
+                var o = Find(cf, "UL2_gauge_adi"); if (o) Object.DestroyImmediate(o.gameObject);
+                Vector3 c0 = P("x_gf_adi"); var rot = Quaternion.LookRotation(nrm, Vector3.up);
+                var bp = Find(cf, "UL2_gauge_adiball") ?? New("UL2_gauge_adiball", cf); bp.position = c0; bp.rotation = rot;
+                var bm = Find(bp, "ball") ?? New("ball", bp); bm.localPosition = Vector3.zero; bm.localRotation = Quaternion.identity;
+                var bf = bm.GetComponent<MeshFilter>(); if (bf == null) bf = bm.gameObject.AddComponent<MeshFilter>();
+                var br = bm.GetComponent<MeshRenderer>(); if (br == null) br = bm.gameObject.AddComponent<MeshRenderer>();
+                bf.sharedMesh = AdiBall(0.0235f, -0.0155f); br.sharedMaterial = PicMat("UL2_adi_ball_img");
+                var sy = Find(cf, "UL2_gface_adisym") ?? New("UL2_gface_adisym", cf); sy.position = c0; sy.rotation = rot;
+                var sf = sy.GetComponent<MeshFilter>(); if (sf == null) sf = sy.gameObject.AddComponent<MeshFilter>();
+                var sr = sy.GetComponent<MeshRenderer>(); if (sr == null) sr = sy.gameObject.AddComponent<MeshRenderer>();
+                sf.sharedMesh = AdiSymbol(0.0095f);
+                var amb = LitMat("UL2_adi_amber", new Color32(235, 170, 50, 255), 0.2f, 0f);
+                if (amb.HasProperty("_EmissionColor")) { amb.SetColor("_EmissionColor", new Color(0.55f, 0.37f, 0.1f)); amb.EnableKeyword("_EMISSION"); }
+                sr.sharedMaterial = amb;
+                log.AppendLine("attitude globe at " + c0.ToString("F4"));
+            }
             log.AppendLine("gauges " + ng);
         }
         // rudder pedals: the plugin slides UL2_pedal_L/R fore and aft on their rails with the yaw input (P220 / PB-22 way)
@@ -521,6 +556,19 @@ public static partial class UL2Builder
                 var f = t.GetComponent<MeshFilter>(); if (f == null) f = t.gameObject.AddComponent<MeshFilter>();
                 var r = t.GetComponent<MeshRenderer>(); if (r == null) r = t.gameObject.AddComponent<MeshRenderer>();
                 f.sharedMesh = mf.sharedMesh; r.sharedMaterials = mr.sharedMaterials; r.shadowCastingMode = mr.shadowCastingMode; r.enabled = true;
+                {   // 0.15.68: a copy of the mesh with fabric UVs on the glove submeshes (the Blender UVs there are empty)
+                    var src2 = mf.sharedMesh; var gl = new HashSet<int>();
+                    for (int si = 0; si < src2.subMeshCount && si < mr.sharedMaterials.Length; si++)
+                        if (mr.sharedMaterials[si] != null && mr.sharedMaterials[si].name.StartsWith("UL2_glove")) foreach (var ix in src2.GetTriangles(si)) gl.Add(ix);
+                    string up = ART + src2.name + "_fabric.asset";
+                    var me = AssetDatabase.LoadAssetAtPath<Mesh>(up); if (me == null) { me = new Mesh(); AssetDatabase.CreateAsset(me, up); }
+                    me.Clear(); me.name = src2.name + "_fabric"; me.indexFormat = src2.indexFormat;
+                    var vv = src2.vertices; var nn = src2.normals; me.vertices = vv; me.normals = nn;
+                    if (src2.uv2 != null && src2.uv2.Length > 0) me.uv2 = src2.uv2;
+                    me.subMeshCount = src2.subMeshCount; for (int si = 0; si < src2.subMeshCount; si++) me.SetTriangles(src2.GetTriangles(si), si);
+                    me.SetUVs(0, BoxUV(vv, nn, src2.uv, gl)); me.RecalculateBounds(); me.RecalculateTangents(); EditorUtility.SetDirty(me);
+                    f.sharedMesh = me;
+                }
                 ex.Add(r);
             }
             var acx = C(root, "Aircraft"); var so = new SerializedObject(acx); var er = so.FindProperty("exteriorRenderers"); var keep = new List<Object>();
@@ -814,7 +862,7 @@ public static partial class UL2Builder
         Set(csp, "propTorqueLimit", 1500f); Set(csp, "hubFriction", 60f); Set(csp, "bladeStrength", 8000f);
         var te = C(root, "TurbineEngine");
         Set(te, "maxPower", 195000f); Set(te, "maxFuelConsumption", 0.015f); Set(te, "spoolUpTime", 1.5f); Set(te, "startupTime", 4f);
-        Set(te, "IRMin", 0.6f); Set(te, "IRMax", 0.8f);
+        Set(te, "IRMin", 1.3f); Set(te, "IRMax", 1.6f);   // 0.15.68 (Nick 04:07): was 0.6/0.8, a single flare beat it every time (Cricket 2.0/2.5)
     }
 
     // ------------------------------------------------------------------ tail: two boom pieces, split stabiliser, fin with tip
@@ -943,6 +991,57 @@ public static partial class UL2Builder
     }
     // tapered sleeve along +Z: z 0 at the wrist (inside the glove cuff, r 0.029) to z 0.11 up the forearm (r 0.041), with a
     // slight cuff roll near the wrist; both ends closed. Normals smooth round the tube.
+    // 0.15.68 attitude globe: UV sphere of radius r centred dz along the gauge's Z (Z toward the pilot); u = longitude
+    // measured toward the pilot's right (-X here), v = latitude, matching UL2_adi_ball_img
+    static Mesh AdiBall(float r, float dz)
+    {
+        string path = ART + "UL2_adi_ball.asset";
+        var me = AssetDatabase.LoadAssetAtPath<Mesh>(path); if (me == null) { me = new Mesh(); AssetDatabase.CreateAsset(me, path); }
+        me.Clear(); me.name = "UL2_adi_ball";
+        int nu = 64, nv = 32; var vs = new List<Vector3>(); var ns = new List<Vector3>(); var uvs = new List<Vector2>(); var tr = new List<int>();
+        for (int j = 0; j <= nv; j++)
+        {
+            float lat = -90f + 180f * j / nv; float cl = Mathf.Cos(lat * Mathf.Deg2Rad), sl = Mathf.Sin(lat * Mathf.Deg2Rad);
+            for (int i = 0; i <= nu; i++)
+            {
+                float lon = -180f + 360f * i / nu; float x = -Mathf.Sin(lon * Mathf.Deg2Rad) * cl, z = Mathf.Cos(lon * Mathf.Deg2Rad) * cl;
+                var n = new Vector3(x, sl, z); ns.Add(n); vs.Add(n * r + new Vector3(0f, 0f, dz)); uvs.Add(new Vector2((float)i / nu, (float)j / nv));
+            }
+        }
+        for (int j = 0; j < nv; j++) for (int i = 0; i < nu; i++)
+        {
+            int a = j * (nu + 1) + i, b = a + 1, c = a + nu + 1, d = c + 1;
+            tr.AddRange(new[] { a, c, b, b, c, d });
+        }
+        me.SetVertices(vs); me.SetNormals(ns); me.SetUVs(0, uvs); me.SetTriangles(tr, 0);
+        // winding check: faces must point outward
+        int q0 = 6 * (nu * (nv / 2) + 3);   // a triangle at the equator (the pole ones are degenerate)
+        var fn = Vector3.Cross(vs[tr[q0 + 1]] - vs[tr[q0]], vs[tr[q0 + 2]] - vs[tr[q0]]);
+        if (Vector3.Dot(fn, ns[tr[q0]]) < 0f) { for (int k = 0; k < tr.Count; k += 3) { int q = tr[k + 1]; tr[k + 1] = tr[k + 2]; tr[k + 2] = q; } me.SetTriangles(tr, 0); }
+        me.RecalculateBounds(); me.RecalculateTangents(); EditorUtility.SetDirty(me); return me;
+    }
+    // fixed aircraft symbol: two wing bars and a centre dot, flat, facing the pilot at z
+    static Mesh AdiSymbol(float z)
+    {
+        string path = ART + "UL2_adi_symbol.asset";
+        var me = AssetDatabase.LoadAssetAtPath<Mesh>(path); if (me == null) { me = new Mesh(); AssetDatabase.CreateAsset(me, path); }
+        me.Clear(); me.name = "UL2_adi_symbol";
+        var vs = new List<Vector3>(); var tr = new List<int>();
+        System.Action<float, float, float, float> Q = (x0, x1, y0, y1) =>
+        {
+            int b = vs.Count; vs.Add(new Vector3(x0, y0, z)); vs.Add(new Vector3(x1, y0, z)); vs.Add(new Vector3(x1, y1, z)); vs.Add(new Vector3(x0, y1, z));
+            tr.AddRange(new[] { b, b + 2, b + 1, b, b + 3, b + 2 });
+        };
+        Q(0.0045f, 0.0135f, -0.0007f, 0.0007f); Q(-0.0135f, -0.0045f, -0.0007f, 0.0007f);   // wing bars
+        Q(0.0045f, 0.0058f, -0.0025f, 0.0007f); Q(-0.0058f, -0.0045f, -0.0025f, 0.0007f);   // drop tips
+        Q(-0.0012f, 0.0012f, -0.0012f, 0.0012f);                                             // centre dot
+        me.SetVertices(vs); me.SetTriangles(tr, 0);
+        // face the pilot (+Z): flip if the first triangle points away
+        var fn = Vector3.Cross(vs[tr[1]] - vs[tr[0]], vs[tr[2]] - vs[tr[0]]);
+        if (fn.z < 0f) { for (int k = 0; k < tr.Count; k += 3) { int q = tr[k + 1]; tr[k + 1] = tr[k + 2]; tr[k + 2] = q; } me.SetTriangles(tr, 0); }
+        var nn = new Vector3[vs.Count]; for (int i = 0; i < nn.Length; i++) nn[i] = Vector3.forward; me.normals = nn;
+        me.RecalculateBounds(); EditorUtility.SetDirty(me); return me;
+    }
     static Mesh SleeveMesh()
     {
         string path = ART + "UL2_sleeve.asset";
@@ -971,7 +1070,22 @@ public static partial class UL2Builder
             for (int k = 0; k < S; k++) { int a0 = s0 + k, a1 = s0 + (k + 1) % S; if (end == 0) tri.AddRange(new[] { c, a1, a0 }); else tri.AddRange(new[] { c, a0, a1 }); }
         }
         me.SetVertices(v); me.SetNormals(n); me.SetTriangles(tri, 0); me.RecalculateBounds();
+        me.SetUVs(0, BoxUV(v, n, null)); me.RecalculateTangents();   // 0.15.68: fabric weave
         EditorUtility.SetDirty(me); return me;
+    }
+    // 0.15.68 (Nick 04:14, gloves need the uniform's textile look): box-projected UVs, 1 UV = 2 cm, so the tiling fabric
+    // weave has the same thread size on every glove and sleeve. keep = UVs to leave alone (other submeshes)
+    const float WEAVE = 0.02f;
+    static List<Vector2> BoxUV(IList<Vector3> v, IList<Vector3> n, IList<Vector2> keep, HashSet<int> only = null)
+    {
+        var uv = new List<Vector2>(v.Count);
+        for (int i = 0; i < v.Count; i++)
+        {
+            if (only != null && !only.Contains(i)) { uv.Add(keep != null && i < keep.Count ? keep[i] : Vector2.zero); continue; }
+            var a = n[i]; float ax = Mathf.Abs(a.x), ay = Mathf.Abs(a.y), az = Mathf.Abs(a.z); var p = v[i] / WEAVE;
+            uv.Add(ax >= ay && ax >= az ? new Vector2(p.z, p.y) : ay >= az ? new Vector2(p.x, p.z) : new Vector2(p.x, p.y));
+        }
+        return uv;
     }
     static string LiveryPath(string k) { return MOD + "Art/UL2_livery_" + k + ".asset"; }
     static void ExtraLivery(string k, float gloss)
@@ -1553,7 +1667,7 @@ public static partial class UL2Builder
         so.FindProperty("unitName").stringValue = "UL-2 Airtrike";
         var wt = so.FindProperty("WorkshopTag"); if (wt != null) wt.stringValue = "UL-2 Airtrike";
         so.FindProperty("code").stringValue = "UL-2";
-        so.FindProperty("description").stringValue = "A light three-seat gyrocopter operated by Reserve Aviation units. Border patrol, armed reconnaissance, and light attack are all missions the UL-2 Airtrike can perform, but Reservists are reluctant to take it into enemy airspace where more sophisticated aircraft hunt. AT-145 racks and a forgiving flight envelope allow the gyrocopter to engage enemy light armor in close combat. A third seat allows for a dedicated spotter or shooter with multiple weapons options.";
+        so.FindProperty("description").stringValue = "A three-seat gyrocopter flown by reserve aviation units. The UL-2 can perform border patrol, armed reconnaissance, and light attack missions, but Reservists are reluctant to fly into enemy airspace against more sophisticated aircraft and air defense systems. A pair of missile racks allow the gyrocopter to engage enemy light armor in close combat. A third seat allows for a dedicated spotter or shooter with multiple weapons options.";
         // own map and aircraft selection icon (Nick 04:20): white top-down silhouette, nose up, rotor at 35 deg passing under
         // the body, like the stock icons (art/scripts/icons)
         var mapIco = IconSprite(ART + "Icons/UL2_icon_map.png");
@@ -1561,16 +1675,16 @@ public static partial class UL2Builder
         so.FindProperty("length").floatValue = 6.5f;
         so.FindProperty("width").floatValue = 9.2f;
         so.FindProperty("height").floatValue = 3.3f;
-        so.FindProperty("value").floatValue = 0f;
+        so.FindProperty("value").floatValue = 3.5f;   // Nick 2026-11-15 04:15: 3.5 million
         so.FindProperty("mass").floatValue = 680f;
-        so.FindProperty("radarSize").floatValue = 0.3f;
+        so.FindProperty("radarSize").floatValue = 0.21f;
         so.FindProperty("spawnOffset").vector3Value = new Vector3(0f, 1.15f, 0f);
         so.FindProperty("unitPrefab").objectReferenceValue = pf;
         so.FindProperty("aircraftParameters").objectReferenceValue = par;
         if (so.FindProperty("aircraftInfo") != null)
         {
             so.FindProperty("aircraftInfo.emptyWeight").floatValue = 680f;
-            so.FindProperty("aircraftInfo.maxWeight").floatValue = 1100f;
+            so.FindProperty("aircraftInfo.maxWeight").floatValue = 1200f;
             so.FindProperty("aircraftInfo.maxSpeed").floatValue = 180f;
             so.FindProperty("aircraftInfo.stallSpeed").floatValue = 50f;
             so.FindProperty("aircraftInfo.maneuverability").floatValue = 3f;

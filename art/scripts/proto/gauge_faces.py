@@ -48,15 +48,13 @@ def kmh(v): return -135 + 270 * v / 280
 im, d = base(); arc(d, kmh(50), kmh(200), GREEN); arc(d, kmh(200), kmh(240), AMBER)
 a = math.radians(kmh(240)); d.line((C + RR * 0.74 * math.sin(a), C - RR * 0.74 * math.cos(a), C + RR * 0.97 * math.sin(a), C - RR * 0.97 * math.cos(a)), fill=RED, width=6)
 ticks(d, -135, 135, 7, 4); numbers(d, -135, 135, [0, 40, 80, 120, 160, 200, 240, 280], 19); text(d, C, C + 52, 'KM/H', 16, GREY); faces['asi'] = im
-# attitude: sky over ground with a bank scale; the plugin rolls the horizon bar over it
-im, d = base(); d.pieslice((C - RR, C - RR, C + RR, C + RR), 180, 360, fill=SKY); d.pieslice((C - RR, C - RR, C + RR, C + RR), 0, 180, fill=GND)
-d.line((C - RR, C, C + RR, C), fill=WHITE, width=3)
-for ang in (-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60):
-    a = math.radians(ang); big = ang % 30 == 0; r0 = RR * (0.74 if big else 0.82)
-    d.line((C + r0 * math.sin(a), C - r0 * math.cos(a), C + RR * 0.95 * math.sin(a), C - RR * 0.95 * math.cos(a)), fill=WHITE, width=4 if big else 2)
-for p in (-20, -10, 10, 20): w = 26 if abs(p) == 20 else 16; y = C - p * 2.4; d.line((C - w, y, C + w, y), fill=WHITE, width=2)
-d.polygon([(C, C - RR * 0.72), (C - 9, C - RR * 0.60), (C + 9, C - RR * 0.60)], fill=AMBER)
-d.line((C - 46, C, C - 16, C), fill=AMBER, width=5); d.line((C + 16, C, C + 46, C), fill=AMBER, width=5); d.ellipse((C - 5, C - 5, C + 5, C + 5), fill=AMBER)
+# attitude (0.15.68, Nick 04:07): the globe (UL2_adi_ball, built in Unity) shows pitch and roll through the middle;
+# the face keeps the bank scale round the rim and a fixed amber bank index at the top
+im, d = base()
+for ang in (-60, -45, -30, -20, -10, 10, 20, 30, 45, 60):
+    a = math.radians(ang); big = ang % 30 == 0; r0 = RR * (0.78 if big else 0.86)
+    d.line((C + r0 * math.sin(a), C - r0 * math.cos(a), C + RR * 0.97 * math.sin(a), C - RR * 0.97 * math.cos(a)), fill=WHITE, width=5 if big else 3)
+d.polygon([(C, C - RR * 0.76), (C - 10, C - RR * 0.95), (C + 10, C - RR * 0.95)], fill=AMBER)
 faces['adi'] = im
 # altimeter: one turn per 1000 ft
 im, d = base(); ticks(d, 0, 324, 9, 5); numbers(d, 0, 324, list(range(10)), 24); text(d, C, C - 40, 'ALT', 16, GREY); text(d, C, C + 44, 'x100 FT', 14, GREY)
@@ -69,9 +67,18 @@ a = math.radians(erpm(5800)); d.line((C + RR * 0.74 * math.sin(a), C - RR * 0.74
 ticks(d, -135, 135, 7, 2); numbers(d, -135, 135, list(range(8)), 22); text(d, C, C + 46, 'RPM', 16, GREY); text(d, C, C + 64, 'x1000', 13, GREY)
 faces['eng'] = im
 # heading: the card turns under a fixed red lubber pointer (0.15.26, Nick 04:56)
-im, d = base(); ticks(d, 0, 360, 12, 3)
-for k, s in enumerate(['N', '3', '6', 'E', '12', '15', 'S', '21', '24', 'W', '30', '33']):
-    a = math.radians(30 * k); text(d, C + RR * 0.58 * math.sin(a), C - RR * 0.58 * math.cos(a), s, 22 if len(s) == 1 else 18, AMBER if s == 'N' else WHITE)
+im, d = base()
+for k in range(72):   # 5 deg ticks pushed to the rim, long every 30
+    a = math.radians(5 * k); big = k % 6 == 0; mid = k % 2 == 0; r0 = RR * (0.84 if big else 0.89 if mid else 0.92)
+    d.line((C + r0 * math.sin(a), C - r0 * math.cos(a), C + RR * 0.98 * math.sin(a), C - RR * 0.98 * math.cos(a)), fill=WHITE, width=4 if big else 2)
+for k, s_ in enumerate(['N', '3', '6', 'E', '12', '15', 'S', '21', '24', 'W', '30', '33']):
+    # 0.15.68 (Nick 04:07): every number upright toward the rim (top outward, like a real card), just inside the ticks
+    sz = 30 if len(s_) == 1 else 26; f = font(sz); tb = d.textbbox((0, 0), s_, font=f)
+    tile = Image.new('RGBA', (tb[2] - tb[0] + 8, tb[3] - tb[1] + 8), (0, 0, 0, 0)); td = ImageDraw.Draw(tile)
+    td.text((4 - tb[0], 4 - tb[1]), s_, fill=AMBER if s_ == 'N' else WHITE, font=f)
+    tile = tile.rotate(-30 * k, expand=True, resample=Image.BICUBIC)
+    a = math.radians(30 * k); r = RR * 0.68
+    im.paste(tile, (int(C + r * math.sin(a) - tile.width / 2), int(C - r * math.cos(a) - tile.height / 2)), tile)
 faces['hdg'] = im
 # vertical speed: +-10 m/s, zero at 9 o'clock, -90 +- 135 (plugin)
 im, d = base(); ticks(d, -225, 45, 4, 5)
@@ -79,6 +86,24 @@ for k, v in enumerate(['10', '5', '0', '5', '10']):
     a = math.radians(-225 + 270 * k / 4); text(d, C + RR * 0.58 * math.sin(a), C - RR * 0.58 * math.cos(a), v, 22)
 text(d, C + 18, C - 30, 'UP', 14, GREY); text(d, C + 18, C + 30, 'DN', 14, GREY); text(d, C + 30, C, 'M/S', 14, GREY)
 faces['vsi'] = im
+# attitude globe texture (0.15.68): equirectangular, u = longitude (-180..180, display right positive), v = latitude
+BW, BH = 1024, 512
+ball = Image.new('RGB', (BW, BH), SKY); bd = ImageDraw.Draw(ball)
+def bxy(lon, lat): return (BW / 2 + lon * BW / 360, BH / 2 - lat * BH / 180)
+bd.rectangle((0, BH / 2, BW, BH), fill=GND)
+for lat in range(-80, 90, 5):
+    if lat == 0: continue
+    big = lat % 10 == 0; w = 14 if big else 6
+    for c0 in (0, 120, -120):   # the ladder repeats three times round, the front one is what shows
+        x0, y = bxy(c0 - w, lat); x1, _ = bxy(c0 + w, lat); bd.line((x0, y, x1, y), fill=WHITE, width=3 if big else 2)
+        if big and abs(lat) <= 60:
+            for sg in (-1, 1):
+                x, _ = bxy(c0 + sg * (w + 8), lat); ft = font(20); t = str(abs(lat)); tb = bd.textbbox((0, 0), t, font=ft)
+                bd.text((x - (tb[2] - tb[0]) / 2, y - (tb[3] - tb[1]) / 2 - tb[1]), t, fill=WHITE, font=ft)
+bd.rectangle((0, BH / 2 - 2, BW, BH / 2 + 2), fill=WHITE)
+for c0 in (0, 120, -120):   # sky pointer at the top of the front, for bank at a glance
+    x, y = bxy(c0, 72); bd.polygon([(x, y - 10), (x - 9, y + 8), (x + 9, y + 8)], fill=WHITE)
+ball.save(os.path.join(out, 'UL2_adi_ball_img.png'))
 for k, im in faces.items():
     im.transpose(Image.FLIP_LEFT_RIGHT).save(os.path.join(out, f'UL2_gf_{k}_img.png'))
 print('wrote', len(faces), 'faces to', out)

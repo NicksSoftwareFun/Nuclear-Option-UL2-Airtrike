@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.67")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.68")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -1093,9 +1093,18 @@ namespace UL2Airtrike
             // six-pack (Nick 22:04, Trident style): attitude horizon bar, turn coordinator, heading
             var e = transform.eulerAngles;
             Needle("adi", -Wrap(e.z), dt);                                                  // horizon rolls against the bank (sign fixed 0.15.26, Nick 04:56)
+            // 0.15.68 (Nick 04:07): globe attitude indicator. The ball turns for pitch (nose up shows more sky, the horizon
+            // drops below the symbol) and rolls against the bank like the old bar
+            if (gauges.TryGetValue("adiball", out var ab) && ab != null)
+            {
+                var want = Quaternion.Euler(0f, 0f, -Wrap(e.z)) * Quaternion.Euler(Mathf.Clamp(-Wrap(e.x), -85f, 85f), 0f, 0f);
+                ab.localRotation = Quaternion.Slerp(ab.localRotation, rest["adiball"] * want, 1f - Mathf.Exp(-dt * 8f));
+            }
             // 0.15.29 (Nick 12:29, pinned at max): the game holds this engine at 100 % rpm whenever it runs (the prop governs),
             // so the dial shows 1400 rpm idle to 5800 at full throttle, with a little lag like a real engine
-            engDisp = Mathf.MoveTowards(engDisp, er > 0.05f ? Mathf.Lerp(1400f, 5800f, thr) * Mathf.Clamp01(er) : 0f, 3000f * dt);
+            // 0.15.68 (Nick 04:07: full throttle sat on the red line): full throttle reads 5500, the top of the green arc
+            // (max continuous); yellow 5500-5800 and the red line stay on the dial
+            engDisp = Mathf.MoveTowards(engDisp, er > 0.05f ? Mathf.Lerp(1400f, 5500f, thr) * Mathf.Clamp01(er) : 0f, 3000f * dt);
             Needle("eng", -135f + 270f * Mathf.Clamp01(engDisp / 7000f), dt);
             Needle("hdgcard", -e.y, dt);                                                     // compass card turns under the fixed red pointer
             Needle("rotor", -135f + 270f * Mathf.Clamp01(rpm / 450f), dt);                   // rotor rpm, 0-450
