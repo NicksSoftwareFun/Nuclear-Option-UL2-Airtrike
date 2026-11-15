@@ -283,7 +283,9 @@ public static partial class UL2Builder
             }
             Object.DestroyImmediate(mr0); Object.DestroyImmediate(mf0);
             var bc = rt.GetComponent<BoxCollider>();
-            if (bc != null) { bc.center = new Vector3(0f, 0.497f, 0.143f); bc.size = new Vector3(0.24f, 1.99f, 0.85f); }
+            // 0.15.61 (Nick 02:21): the stock pod's solid box sat inside the cockpit and shoved the airframe apart at spawn.
+            // The pod rides inside the cockpit like the gunner, so it gets no collider of its own.
+            if (bc != null) Object.DestroyImmediate(bc);
             // straps, tray, chock, D-rings, mast clamps, cables, connectors and zip ties: one static mesh
             var kit = New("UL2_ecmkit", rt); kit.localPosition = Vector3.zero; kit.localRotation = Quaternion.identity;
             var kv = EcmKitMesh(); 

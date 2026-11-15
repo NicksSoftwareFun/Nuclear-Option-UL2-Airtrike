@@ -1065,7 +1065,8 @@ public static partial class UL2Builder
         while (sets.arraySize < 3) sets.InsertArrayElementAtIndex(1);
         while (sets.arraySize > 3) sets.DeleteArrayElementAtIndex(sets.arraySize - 1);
         // Nick 2026-11-12 20:42: under stations removed completely, Kingpin (Rocket2_4Pod) removed from the top stations
-        string[] topOpts = { "RocketPod1_single", "AGM1_single", "AGM1_double_compact", "AAM3_single", "ECMPod1", "ATGM1_quad" };   // 0.15.58: AGM-48 x2 (Nick 23:25)
+        // 0.15.61 (Nick 02:19): the mission editor fills a new unit with the FIRST option of each station, so AT-145 x4 goes first
+        string[] topOpts = { "ATGM1_quad", "RocketPod1_single", "AGM1_single", "AGM1_double_compact", "AAM3_single", "ECMPod1" };   // 0.15.58: AGM-48 x2 (Nick 23:25)
         string[] underOpts = { "gun_12.7mm_pod", "gun_20mm_pod", "bomb_125_single" };
         var defs = new[] {
             new { name = "Left Stub", hp = "pylon_fuselage_L", sym = false, symName = "Stub Pylons (top)", opts = topOpts, pre = 3 },

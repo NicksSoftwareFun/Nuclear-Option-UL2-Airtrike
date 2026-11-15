@@ -2,6 +2,7 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.61: a new UL-2 in the mission editor starts with AT-145 x4 on both stubs (the editor takes each station's first option, which was the Lynchpin pod); the Expedient ECM Pod no longer has a solid box inside the cockpit that blew the airframe apart at spawn.
 - 0.15.60: fixed the AGM-48 x2 stub rack. Its second missile loaded broken in game, so only one missile showed, the loadout screen stopped working, AI aircraft spawned with it half set up, and a crash flooded the log until the game froze.
 - 0.15.59: two faction liveries. PALA Camel Corps (desert tan, red fin tip, Camel Corps badge on both sides of the fin and on the nose; PALA only) and BDF Orca (black and white orca scheme with eye, toothed mouth and black and white BDF roundel on the fin; BDF only).
 - 0.15.52: weathering on every part that is not the livery skin (frame, mast, engine, gear, wheels, seats, cockpit tub, grips, rotor): grime in corners, oil runs round the engine, exhaust soot, dust and mud on the gear and lower frame, chipped frame paint, dusty cockpit floor, rotor leading edge wear. One shared map for all three liveries; the skin paint is unchanged.
