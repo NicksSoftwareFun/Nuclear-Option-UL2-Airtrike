@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.62")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.63")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -64,6 +64,8 @@ namespace UL2Airtrike
                 var rw = AccessTools.Method(tCm, "AICombat_OnRadarWarning");
                 if (rw != null) h.Patch(rw, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostRadarWarning)));
                 Logger.LogInfo("UL-2 tactics patches: attack " + (run != null) + ", radar warning " + (rw != null));
+                // 0.15.63 (Nick 03:01, AI aborting landings like the PB-22 and P220 did): same fix as theirs
+                LandingFix.Patch(h);
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
         }
@@ -335,6 +337,7 @@ namespace UL2Airtrike
         readonly Transform[][] arms = new Transform[2][]; bool armsLogged;
         // 0.15.35 (Nick 22:04): front pilot's right hand on the centre stick, left hand on the throttle (third person)
         readonly Transform[][] parms = new Transform[2][]; Transform pil, jsT, thT, exStick, exThr; Vector3 jsWrist, thWrist; bool parmsLogged;
+        readonly Transform[] slP = new Transform[2], slC = new Transform[2];   // 0.15.63 sleeve bridges (L, R)
         void Update()
         {
             try
@@ -981,11 +984,13 @@ namespace UL2Airtrike
                     if (parms[1] != null) Reach(parms[1], jsT.TransformPoint(jsWrist), transform.TransformDirection(new Vector3(0.7f, -1f, -0.3f)), jsT.TransformDirection(new Vector3(-0.25f, 0.15f, 1f)).normalized);
                     if (parms[0] != null) Reach(parms[0], thT.TransformPoint(thWrist), transform.TransformDirection(new Vector3(-0.7f, -1f, -0.3f)), thT.TransformDirection(new Vector3(0.25f, 0.15f, 1f)).normalized);
                     for (int i = 0; i < 2; i++) if (parms[i] != null) parms[i][2].localScale = Vector3.zero;
+                    Sleeves(slP, parms, true);
                     if (!parmsLogged) { parmsLogged = true; Plugin.Log.LogInfo("UL-2 pilot hands on stick and throttle, wrist miss R " + (parms[1] != null ? (parms[1][2].position - jsT.TransformPoint(jsWrist)).magnitude.ToString("0.000") : "-") + " L " + (parms[0] != null ? (parms[0][2].position - thT.TransformPoint(thWrist)).magnitude.ToString("0.000") : "-") + " m"); }
                 }
                 catch (Exception ex) { Plugin.Log.LogError("UL-2 pilot hands: " + ex); pil = null; }
             }
-            if (ctrl2 == null || cop == null || !cop.gameObject.activeInHierarchy) return;
+            if (!(pil != null && pil.gameObject.activeInHierarchy && jsT != null && thT != null)) Sleeves(slP, parms, false);
+            if (ctrl2 == null || cop == null || !cop.gameObject.activeInHierarchy) { Sleeves(slC, arms, false); return; }
             try
             {
                 for (int i = 0; i < 2; i++)
@@ -1000,9 +1005,25 @@ namespace UL2Airtrike
                         ctrl2.TransformDirection(new Vector3(-sx * 0.31f, 0.86f, 0.42f)).normalized);
                     b[2].localScale = Vector3.zero;
                 }
+                Sleeves(slC, arms, true);
                 if (!armsLogged) { armsLogged = true; Plugin.Log.LogInfo("UL-2 copilot hands on the controller, wrist miss L " + (arms[0] != null ? (arms[0][2].position - ctrl2.TransformPoint(new Vector3(-0.0868f, -0.0615f, -0.1683f))).magnitude.ToString("0.000") : "-") + " m"); }
             }
             catch (Exception ex) { Plugin.Log.LogError("UL-2 copilot hands: " + ex); ctrl2 = null; }
+        }
+        // 0.15.63 (Nick 02:49): each sleeve bridge sits on its wrist and points up the forearm to the elbow, covering the
+        // pinched end of the stock sleeve where the folded-away hand used to be
+        static void Sleeves(Transform[] sl, Transform[][] b, bool on)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                var s = sl[i]; if (s == null) continue;
+                bool ok = on && b[i] != null && b[i][1] != null && b[i][2] != null && b[i][1].gameObject.activeInHierarchy;
+                if (s.gameObject.activeSelf != ok) s.gameObject.SetActive(ok);
+                if (!ok) continue;
+                Vector3 w = b[i][2].position, up = b[i][1].position - w;
+                if (up.sqrMagnitude < 1e-6f) continue;
+                s.SetPositionAndRotation(w, Quaternion.LookRotation(up.normalized, Vector3.up));
+            }
         }
         // two-bone arm IK: shoulder, elbow, wrist; the elbow bends toward the pole and the hand turns to point along hdir
         static void Reach(Transform[] b, Vector3 tgt, Vector3 pole, Vector3 hdir)
@@ -1254,6 +1275,7 @@ namespace UL2Airtrike
                     else if (t.name == "throttle" && thT == null && t.parent != null && t.parent.name == "throttleZero") thT = t;
                     else if (t.name == "UL2_ext_stick") exStick = t;
                     else if (t.name == "UL2_ext_throttle") exThr = t;
+                    else if (t.name.StartsWith("UL2_sleeve_") && t.name.Length == 13) { var arr = t.name[11] == 'P' ? slP : slC; arr[t.name[12] == 'L' ? 0 : 1] = t; }
                 }
                 if (pil != null)
                     for (int i = 0; i < 2; i++)
@@ -1463,4 +1485,91 @@ namespace UL2Airtrike
             }
         }
     }
+
+    // 0.15.63 (Nick 03:01): the stock AI landing aborts in Touched_Down when radarAlt > 1 m. radarAlt is measured from the
+    // aircraft origin, which sits 1.15 m above the wheels on the UL-2 (spawnOffset), so every touchdown read as a bounce and
+    // it went around. Same fix as the PB-22 and P220: while on the runway the landing state sees the height of the wheels
+    // minus a margin (abort only above ~2 m of real bounce), a gentle nose-down push keeps it on the ground, and on leaving
+    // the state it deregisters from the runway (stock bug: followers otherwise abort for "traffic ahead").
+    internal static class LandingFix
+    {
+        const float TouchedDown = 4f;   // AIPilotLandingState.LandingMode.Touched_Down
+        const float WHEELS = 1.15f, MARGIN = 1.0f;
+        const BindingFlags F = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        static FieldInfo radarAlt, fAc, fMode, fCi, fUsage, fSpeed, fRb; static FieldInfo fPitch; static FieldInfo fRunway; static MethodInfo mDereg;
+        public static void Patch(Harmony h)
+        {
+            try
+            {
+                var t = AccessTools.TypeByName("AIPilotLandingState"); var m = t == null ? null : AccessTools.Method(t, "RunMode");
+                radarAlt = AccessTools.Field(AccessTools.TypeByName("Unit"), "radarAlt");
+                if (m == null || radarAlt == null) { Plugin.Log.LogWarning("UL-2: AI landing state not found, landing fix off"); return; }
+                fAc = AccessTools.Field(t, "aircraft"); fMode = AccessTools.Field(t, "landingMode"); fCi = AccessTools.Field(t, "controlInputs"); fUsage = AccessTools.Field(t, "runwayUsage");
+                h.Patch(m, prefix: new HarmonyMethod(typeof(LandingFix), nameof(Pre)), postfix: new HarmonyMethod(typeof(LandingFix), nameof(Post)));
+                var sw = AccessTools.Method(t, "SwitchMode"); if (sw != null) h.Patch(sw, prefix: new HarmonyMethod(typeof(LandingFix), nameof(Switch)));
+                var leave = AccessTools.Method(t, "LeaveState"); if (leave != null) h.Patch(leave, prefix: new HarmonyMethod(typeof(LandingFix), nameof(Leave)));
+                Plugin.Log.LogInfo("UL-2 landing fix: run " + (m != null) + ", switch " + (sw != null) + ", leave " + (leave != null) + ", fields " + (fAc != null && fMode != null && fCi != null));
+            }
+            catch (Exception e) { Plugin.Log.LogWarning("UL-2 landing fix not applied: " + e.Message); }
+        }
+        static Component Ours(object st)
+        {
+            var ac = fAc?.GetValue(st) as Component;
+            return ac != null && ac.GetComponent<RotorSpinner>() != null ? ac : null;
+        }
+        static bool OnRunway(object st) { var v = fMode?.GetValue(st); return v != null && Convert.ToSingle(Convert.ToInt32(v)) == TouchedDown; }
+        static void Pre(object __instance, out float __state)
+        {
+            __state = float.NaN;
+            try
+            {
+                var ac = Ours(__instance); if (ac == null || !OnRunway(__instance)) return;
+                float alt = (float)radarAlt.GetValue(ac); __state = alt;
+                radarAlt.SetValue(ac, Mathf.Max(alt - WHEELS - MARGIN, 0f));
+            }
+            catch { }
+        }
+        static void Post(object __instance, float __state)
+        {
+            try
+            {
+                var ac = Ours(__instance); if (ac == null) return;
+                if (!float.IsNaN(__state)) radarAlt.SetValue(ac, __state);
+                if (!OnRunway(__instance)) return;
+                var ci = fCi?.GetValue(__instance); if (ci == null) return;
+                fPitch = fPitch ?? ci.GetType().GetField("pitch"); if (fPitch == null) return;
+                // in this game pitch > 0 is stick forward (nose down)
+                float pitchDeg = Mathf.Asin(Mathf.Clamp(ac.transform.forward.y, -1f, 1f)) * Mathf.Rad2Deg;
+                float push = Mathf.Clamp(pitchDeg * 0.15f, 0f, 0.6f);
+                if ((float)fPitch.GetValue(ci) < push) fPitch.SetValue(ci, push);
+            }
+            catch { }
+        }
+        static void Switch(object __instance, object[] __args)
+        {
+            try
+            {
+                var ac = Ours(__instance); if (ac == null) return;
+                var from = fMode?.GetValue(__instance); var to = __args != null && __args.Length > 0 ? __args[0] : null;
+                if (from == null || to == null || from.Equals(to)) return;
+                Plugin.Log.LogInfo("UL-2 AI landing #" + ac.GetInstanceID() + ": " + from + " -> " + to + ", height " + ((float)radarAlt.GetValue(ac)).ToString("F2")
+                    + " m, pitch " + (Mathf.Asin(Mathf.Clamp(ac.transform.forward.y, -1f, 1f)) * Mathf.Rad2Deg).ToString("F1"));
+            }
+            catch { }
+        }
+        static void Leave(object __instance)
+        {
+            try
+            {
+                var ac = Ours(__instance); if (ac == null || !OnRunway(__instance)) return;
+                var usage = fUsage?.GetValue(__instance); if (usage == null) return;
+                fRunway = fRunway ?? AccessTools.Field(usage.GetType(), "Runway");
+                var runway = fRunway?.GetValue(usage); if (runway == null) return;
+                mDereg = mDereg ?? AccessTools.Method(runway.GetType(), "DeregisterLanding");
+                if (mDereg != null) mDereg.Invoke(runway, new object[] { ac });
+            }
+            catch { }
+        }
+    }
+
 }

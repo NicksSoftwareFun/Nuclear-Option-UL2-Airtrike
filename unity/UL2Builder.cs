@@ -57,7 +57,12 @@ public static partial class UL2Builder
         var go = new GameObject(name); go.transform.SetParent(parent, false); return go.transform;
     }
     static Component C(Transform t, string type) { return t.GetComponents<Component>().FirstOrDefault(c => c != null && c.GetType().Name == type); }
-    static Material[] Mats(string mesh) { return Lget(mesh).mats.Select(m => MAT[m]).ToArray(); }
+    static readonly string[] GLOVED = { "x_stick", "x_throttle", "x_ctrl2" };   // 0.15.63: the only FDE / fabric on these is the pilots' gloves
+    static Material[] Mats(string mesh)
+    {
+        bool g = GLOVED.Contains(mesh);
+        return Lget(mesh).mats.Select(m => g && (m == "UL2_fde" || m == "UL2_fabric") ? MAT["UL2_glove"] : MAT[m]).ToArray();
+    }
     static void SetMesh(Transform t, string mesh)
     {
         var mf = t.GetComponent<MeshFilter>(); if (mf == null) mf = t.gameObject.AddComponent<MeshFilter>();
@@ -344,6 +349,10 @@ public static partial class UL2Builder
         MAT["UL2_bronze"] = LitMat("UL2_bronze", new Color32(150, 128, 100, 255), 0.45f, 0.10f);   // FDE cerakote, was bronze
         MAT["UL2_black"] = KitMat("UL2_black");
         MAT["UL2_fabric"] = LitMat("UL2_fabric", new Color32(166, 134, 94, 255), 0.03f, 0f);
+        // 0.15.63 (Nick 02:49): pilot and copilot gloves in the stock flight glove olive, the sleeve bridges in the stock sleeve
+        // green (both sampled from the stock pilot texture: hand 62,68,56, forearm 41,50,41)
+        MAT["UL2_glove"] = LitMat("UL2_glove", new Color32(62, 68, 56, 255), 0.18f, 0f);
+        MAT["UL2_sleeve"] = LitMat("UL2_sleeve", new Color32(41, 50, 41, 255), 0.10f, 0f);
         MAT["UL2_red"] = LitMat("UL2_red", new Color32(200, 36, 28, 255), 0.4f, 0f);   // compass lubber pointer (Nick 04:56)
         MAT["UL2_rotorblur"] = BlurMat("UL2_rotorblur"); MAT["UL2_propblur"] = BlurMat("UL2_propblur");
         MAT["UL2_white"] = LitMat("UL2_white", new Color32(232, 234, 232, 255), 0.75f, 0f);   // spinner tip and spiral (Nick 05:12)
@@ -518,6 +527,23 @@ public static partial class UL2Builder
             for (int i = 0; i < er.arraySize; i++) { var o = er.GetArrayElementAtIndex(i).objectReferenceValue; if (o != null && !ex.Contains(o)) keep.Add(o); }
             keep.AddRange(ex); ObjArray(acx, "exteriorRenderers", keep.ToArray());
             log.AppendLine("exterior control copies " + ex.Count + ", exteriorRenderers " + keep.Count);
+        }
+        // 0.15.63 (Nick 02:49): sleeve bridges. The stock hand is folded away inside our glove, which pinches the end of the
+        // stock sleeve; a short tapered sleeve (glove cuff to forearm) covers the joint. The plugin puts each one on its wrist
+        // every frame, pointing up the forearm. Exterior renderers like the pilots, so the cockpit view hides them too.
+        {
+            var sl = new List<Object>(); var mesh = SleeveMesh();
+            foreach (var nm in new[] { "UL2_sleeve_PL", "UL2_sleeve_PR", "UL2_sleeve_CL", "UL2_sleeve_CR" })
+            {
+                var t = Find(root, nm) ?? New(nm, root); t.localPosition = Vector3.zero; t.localRotation = Quaternion.identity; t.localScale = Vector3.one; t.gameObject.layer = 0;
+                var f = t.GetComponent<MeshFilter>(); if (f == null) f = t.gameObject.AddComponent<MeshFilter>();
+                var r = t.GetComponent<MeshRenderer>(); if (r == null) r = t.gameObject.AddComponent<MeshRenderer>();
+                f.sharedMesh = mesh; r.sharedMaterials = new[] { MAT["UL2_sleeve"] }; sl.Add(r);
+            }
+            var acx = C(root, "Aircraft"); var so = new SerializedObject(acx); var er = so.FindProperty("exteriorRenderers"); var keep = new List<Object>();
+            for (int i = 0; i < er.arraySize; i++) { var o = er.GetArrayElementAtIndex(i).objectReferenceValue; if (o != null && !sl.Contains(o)) keep.Add(o); }
+            keep.AddRange(sl); ObjArray(acx, "exteriorRenderers", keep.ToArray());
+            log.AppendLine("sleeve bridges " + sl.Count + ", exteriorRenderers " + keep.Count);
         }
         // 5-point harnesses: own objects on the exterior renderer list, so the cockpit view hides them with the pilots (stock)
         {
@@ -894,6 +920,38 @@ public static partial class UL2Builder
         // 0.15.59 (Nick 01:53): faction liveries, PALA Camel Corps (desert tan) and BDF Orca
         ExtraLivery("tan", 0f); ExtraLivery("orca", 0f);
         return mat;
+    }
+    // tapered sleeve along +Z: z 0 at the wrist (inside the glove cuff, r 0.029) to z 0.11 up the forearm (r 0.041), with a
+    // slight cuff roll near the wrist; both ends closed. Normals smooth round the tube.
+    static Mesh SleeveMesh()
+    {
+        string path = ART + "UL2_sleeve.asset";
+        var me = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+        if (me == null) { me = new Mesh(); AssetDatabase.CreateAsset(me, path); }
+        me.Clear(); me.name = "UL2_sleeve";
+        float[] zs = { 0f, 0.012f, 0.020f, 0.028f, 0.060f, 0.110f }; float[] rs = { 0.029f, 0.031f, 0.034f, 0.033f, 0.037f, 0.041f };
+        int S = 16; var v = new List<Vector3>(); var n = new List<Vector3>(); var tri = new List<int>();
+        for (int i = 0; i < zs.Length; i++)
+            for (int k = 0; k < S; k++)
+            {
+                float a = 2f * Mathf.PI * k / S; var d = new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f);
+                v.Add(d * rs[i] + Vector3.forward * zs[i]); n.Add(d);
+            }
+        for (int i = 0; i < zs.Length - 1; i++)
+            for (int k = 0; k < S; k++)
+            {
+                int a0 = i * S + k, a1 = i * S + (k + 1) % S, b0 = a0 + S, b1 = a1 + S;
+                tri.AddRange(new[] { a0, a1, b0, a1, b1, b0 });
+            }
+        foreach (var end in new[] { 0, zs.Length - 1 })
+        {
+            int c = v.Count; v.Add(Vector3.forward * zs[end]); n.Add(end == 0 ? Vector3.back : Vector3.forward);
+            int s0 = v.Count;
+            for (int k = 0; k < S; k++) { v.Add(v[end * S + k]); n.Add(end == 0 ? Vector3.back : Vector3.forward); }
+            for (int k = 0; k < S; k++) { int a0 = s0 + k, a1 = s0 + (k + 1) % S; if (end == 0) tri.AddRange(new[] { c, a1, a0 }); else tri.AddRange(new[] { c, a0, a1 }); }
+        }
+        me.SetVertices(v); me.SetNormals(n); me.SetTriangles(tri, 0); me.RecalculateBounds();
+        EditorUtility.SetDirty(me); return me;
     }
     static string LiveryPath(string k) { return MOD + "Art/UL2_livery_" + k + ".asset"; }
     static void ExtraLivery(string k, float gloss)
@@ -1436,19 +1494,34 @@ public static partial class UL2Builder
             new[] { "Frontliner", "UL2_sidegun", "ATGM1_quad", "RocketPod1_single", "UL2_s3_mg" },
             new[] { "Broker", "UL2_sidegun", "ECMPod1", "UL2_AGM1_double", "UL2_s3_gl" },
             new[] { "Decoy", "UL2_sidegun", "ECMPod1", "ECMPod1", "UL2_s3_spot" } };
-        var lo = so.FindProperty("loadouts"); lo.arraySize = AIL.Length + 1;
-        for (int i = 0; i < lo.arraySize; i++)
+        // 0.15.63 (Nick 02:55, a triple ECM UL-2 spawned): the AI deploys from StandardLoadouts (stock
+        // AircraftParameters.GetRandomStandardLoadout) and makes up a random loadout when that list is empty; "loadouts" is
+        // only the stock pair (0 empty, 1 the default). Like the stock helicopters: loadouts = empty + Standard, the seven
+        // AI loadouts in StandardLoadouts.
+        System.Action<SerializedProperty, string[]> Fill = (w, row) =>
         {
-            var w = lo.GetArrayElementAtIndex(i).FindPropertyRelative("weapons"); w.arraySize = 4;
+            w.arraySize = 4;
             for (int k = 0; k < 4; k++)
             {
-                string id = i == 0 ? "" : AIL[i - 1][k + 1];
+                string id = row == null ? "" : row[k + 1];
                 var m = id == "" ? null : Mount(id);
-                if (id != "" && m == null) log.AppendLine("loadout " + AIL[i - 1][0] + ": MISSING mount " + id);
+                if (id != "" && m == null) log.AppendLine("loadout " + row[0] + ": MISSING mount " + id);
                 w.GetArrayElementAtIndex(k).objectReferenceValue = m;
             }
+        };
+        var lo = so.FindProperty("loadouts"); lo.arraySize = 2;
+        Fill(lo.GetArrayElementAtIndex(0).FindPropertyRelative("weapons"), null);
+        Fill(lo.GetArrayElementAtIndex(1).FindPropertyRelative("weapons"), AIL[0]);
+        var std = so.FindProperty("StandardLoadouts"); std.arraySize = AIL.Length;
+        for (int i = 0; i < AIL.Length; i++)
+        {
+            var e = std.GetArrayElementAtIndex(i);
+            e.FindPropertyRelative("Name").stringValue = AIL[i][0];
+            e.FindPropertyRelative("disabled").boolValue = false;
+            e.FindPropertyRelative("FuelRatio").floatValue = 1f;
+            Fill(e.FindPropertyRelative("loadout.weapons"), AIL[i]);
         }
-        log.AppendLine("AI loadouts: " + (lo.arraySize - 1));
+        log.AppendLine("AI loadouts (StandardLoadouts): " + std.arraySize);
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(par);
 
         var def = AssetDatabase.LoadMainAssetAtPath(DEF);
