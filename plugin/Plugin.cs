@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.74")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.75")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -374,11 +374,18 @@ namespace UL2Airtrike
                 //   otherwise it follows the throttle (110 idle to 300)
                 // - flight assist off, axis untouched = no pre-spin. In the air the rotor autorotates from the airflow.
                 bool fa = false; try { if (fFa == null) fFa = AccessTools.Field(unit.GetType(), "flightAssist"); if (fFa != null) fa = (bool)fFa.GetValue(unit); } catch { }
-                // 0.15.74 (Nick 17:52: with flight assist on the rotor never went back to auto once the axis was moved): with the
-                // assist on, the axis is manual only while it is being moved and for 4 s after it stops; then the assist takes the
-                // rotor back (ROTOR AUTO). Moving the axis again takes manual control again. Assist off: the axis stays in charge.
-                if (Mathf.Abs(axis - axisHeld) > 0.02f) { axisHeld = axis; axisLive = 4f; } else if (axisLive > 0f) axisLive -= dt;
-                bool manual = axis > 0.05f && (!fa || axisLive > 0f);
+                // 0.15.75 (Nick 18:16): flight assist is "Auto RPM Management". Moving the custom axis switches it off (the game's
+                // own toggle, with its popup) and the axis keeps the rotor until the player turns the assist back on; turning it
+                // back on hands the rotor to the assist even with the axis left part way up, until the axis is moved again.
+                if (!axisInit || (fa && !prevFa)) { axisHeld = axis; axisInit = true; }
+                if (fa && Mathf.Abs(axis - axisHeld) > 0.02f)
+                {
+                    try { mSetFa = mSetFa ?? AccessTools.Method(unit.GetType(), "SetFlightAssist"); mSetFa?.Invoke(unit, new object[] { false }); } catch { }
+                    try { fa = (bool)fFa.GetValue(unit); } catch { fa = false; }
+                }
+                if (!fa) axisHeld = axis;
+                prevFa = fa;
+                bool manual = !fa && axis > 0.05f;
                 manualOn = manual;
                 autoSpin = !manual && fa && ground && engOn && thr > 0.05f;
                 // 0.15.47 (Nick 02:41): with flight assist OFF the custom axis is the rotor rpm in flight too (raise or lower it);
@@ -461,7 +468,7 @@ namespace UL2Airtrike
             }
             catch (Exception e) { if (!inErr) { inErr = true; Plugin.Log.LogWarning("UL-2 inputs: " + e.Message); } }
         }
-        bool inErr, manualOn; float engDisp, preLoad, axisHeld, axisLive;
+        bool inErr, manualOn, axisInit, prevFa = true; float engDisp, preLoad, axisHeld; static MethodInfo mSetFa;
         // HUD rotor gauge (Nick 22:31/22:35/22:36): the Alkyon-style label from our HUD extras prefab (UL2_rotorGauge),
         // rpm readout and an idle (110) to full (450 rpm) bar, red until the rotor is fast enough to jump (400), then green
         // 0.15.20 (Nick 03:43): styled like the stock throttle gauge: carrot = set rpm, coloured arc bar + readout = actual rpm

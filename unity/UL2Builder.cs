@@ -400,6 +400,7 @@ public static partial class UL2Builder
             EnginePart();
             Tail();
             Gear();
+            AssistName();
             Misc();
             Weapons();
             Purge();
@@ -906,6 +907,16 @@ public static partial class UL2Builder
     }
 
     // ------------------------------------------------------------------ gear: fixed legs (own meshes); the stock rough-field gear keeps its physics
+    // 0.15.75 (Nick 18:16): flight assist is the rotor's auto rpm management on the UL-2, so the game's toggle popup
+    // reads "Auto RPM Management Enabled/Disabled" (ControlsFilter.flightAssistName, was the Cricket's Stability Assist)
+    static void AssistName()
+    {
+        var acx = C(root, "Aircraft"); var cf = acx == null ? null : new SerializedObject(acx).FindProperty("controlsFilter").objectReferenceValue;
+        if (cf == null) { log.AppendLine("assist name: no controls filter"); return; }
+        var so = new SerializedObject(cf); var p = so.FindProperty("flightAssistName");
+        log.AppendLine("assist name: '" + (p != null ? p.stringValue : "?") + "' -> 'Auto RPM Management'");
+        if (p != null) { p.stringValue = "Auto RPM Management"; so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(cf); }
+    }
     static void Gear()
     {
         // whole Cricket gear rigs shift so their wheels sit at the UL-2 wheels; the skinned Cricket legs are hidden
