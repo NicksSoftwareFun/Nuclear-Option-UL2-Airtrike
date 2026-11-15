@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.64")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.65")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -453,10 +453,25 @@ namespace UL2Airtrike
         // rpm readout and an idle (110) to full (450 rpm) bar, red until the rotor is fast enough to jump (400), then green
         // 0.15.20 (Nick 03:43): styled like the stock throttle gauge: carrot = set rpm, coloured arc bar + readout = actual rpm
         Transform hud, carrotPiv, readPiv; UnityEngine.UI.Image barImg; TMPro.TMP_Text hudRead, hudLabel, hudDash; float hudFind, hudShow, setRpm;
+        // 0.15.64 (Nick 03:32: a row of red/green dashes with the readout pushed far right): every UL-2 in the mission, AI
+        // ones too, found the player's HUD gauge, added its own rpm dash and moved the readout 22 px further right, then wrote
+        // its own rpm into it. Only the aircraft the player's combat HUD is showing drives the gauge now.
+        static Type tHud; static FieldInfo fHudAc; static Component combatHud; static float hudLook;
+        bool HudOwner()
+        {
+            try
+            {
+                if (tHud == null) { tHud = AccessTools.TypeByName("CombatHUD"); fHudAc = AccessTools.Field(tHud, "aircraft"); }
+                if (combatHud == null) { if (Time.unscaledTime < hudLook) return false; hudLook = Time.unscaledTime + 1f; combatHud = FindObjectOfType(tHud) as Component; if (combatHud == null) return false; }
+                return ReferenceEquals(fHudAc.GetValue(combatHud), unit);
+            }
+            catch { return false; }
+        }
         void HudGauge(float dt, bool engOn)
         {
             try
             {
+                if (!HudOwner()) { hud = null; hudRead = null; hudDash = null; barImg = null; hudLabel = null; carrotPiv = null; readPiv = null; return; }
                 if (hud == null)
                 {
                     if ((hudFind -= dt) > 0f) return; hudFind = 1f;
@@ -473,6 +488,7 @@ namespace UL2Airtrike
                     // 0.15.49 (Nick 02:44): two markers, set rpm "<" (the stock bar pointer, on the carrot pivot) and actual rpm "-"
                     // (on the readout pivot, same radius just outboard of the pointer), so they sit in a line when the rotor is at
                     // the set rpm and split apart while it lags. The readout number moves out past the dash.
+                    if (hudRead != null) { var old = hudRead.transform.parent.Find("UL2_rpmDash"); if (old != null) hudDash = old.GetComponent<TMPro.TMP_Text>(); }   // already set up once
                     if (hudRead != null && hudDash == null)
                     {
                         var d = Instantiate(hudRead.gameObject, hudRead.transform.parent, false); d.name = "UL2_rpmDash";

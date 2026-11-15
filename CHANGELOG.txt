@@ -2,6 +2,7 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.65: the HUD rotor gauge is driven only by the aircraft you fly. Every UL-2 in the mission, AI ones too, was adding its own rpm dash to your gauge and pushing the readout further right, then writing its own rpm into it.
 - 0.15.64: AI UL-2s now wait until the nose laser is on the target before firing Lynchpin/Kingpin laser rockets (a rocket fired before the target was lased never found it and flew straight), and keep their height while the rockets are in flight so terrain doesn't cut the laser; the AGM-48 x2 now sits on the stock twin rack, so the pair no longer floats over the stub.
 - 0.15.63: pilot and copilot gloves now match the stock flight gloves (olive) and a short sleeve joins each glove to the forearm; AI UL-2s now fly the seven set loadouts (they were in the wrong list, so the game made up random ones such as triple ECM); AI landings no longer abort on touchdown (the landing AI read the height of the aircraft centre, 1.15 m above the wheels, as a bounce), same fix as the PB-22 and P220.
 - 0.15.62: fixed the big framerate drop once an AI UL-2 picked a target. The attack tactics looked up a game function under the wrong name, failed, and retried the slow lookup every physics frame. The tactics (pop-up attack, radar beaming, spotter arc, low run-in, diving away) never actually ran before this build.
