@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.68")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.69")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -1087,7 +1087,7 @@ namespace UL2Airtrike
             lastY = y; haveY = true;
             float alt = fAlt != null ? Mathf.Max((float)fAlt.GetValue(unit), 0f) * 3.28084f : 0f;
             float fuel = 0f; try { if (mFuel != null) fuel = Mathf.Clamp01((float)mFuel.Invoke(unit, null)); } catch { }
-            Needle("asi", -135f + 270f * Mathf.Clamp01(spd * 3.6f / 280f), dt);              // 0-280 km/h (0.15.26, yellow 200-240)
+            Needle("asi", -135f + 270f * Mathf.Clamp01(spd * 3.6f / 320f), dt);              // 0-320 km/h (0.15.69, yellow 240-280, red 280)
             Needle("alt", alt % 1000f / 1000f * 360f, dt);                                  // one turn per 1000 ft
             Needle("vsi", -90f + 135f * Mathf.Clamp(vs / 10f, -1f, 1f), dt);                // +-10 m/s, zero at 9 o'clock
             // six-pack (Nick 22:04, Trident style): attitude horizon bar, turn coordinator, heading
@@ -1097,7 +1097,7 @@ namespace UL2Airtrike
             // drops below the symbol) and rolls against the bank like the old bar
             if (gauges.TryGetValue("adiball", out var ab) && ab != null)
             {
-                var want = Quaternion.Euler(0f, 0f, -Wrap(e.z)) * Quaternion.Euler(Mathf.Clamp(-Wrap(e.x), -85f, 85f), 0f, 0f);
+                var want = Quaternion.Euler(0f, 0f, Wrap(e.z)) * Quaternion.Euler(Mathf.Clamp(-Wrap(e.x), -85f, 85f), 0f, 0f);
                 ab.localRotation = Quaternion.Slerp(ab.localRotation, rest["adiball"] * want, 1f - Mathf.Exp(-dt * 8f));
             }
             // 0.15.29 (Nick 12:29, pinned at max): the game holds this engine at 100 % rpm whenever it runs (the prop governs),

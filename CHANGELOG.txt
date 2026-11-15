@@ -2,6 +2,7 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.69: attitude globe rolls the right way; airspeed dial now runs to 320 km/h with green to 240, yellow 240-280 and the red line at 280; compass card drawn at four times the resolution with slightly smaller numbers so they sit inside the red window.
 - 0.15.68: engine heat 1.3 idle to 1.6 full (was the Cricket's 2.0/2.5) so flares work as they should; globe attitude indicator that shows pitch and roll; heading card numbers face outward near the rim; engine rpm gauge reads 5500 at full throttle, in the green; pilot gloves and sleeves get a woven fabric texture; cost 3.5 million; maximum weight 1200 kg; radar cross-section 0.21 (between the Compass and the old 0.30); new aircraft description.
 - 0.15.67: new map and aircraft-selection icon: chunky top-down body with the pusher prop and H-tail, the two-blade rotor at 35 degrees and a hub circle, so it reads at map size.
 - 0.15.66: with Lynchpin or Kingpin rockets selected, an AI UL-2 runs in and lases from 150 m instead of hugging the ground at 35 m (the rockets need a clear line to the laser spot the whole way in), and each rocket logs its lock, range and height every second. The pilots' gloves are no longer drawn in the cockpit view (the exterior view still shows them).

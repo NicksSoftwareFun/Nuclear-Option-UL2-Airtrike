@@ -43,11 +43,11 @@ def arc(d, a0, a1, col, r=RR * 0.9, w=7):   # clock angles (0 = 12 o'clock)
 
 
 faces = {}
-# airspeed 0-280 km/h over -135..+135 (plugin); 0.15.26 (Nick 04:56): green 50-200, yellow 200-240, red line at 240
-def kmh(v): return -135 + 270 * v / 280
-im, d = base(); arc(d, kmh(50), kmh(200), GREEN); arc(d, kmh(200), kmh(240), AMBER)
-a = math.radians(kmh(240)); d.line((C + RR * 0.74 * math.sin(a), C - RR * 0.74 * math.cos(a), C + RR * 0.97 * math.sin(a), C - RR * 0.97 * math.cos(a)), fill=RED, width=6)
-ticks(d, -135, 135, 7, 4); numbers(d, -135, 135, [0, 40, 80, 120, 160, 200, 240, 280], 19); text(d, C, C + 52, 'KM/H', 16, GREY); faces['asi'] = im
+# airspeed 0-320 km/h over -135..+135 (plugin); 0.15.69 (Nick 16:30): green 50-240, yellow 240-280, red line at 280
+def kmh(v): return -135 + 270 * v / 320
+im, d = base(); arc(d, kmh(50), kmh(240), GREEN); arc(d, kmh(240), kmh(280), AMBER)
+a = math.radians(kmh(280)); d.line((C + RR * 0.74 * math.sin(a), C - RR * 0.74 * math.cos(a), C + RR * 0.97 * math.sin(a), C - RR * 0.97 * math.cos(a)), fill=RED, width=6)
+ticks(d, -135, 135, 8, 4); numbers(d, -135, 135, [0, 40, 80, 120, 160, 200, 240, 280, 320], 18); text(d, C, C + 18, 'KM/H', 16, GREY); faces['asi'] = im
 # attitude (0.15.68, Nick 04:07): the globe (UL2_adi_ball, built in Unity) shows pitch and roll through the middle;
 # the face keeps the bank scale round the rim and a fixed amber bank index at the top
 im, d = base()
@@ -67,18 +67,20 @@ a = math.radians(erpm(5800)); d.line((C + RR * 0.74 * math.sin(a), C - RR * 0.74
 ticks(d, -135, 135, 7, 2); numbers(d, -135, 135, list(range(8)), 22); text(d, C, C + 46, 'RPM', 16, GREY); text(d, C, C + 64, 'x1000', 13, GREY)
 faces['eng'] = im
 # heading: the card turns under a fixed red lubber pointer (0.15.26, Nick 04:56)
-im, d = base()
+# 0.15.69 (Nick 16:30): drawn at 4x (1024 px) so the numbers stay crisp, numbers a little smaller to sit inside the red window
+K = 4; SK, CK, RK = S * K, C * K, RR * K
+im = Image.new('RGB', (SK, SK), (40, 42, 45)); d = ImageDraw.Draw(im); d.ellipse((CK - RK, CK - RK, CK + RK, CK + RK), fill=DIAL)
 for k in range(72):   # 5 deg ticks pushed to the rim, long every 30
-    a = math.radians(5 * k); big = k % 6 == 0; mid = k % 2 == 0; r0 = RR * (0.84 if big else 0.89 if mid else 0.92)
-    d.line((C + r0 * math.sin(a), C - r0 * math.cos(a), C + RR * 0.98 * math.sin(a), C - RR * 0.98 * math.cos(a)), fill=WHITE, width=4 if big else 2)
+    a = math.radians(5 * k); big = k % 6 == 0; mid = k % 2 == 0; r0 = RK * (0.84 if big else 0.89 if mid else 0.92)
+    d.line((CK + r0 * math.sin(a), CK - r0 * math.cos(a), CK + RK * 0.98 * math.sin(a), CK - RK * 0.98 * math.cos(a)), fill=WHITE, width=(4 if big else 2) * K)
 for k, s_ in enumerate(['N', '3', '6', 'E', '12', '15', 'S', '21', '24', 'W', '30', '33']):
-    # 0.15.68 (Nick 04:07): every number upright toward the rim (top outward, like a real card), just inside the ticks
-    sz = 30 if len(s_) == 1 else 26; f = font(sz); tb = d.textbbox((0, 0), s_, font=f)
-    tile = Image.new('RGBA', (tb[2] - tb[0] + 8, tb[3] - tb[1] + 8), (0, 0, 0, 0)); td = ImageDraw.Draw(tile)
-    td.text((4 - tb[0], 4 - tb[1]), s_, fill=AMBER if s_ == 'N' else WHITE, font=f)
+    # every number upright toward the rim (top outward, like a real card), just inside the ticks
+    sz = (26 if len(s_) == 1 else 22) * K; f = font(sz); tb = d.textbbox((0, 0), s_, font=f)
+    tile = Image.new('RGBA', (tb[2] - tb[0] + 8 * K, tb[3] - tb[1] + 8 * K), (0, 0, 0, 0)); td = ImageDraw.Draw(tile)
+    td.text((4 * K - tb[0], 4 * K - tb[1]), s_, fill=AMBER if s_ == 'N' else WHITE, font=f)
     tile = tile.rotate(-30 * k, expand=True, resample=Image.BICUBIC)
-    a = math.radians(30 * k); r = RR * 0.68
-    im.paste(tile, (int(C + r * math.sin(a) - tile.width / 2), int(C - r * math.cos(a) - tile.height / 2)), tile)
+    a = math.radians(30 * k); r = RK * 0.69
+    im.paste(tile, (int(CK + r * math.sin(a) - tile.width / 2), int(CK - r * math.cos(a) - tile.height / 2)), tile)
 faces['hdg'] = im
 # vertical speed: +-10 m/s, zero at 9 o'clock, -90 +- 135 (plugin)
 im, d = base(); ticks(d, -225, 45, 4, 5)
