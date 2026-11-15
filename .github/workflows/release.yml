@@ -21,8 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Package source
-        # GitHub lists release assets by name, so the source zip is named to sort after UL2Airtrike.dll
-        run: zip -r "Source-UL2Airtrike-${TAG}.zip" plugin unity art
+        # GitHub lists release assets by name: "UL2Airtrike_Source" sorts after "UL2Airtrike.dll", so the DLL is listed first
+        run: zip -r "UL2Airtrike_Source-${TAG}.zip" plugin unity art
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -35,8 +35,10 @@ jobs:
           PRE=""
           case "$TAG" in v0*) PRE="--prerelease" ;; esac
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" release/UL2Airtrike.dll "Source-UL2Airtrike-${TAG}.zip" --clobber
+            gh release delete-asset "$TAG" "Source-UL2Airtrike-${TAG}.zip" -y || true
+            gh release upload "$TAG" release/UL2Airtrike.dll "UL2Airtrike_Source-${TAG}.zip" --clobber
+            gh release edit "$TAG" --notes-file notes.txt
           else
-            gh release create "$TAG" release/UL2Airtrike.dll "Source-UL2Airtrike-${TAG}.zip" \
+            gh release create "$TAG" release/UL2Airtrike.dll "UL2Airtrike_Source-${TAG}.zip" \
               --target "$GITHUB_SHA" --title "UL-2 Airtrike ${TAG}" --notes-file notes.txt $PRE
           fi
