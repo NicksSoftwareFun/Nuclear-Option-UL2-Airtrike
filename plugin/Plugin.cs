@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.63")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.64")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -66,6 +66,8 @@ namespace UL2Airtrike
                 Logger.LogInfo("UL-2 tactics patches: attack " + (run != null) + ", radar warning " + (rw != null));
                 // 0.15.63 (Nick 03:01, AI aborting landings like the PB-22 and P220 did): same fix as theirs
                 LandingFix.Patch(h);
+                // 0.15.64 (Nick 03:07, Lynchpins all missing): only fire laser-guided rockets once the nose laser is on the target
+                LaserFix.Patch(h);
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
         }
@@ -203,6 +205,8 @@ namespace UL2Airtrike
                 var tgt = fCurT?.GetValue(__instance) as UnityEngine.Object;
                 if (tgt != null) rs.GoLow("attacking a target");
                 if (!rs.LowMode || rs.PopUp) return;
+                // 0.15.64: while lasing for its rockets it keeps the stock height, so terrain doesn't cut the laser
+                if (fMode != null && fMode.GetValue(__instance).ToString() == "UsingLaserGuided") return;
                 fTh = fTh ?? AccessTools.Field(__instance.GetType(), "targetHeight");
                 float th = (float)fTh.GetValue(__instance), cap = rs.SpotterAboard ? RotorSpinner.CAP_SPOT : RotorSpinner.CAP_LOW;
                 if (th > cap) fTh.SetValue(__instance, cap);
@@ -1567,6 +1571,83 @@ namespace UL2Airtrike
                 var runway = fRunway?.GetValue(usage); if (runway == null) return;
                 mDereg = mDereg ?? AccessTools.Method(runway.GetType(), "DeregisterLanding");
                 if (mDereg != null) mDereg.Invoke(runway, new object[] { ac });
+            }
+            catch { }
+        }
+    }
+
+    // 0.15.64 (Nick 03:07): AGR-18 Lynchpins fired by the AI all missed. Stock flow: the AI fills the weapon target list and
+    // fires on the same tick, but the nose LaserDesignator only lases what is in that list every 0.25 s. A rocket that
+    // leaves before its target is lased starts with no target and never picks one up again (LaserSeeker.Initialize), so it
+    // flies straight. For the UL-2 AI only, the target is put in the list first and the shot is held until the laser is on
+    // it (at most 3 s, then the stock shot goes anyway). Every UL-2 laser rocket logs whether it had the laser at launch.
+    internal static class LaserFix
+    {
+        const BindingFlags F = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        static FieldInfo fAc, fCur, fActive, fWm, fSeekTarget, fSeekMissile;
+        static MethodInfo mDes, mIsLased, mList, mChanged, mOwner;
+        static bool holdFire; static int waitId; static float waitStart, logT;
+        public static void Patch(Harmony h)
+        {
+            try
+            {
+                var t = AccessTools.TypeByName("AIPilotCombatModes");
+                var use = AccessTools.Method(t, "UseLaserGuided");
+                fAc = AccessTools.Field(t, "aircraft"); fCur = AccessTools.Field(t, "currentTarget"); fActive = AccessTools.Field(t, "activeLaserGuidedMissiles");
+                var tAc = AccessTools.TypeByName("Aircraft"); fWm = AccessTools.Field(tAc, "weaponManager"); mDes = AccessTools.Method(tAc, "GetLaserDesignator");
+                var tLd = AccessTools.TypeByName("LaserDesignator"); mIsLased = AccessTools.Method(tLd, "IsLased");
+                var tWm = AccessTools.TypeByName("WeaponManager"); mList = AccessTools.Method(tWm, "GetTargetList"); mChanged = AccessTools.Method(tWm, "TargetListChanged");
+                var fire = AccessTools.Method(tWm, "Fire", Type.EmptyTypes);
+                bool ok = use != null && fire != null && fAc != null && fCur != null && fActive != null && fWm != null && mDes != null && mIsLased != null && mList != null;
+                if (ok)
+                {
+                    h.Patch(use, prefix: new HarmonyMethod(typeof(LaserFix), nameof(PreUse)), postfix: new HarmonyMethod(typeof(LaserFix), nameof(PostUse)));
+                    h.Patch(fire, prefix: new HarmonyMethod(typeof(LaserFix), nameof(PreFire)));
+                }
+                var tSeek = AccessTools.TypeByName("LaserSeeker"); var init = AccessTools.Method(tSeek, "Initialize");
+                var tMs = AccessTools.TypeByName("MissileSeeker"); fSeekTarget = AccessTools.Field(tMs, "targetUnit"); fSeekMissile = AccessTools.Field(tMs, "missile");
+                mOwner = AccessTools.PropertyGetter(AccessTools.TypeByName("Missile"), "owner");
+                if (init != null && fSeekTarget != null && fSeekMissile != null && mOwner != null) h.Patch(init, postfix: new HarmonyMethod(typeof(LaserFix), nameof(PostInit)));
+                Plugin.Log.LogInfo("UL-2 laser fix " + ok + ", seeker log " + (init != null));
+            }
+            catch (Exception e) { Plugin.Log.LogWarning("UL-2 laser fix not applied: " + e.Message); }
+        }
+        static Component Ours(object st)
+        {
+            var ac = fAc.GetValue(st) as Component;
+            return ac != null && ac.GetComponent<RotorSpinner>() != null ? ac : null;
+        }
+        static void PreUse(object __instance)
+        {
+            holdFire = false;
+            try
+            {
+                var ac = Ours(__instance); if (ac == null) return;
+                var tgt = fCur.GetValue(__instance) as Component; if (tgt == null) return;
+                var act = fActive.GetValue(__instance) as System.Collections.ICollection; if (act != null && act.Count > 0) return;
+                var des = mDes.Invoke(ac, null); if (des == null) return;
+                if ((bool)mIsLased.Invoke(des, new object[] { tgt })) { waitId = 0; return; }
+                // not lased yet: make sure the designator has it in its list, and hold this tick's shot
+                var wm = fWm.GetValue(ac); var list = mList.Invoke(wm, null) as System.Collections.IList;
+                if (list != null && !list.Contains(tgt)) { list.Clear(); list.Add(tgt); mChanged?.Invoke(wm, null); }
+                int id = tgt.GetInstanceID();
+                if (waitId != id) { waitId = id; waitStart = Time.time; Plugin.Log.LogInfo("UL-2 laser: lasing " + tgt.name + " before firing"); }
+                if (Time.time - waitStart < 3f) holdFire = true;
+                else if (Time.time - logT > 5f) { logT = Time.time; Plugin.Log.LogInfo("UL-2 laser: " + tgt.name + " still not lased after 3 s (no line of sight from the nose?), firing anyway"); }
+            }
+            catch (Exception e) { Plugin.Log.LogWarning("UL-2 laser hold: " + e.Message); }
+        }
+        static void PostUse() { holdFire = false; }
+        static bool PreFire() { return !holdFire; }
+        static void PostInit(object __instance)
+        {
+            try
+            {
+                var m = fSeekMissile.GetValue(__instance) as Component; if (m == null) return;
+                var own = mOwner.Invoke(m, null) as Component; if (own == null || own.GetComponent<RotorSpinner>() == null) return;
+                var tu = fSeekTarget.GetValue(__instance) as Component;
+                string ang = tu != null ? Vector3.Angle(tu.transform.position - m.transform.position, m.transform.forward).ToString("F1") : "-";
+                Plugin.Log.LogInfo("UL-2 laser rocket launched: target " + (tu != null ? tu.name : "NONE (not lased)") + ", off-bore " + ang + " deg");
             }
             catch { }
         }

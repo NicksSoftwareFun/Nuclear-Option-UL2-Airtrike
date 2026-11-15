@@ -1212,7 +1212,9 @@ public static partial class UL2Builder
         finally { Object.DestroyImmediate(go); }
         RailMount("AGM1_single", "UL2_AGM1_rail", -0.092f);
         // 0.15.58 (Nick 23:25): two AGM-48s side by side on the stub (stock compact twin rack, its pylon removed like the single)
-        RailMount("AGM1_double_compact", "UL2_AGM1_double", -0.092f);
+        // 0.15.64 (Nick 03:08: the pair looked like it floated over the stub): the stock twin rack is kept between the stub and
+        // the two missiles, and the missiles stay at their stock height on it
+        RailMount("AGM1_double_compact", "UL2_AGM1_double", float.NaN);
         RailMount("AAM3_single", "UL2_AAM3_rail", -0.076f);
     }
     // AGM-48 / IRM-S2 straight on the beefed-up built-in pylon (Nick 2026-11-12 21:35): the stock single mount without
@@ -1225,13 +1227,14 @@ public static partial class UL2Builder
             // the missile can sit under the stock pylon object: lift every missile out to the mount root first
             // (0.15.5 destroyed the pylon with the missile inside it, so nothing spawned - Nick 22:02)
             var ms = go.GetComponentsInChildren<MonoBehaviour>(true).Where(mm => mm.GetType().Name == "MountedMissile").Select(mm => mm.transform).Distinct().ToList();
-            foreach (var mt in ms) { mt.SetParent(go.transform, true); var lp = mt.localPosition; mt.localPosition = new Vector3(lp.x, y, lp.z); }
+            bool keepRack = float.IsNaN(y);
+            if (!keepRack) foreach (var mt in ms) { mt.SetParent(go.transform, true); var lp = mt.localPosition; mt.localPosition = new Vector3(lp.x, y, lp.z); }
             // 0.15.60 (Nick 02:07): the twin rack's two missiles were both named "agm1"; in game the second one came out with no
             // info/mesh (only one AGM-48 showed and MountedMissile.AttachToHardpoint threw, breaking the whole loadout).
             // Every missile gets its own name so each one resolves on its own path.
             if (ms.Count > 1) foreach (var mt in ms) mt.name = "agm1_" + (mt.localPosition.x < 0f ? "L" : "R");
-            var py = go.transform.Find("pylon"); if (py != null) Object.DestroyImmediate(py.gameObject);
-            log.AppendLine(key + ": " + ms.Count + " missile(s) kept");
+            var py = go.transform.Find("pylon"); if (py != null && !keepRack) Object.DestroyImmediate(py.gameObject);
+            log.AppendLine(key + ": " + ms.Count + " missile(s) kept" + (keepRack ? ", stock rack kept" : ""));
             var srcM = AssetDatabase.LoadMainAssetAtPath(Placeholder(src, "WeaponMount"));
             string nm = new SerializedObject(srcM).FindProperty("mountName").stringValue;
             SaveMount(go, key, src, null, nm);
