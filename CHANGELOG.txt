@@ -1,6 +1,9 @@
 UL-2 Airtrike changelog
 =======================
 
+Unreleased
+- 0.15.80: new livery Racing Navy (navy over white with a red and gold cheat line and a checkered fin), painted from the Livery Bundle.
+
 1.0.0 (2026-11-15, updated) - first full release
 - 0.15.79: the seat 3 soldiers' hands take the camo colour of their sleeves; the Spotter's fists sit higher on the binoculars so the knuckles no longer cut into the top; the main rotor blur sits level with the hub bar.
 - 0.15.78: no more floating skin when damaged: a ragged strip of skin stays along every part edge, and any piece of skin that would be left hanging in the air now tears away no later than the skin around it.

@@ -1009,6 +1009,8 @@ public static partial class UL2Builder
         ExtraLivery("steel", 0.6f); ExtraLivery("tiger", 0f);
         // 0.15.59 (Nick 01:53): faction liveries, PALA Camel Corps (desert tan) and BDF Orca
         ExtraLivery("tan", 0f); ExtraLivery("orca", 0f);
+        // 0.15.80 (Nick 22:33): Racing Navy, the Livery Bundle test livery, held for the first bug-fix release
+        ExtraLivery("navy", 0.3f);
         return mat;
     }
     // tapered sleeve along +Z: z 0 at the wrist (inside the glove cuff, r 0.029) to z 0.11 up the forearm (r 0.041), with a
@@ -1799,12 +1801,12 @@ public static partial class UL2Builder
         var sdp = StatusDisplayUL2(); if (sdp != null) so.FindProperty("StatusDisplay").objectReferenceValue = sdp;
         so.FindProperty("DefaultFuelLevel").floatValue = 1f;
         so.FindProperty("cruiseThrottle").floatValue = 0.75f;
-        var liv = so.FindProperty("liveries"); liv.arraySize = 5;
-        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger", "PALA Camel Corps", "BDF Orca" };
-        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger"), LiveryPath("tan"), LiveryPath("orca") };
+        var liv = so.FindProperty("liveries"); liv.arraySize = 6;
+        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger", "PALA Camel Corps", "BDF Orca", "Racing Navy" };
+        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger"), LiveryPath("tan"), LiveryPath("orca"), LiveryPath("navy") };
         // 0.15.59 (Nick 01:53): faction locked like stock faction liveries (PALA = Primeva, BDF = Boscali)
-        string[] livFac = { null, null, null, PH + "MonoBehaviour/Primeva_PLACEHOLDER.asset", PH + "MonoBehaviour/Boscali_PLACEHOLDER.asset" };
-        for (int i = 0; i < 5; i++)
+        string[] livFac = { null, null, null, PH + "MonoBehaviour/Primeva_PLACEHOLDER.asset", PH + "MonoBehaviour/Boscali_PLACEHOLDER.asset", null };
+        for (int i = 0; i < livName.Length; i++)
         {
             var li = liv.GetArrayElementAtIndex(i);
             li.FindPropertyRelative("name").stringValue = livName[i];
