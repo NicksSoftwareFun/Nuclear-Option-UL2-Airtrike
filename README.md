@@ -8,11 +8,11 @@ A three-seat armed gyrocopter for **Nuclear Option**, built with Blueprinter.
 
 ## In action
 
-[![Airtrike ops (video)](docs/media/ul2_airtrike_ops_poster.jpg)](docs/media/ul2_airtrike_ops.mp4)
-*Airtrike ops (click for the video)*
+[![Airtrike ops](docs/media/ul2_airtrike_ops.gif)](docs/media/ul2_airtrike_ops.mp4)
+*Airtrike ops (click for the full-quality video)*
 
-[![40 mm employment (video)](docs/media/ul2_40mm_employment_poster.jpg)](docs/media/ul2_40mm_employment.mp4)
-*40 mm employment (click for the video)*
+[![40 mm employment](docs/media/ul2_40mm_employment.gif)](docs/media/ul2_40mm_employment.mp4)
+*40 mm employment (click for the full-quality video)*
 
 ![Convoy attack](docs/media/ul2_convoy_attack.png)
 
@@ -40,7 +40,8 @@ A three-seat armed gyrocopter for **Nuclear Option**, built with Blueprinter.
 
 | Input | What it does |
 | --- | --- |
-| Custom axis 1 | Rotor rpm. On the ground it runs the pre-rotator. With flight assist on, the assist takes the rotor back (ROTOR AUTO) a few seconds after you stop moving the axis. With flight assist off, the axis sets the rotor rpm in flight too. |
+| Custom axis 1 | Manual rotor rpm. Moving it switches Auto RPM Management off and the axis keeps the rotor (pre-rotator on the ground, rotor rpm in flight) until you switch Auto RPM Management back on. |
+| Flight assist toggle | Auto RPM Management. When on, the rotor rpm is handled for you, including a full spin-up on the takeoff roll at full throttle (ROTOR AUTO on the HUD). |
 | Brake | Rotor brake |
 | Gear toggle | The gear is fixed and always down. The key still switches the gear state, which arms the weapons. |
 
