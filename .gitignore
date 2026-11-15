@@ -8,3 +8,7 @@ lib/
 __pycache__/
 *.fbx
 *.obj
+plugin/lib/
+plugin/bin/
+plugin/obj/
+*.nobp

@@ -2,4 +2,74 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.75: flight assist is now Auto RPM Management (the toggle popup says so); moving custom axis 1 switches it off and the axis keeps the rotor until Auto RPM Management is switched back on.
+- 0.15.74 (release candidate): tyres are solid again (the new tyre faces pointed inward and the outside was culled) and the sidewall lettering reads the right way round; the tail boom sections and rudder cables meet at the bend under the prop with no gap; the rotor gauge on the HUD sits further in so its readout stays inside the canopy frame; with flight assist on, the rotor goes back to automatic a few seconds after the custom axis stops moving; AI landings stay on the ground after touchdown instead of bouncing back into the air.
+- 0.15.72: pilot and copilot now hold the stick, throttle and handset with the stock flight-glove hands, posed so the curled fist closes round each grip; the stock skin stretches the sleeve to the wrist, so the modelled gloves and the sleeve joins are gone (no more gaps at the wrist and thumb).
+- 0.15.71: tyres rebuilt with a rounder profile (sidewall bulge, rim protector ridge, shoulders), a block tread and moulded sidewall lettering mapped on, plus a rim flange and pressed ring on each wheel face; airspeed and rpm dials have a red band to the end of the scale; the attitude globe reads full pitch (it turned about a point in front of its centre); the pre-rotator driving the rotor past 380 rpm takes the engine into the yellow and raises the engine note; drag about 1.7x so an idle approach slows down; gear legs hold about 3x the load and take a firmer touchdown before impact damage; no more tan bleed on the stick hat (the hand controls use plain colours); MFD bezel shades flat.
+- 0.15.69: attitude globe rolls the right way; airspeed dial now runs to 320 km/h with green to 240, yellow 240-280 and the red line at 280; compass card drawn at four times the resolution with slightly smaller numbers so they sit inside the red window.
+- 0.15.68: engine heat 1.3 idle to 1.6 full (was the Cricket's 2.0/2.5) so flares work as they should; globe attitude indicator that shows pitch and roll; heading card numbers face outward near the rim; engine rpm gauge reads 5500 at full throttle, in the green; pilot gloves and sleeves get a woven fabric texture; cost 3.5 million; maximum weight 1200 kg; radar cross-section 0.21 (between the Compass and the old 0.30); new aircraft description.
+- 0.15.67: new map and aircraft-selection icon: chunky top-down body with the pusher prop and H-tail, the two-blade rotor at 35 degrees and a hub circle, so it reads at map size.
+- 0.15.66: with Lynchpin or Kingpin rockets selected, an AI UL-2 runs in and lases from 150 m instead of hugging the ground at 35 m (the rockets need a clear line to the laser spot the whole way in), and each rocket logs its lock, range and height every second. The pilots' gloves are no longer drawn in the cockpit view (the exterior view still shows them).
+- 0.15.65: the HUD rotor gauge is driven only by the aircraft you fly. Every UL-2 in the mission, AI ones too, was adding its own rpm dash to your gauge and pushing the readout further right, then writing its own rpm into it.
+- 0.15.64: AI UL-2s now wait until the nose laser is on the target before firing Lynchpin/Kingpin laser rockets (a rocket fired before the target was lased never found it and flew straight), and keep their height while the rockets are in flight so terrain doesn't cut the laser; the AGM-48 x2 now sits on the stock twin rack, so the pair no longer floats over the stub.
+- 0.15.63: pilot and copilot gloves now match the stock flight gloves (olive) and a short sleeve joins each glove to the forearm; AI UL-2s now fly the seven set loadouts (they were in the wrong list, so the game made up random ones such as triple ECM); AI landings no longer abort on touchdown (the landing AI read the height of the aircraft centre, 1.15 m above the wheels, as a bounce), same fix as the PB-22 and P220.
+- 0.15.62: fixed the big framerate drop once an AI UL-2 picked a target. The attack tactics looked up a game function under the wrong name, failed, and retried the slow lookup every physics frame. The tactics (pop-up attack, radar beaming, spotter arc, low run-in, diving away) never actually ran before this build.
+- 0.15.61: a new UL-2 in the mission editor starts with AT-145 x4 on both stubs (the editor takes each station's first option, which was the Lynchpin pod); the Expedient ECM Pod no longer has a solid box inside the cockpit that blew the airframe apart at spawn.
+- 0.15.60: fixed the AGM-48 x2 stub rack. Its second missile loaded broken in game, so only one missile showed, the loadout screen stopped working, AI aircraft spawned with it half set up, and a crash flooded the log until the game froze.
+- 0.15.59: two faction liveries. PALA Camel Corps (desert tan, red fin tip, Camel Corps badge on both sides of the fin and on the nose; PALA only) and BDF Orca (black and white orca scheme with eye, toothed mouth and black and white BDF roundel on the fin; BDF only).
+- 0.15.52: weathering on every part that is not the livery skin (frame, mast, engine, gear, wheels, seats, cockpit tub, grips, rotor): grime in corners, oil runs round the engine, exhaust soot, dust and mud on the gear and lower frame, chipped frame paint, dusty cockpit floor, rotor leading edge wear. One shared map for all three liveries; the skin paint is unchanged.
+- 0.15.29: own damage diagram (side view, rotor blades spread either side of the hub, tailplane as a small top view); blue disc over the inner rotor, drawn with the game's own blur material; engine rpm gauge reads 1400 at idle to 5800 at full throttle (the engine itself always reports full rpm); thin red compass pointer with a window over the heading number; yellow tip and band stripes on the prop blades; nav lights sit on the tail end plates; rudder cables end at the tail boom joint so a broken tail no longer drags them; side gun fires one 300-round belt with no reloads; Black Tiger text is white; tail number centred on the fin on all liveries; dial faces less glossy; HUD rotor rpm readout line stays flat.
+- 0.15.28: rotor blur now uses the stock gunship blurred blade pieces (five per blade, on both blades) and the prop uses the stock Cricket blur disc scaled to our prop, since copied blur materials never drew in game; liveries now reach the rudders, elevators and the side gun housing; Polished Stainless no longer shows a wavy band on the tail (smooth top-to-bottom shading).
+- 0.15.27: rotor blur is now two blurred blade sweeps that turn with the rotor (the 0.15.26 disc was too faint to see); own prop blur disc replaces the Cricket's six-blade disc; spinner with a white tip and two white spiral stripes, turning at a capped rate so the spin always reads; blur materials copied from the stock ducted-fan blur.
+- 0.15.26: rotor blur disc fades in with rotor rpm (the blades hide behind it, so paused screenshots keep the blur); prop blades wired into the stock prop so its blur disc covers them and a prop strike leaves broken stubs; rotor blades break where they hit the ground or anything solid (both blades lose that segment and everything outboard, the rotor stops, stock strike dust); engine rpm gauge replaces the turn coordinator; airspeed in km/h with yellow 200-240 and a red line at 240; compass card turns under a fixed red pointer; artificial horizon now banks the right way.
+- 0.15.25: two new liveries, Polished Stainless (bright steel with mirror cues painted in, livery gloss 0.6) and Black Tiger (black with orange tiger stripes); seat 3 MG 338 fires a tracer every 3rd round (was 5).
+- 0.15.24: airframe trimmed from 75.0k to 64.9k triangles with no visible change (flat areas merged, fewer pod and camera ball rings), seat 3 kits about 1% lighter; gun ammo box moved inside the pod (no longer pokes through the right stub); inner engine faces use the stock engine internals material; main rotor plays the stock rotor loop with pitch and volume following rotor rpm.
+- 0.15.23: own map/selection icon and seat 3 weapon icons (MG, grenadier, spotter); seat 3 passenger adds capture power 2 (1/8 of a full Ibis troop load) while landed and stopped.
+- 0.15.22: part joints break like the stock Cricket (scaled to weight); fire and break-up effects on the main structure, impact damage on the pod, mast, engine, booms and gear; skin normal and metallic maps (panel lines, screw heads, rivet rows, small chips); inner pod wall uses the cockpit lining so markings no longer show inside; guns and seat 3 weapons in a lighter FDE; engine 195 kW (was 150); nose steering lock fades with speed; rotor gauge moved back left.
+- 0.15.21: pilot MFD mapped the stock way (was turned 90 deg); includes all 0.15.20 changes.
+- 0.15.20: rotor gauge restyled as a copy of the stock throttle gauge (curved arc, carrot = set rpm, coloured bar + readout = actual rpm), moved right; helipad spawns back on; stronger rudder (airflow and prop wash); seat 3 heading taken from the barrel direction in the kit frame.
+- 0.15.19: jumps removed. Custom axis = manual rotor rpm (110-450) on the ground; with flight assist on the rotor picks its own rpm (450 at full throttle on the takeoff roll, otherwise follows the throttle). HUD shows MANUAL / AUTO, green from 300 rpm.
+- 0.15.18: no hop in place on the brakes (pre-spin held at 380 rpm, auto jump only when rolling free); body hangs level under the rotor and the stick has real roll authority; pitch stick commands g so it stays smooth at high speed.
+- 0.15.17: rotor lifts like a full 8.4 m disc (less drag, holds level flight and climbs at 70-90 km/h); the jump holds the aircraft up while it builds speed and settles gently instead of dropping.
+- 0.15.16: rotor thrust and the jump now act at the aircraft's centre of mass (no more nose-down with the stick back or backflip on the jump); thrust normal to the tilted rotor disc and scaled by rotor rpm; rotor pitch/roll damping; roll control from the rotor head; the wheels hold it upright on the takeoff roll.
+- 0.15.15 test build: gyro rotor model. Each blade surface has its own lift transform pitched with the rotor head
+  (3 deg neutral, 12 deg stick back, -1 deg pushed, held under the stall); blade lift scales with rotor rpm, which
+  builds with airspeed (40 + 18 rpm per m/s, 380 max) or the pre-rotator. The artificial roll-out lift push is gone
+  and the ground pitch torque is reduced. Flight log every second below 40 m (speed, climb, rotor rpm, lift share,
+  incidence, body AoA, stick, throttle, prop thrust, attitude).
+- 0.15.14 test build: SUB-2000 grip sunk into the frame (no gap at the joint), trigger guard ends buried in the frame and
+  grip, trigger is a single smooth curve.
+- 0.15.13 test build: SUB-2000 lower to the Kel-Tec shape - raked grip with straight back strap and flared base,
+  molded square pockets cut into both sides, mag release button in a well, angled magazine base, thin strap trigger
+  guard from the hinge pin to the grip front, slim curved trigger moved just ahead of the grip.
+- 0.15.12 test build: SUB-2000 grip reshaped (rounded section, palm swell, finger grooves, sunk grip panels), round
+  trigger guard and curved trigger; front block removed from the muzzle, shallow bore at the tip. Cockpit opening cut
+  cleanly along the sill, old rim tubes removed, windscreen base strip seated on the wall edge all round, side consoles
+  kept inside the skin. Copilot station: game controller style handset on a post (targeting pod and weapons) with his
+  hands on it, small backup side stick, throttle and rudder pedals that follow the inputs.
+- 0.15.11 test build: SUB-2000 slots, pockets and holes cut into the model (waffle pockets, M-LOK and rail slots,
+  through-holes in the stock, bore, muzzle, rear sight aperture, sling cup) instead of raised colour patches.
+- 0.15.10 test build: SUB-2000 detail - black rail with steel slots, dark waffle pockets, black grip inserts and butt
+  pad, steel hinge pin, latch, trigger, sling cup, barrel bands, thread protector and clamp bolts, rear and front sights.
+- 0.15.9 test build: rotor hub spins with the blades; blade lift area x1.6 and drag roughly halved; rotor assist on
+  the takeoff roll held to 25 m/s; jump gauge moved to the right middle of the HUD as a vertical bar in the stock HUD
+  font and colour; flight assist on + full throttle on the ground starts an automatic jump; spawns at revetments and
+  shelters as well as medium hangars; takeoff-roll log (speed, climb, yaw rate).
+- 0.15.8 test build: spawns at medium hangars only (helipads off for runway testing); takeoff stability: rotor lift
+  centred just behind the centre of mass, larger fins, gentler pedal brake on the main wheels, main tyres slide before
+  they trip the narrow track, gun mount mass moved to the centreline. SUB-2000 raised out of the seat sill with cleaner
+  stock and frame; sensor housing blended into the belly with darker lens rings.
+- 0.15.7 test build: folded SUB-2000 carbines on seats 1 and 2; HUD pre-rotator gauge (rpm, idle-to-full bar, red to
+  green at jump speed); rotor head pitch authority on the takeoff roll; mast, engine and tail braced to the frame, stiffer
+  main gear, less nose steering lock; faired sensor turret housing with side arm; square MFD with smaller six-pack; gauges
+  moved to the cockpit camera layer so they draw.
+- 0.15.6 test build: prop no longer stops below full throttle (strike-detector disc kept clear of the engine part,
+  strike log added); custom axis 1 scaled to the binding's range; main gear casts clear of the nacelle so the wheels roll;
+  gunner idle pose upright; darker rifle furniture; harnesses hide with their occupant / gunner kit; side seam removed;
+  AGM-48 / IRM-S2 rail mounts equip again on lower pylons; six-pack flight instruments around a larger MFD; targeting
+  ball rebuilt with flush lens windows.
+- 0.15.5 test build: fixed the engine RPM loop (prop blades struck the tail boom collider) and the tail snapping at spawn
+  (overlapping colliders now jointed); colliders skip thin hardware. Cockpit rework: square-shouldered cowl, wrap-round
+  windscreen, portrait MFD, smaller gauges. Mid-belly sensor turret, beefed-up stub pylons with direct AGM-48/IRM-S2
+  rails, FDE seat rifles, parked ejection seat hidden on bail-out, part-detach log.
 - Blockout model scripts.
