@@ -23,7 +23,7 @@ WRIST_SINK = 0.0           # 0.15.76: the soldier keeps his own hands, nothing t
 LEAN_MAX = 24.0
 GL_SHOULDER = Vector((0.150, 0.000, 0.430)); GL_CANT = 0.0   # right shoulder pocket in the torso frame   # grenadier: launcher grip in the torso frame, shouldered
 POLE_R_SPOT, POLE_L_SPOT = Vector((0.45, 0.05, -0.20)), Vector((-0.45, 0.05, -0.20))
-HAND_PA = -40.0          # knuckles round the grip from the hand's outward side (same angle the old gloves used)
+GRIP_DOWN = {'mg': 0.050, 'gl': 0.050, 'spot': 0.045}   # fist centre below the grip top
 POLE_R, POLE_L = Vector((0.45, -0.20, -0.70)), Vector((-0.35, 0.25, -0.75))  # torso frame
 
 
@@ -92,7 +92,7 @@ class Gunner:
 
     # ------------------------------------------------------------------ setup helpers
     def _strip(self):
-        """drop the troop rifle between the knees (0.15.76: his own hands stay, closed into fists by _fists)"""
+        """drop the troop rifle between the knees (his hands are swapped for the stock pilot fist in _fists)"""
         so = self.so; bm = bmesh.new(); bm.from_mesh(so.data); bm.verts.ensure_lookup_table(); seen = set(); kill = set()
         for v in bm.verts:
             if v.index in seen: continue
@@ -130,22 +130,20 @@ class Gunner:
         me.update()
 
     def _fists(self):
-        """close the soldier's own hands (rest mesh) round each recorded grip, and work out where the hand bone sits in
-        the gun frame: the hole axis on the grip axis (index / thumb toward the grip top), the knuckles on the grip's
-        outward side the old gloves used, the hole centre 5 cm down the grip. wR / wL become the wrist (bone head)."""
-        import soldier_fist as sf
+        """graft the stock pilot fist onto the soldier's hands (soldier texture) and work out where each hand bone sits in
+        the gun frame: the fist's hole axis on the grip axis (index toward the grip top), the wrist turned toward the
+        forearm (the grip's arm direction), the hole centre a little down the grip. wR / wL become the wrist (bone head)."""
+        import pilot_fist as pf
         self.Hg = {}; log = []
         for s, g_ in self.grips.items():
-            h = sf.curl(self.so, self.ao, s, g_['rg'], thumb_ang=(75.0 if g_['thumb'] == 'top' else 55.0), log=log)
+            h = pf.graft(self.so, self.ao, s, log=log)
             ax = (g_['bot'] - g_['top']).normalized()
-            eo = Vector((g_['side'], 0, 0)); eo = (eo - ax * eo.dot(ax)).normalized()
-            ef = g_['fwd'] - ax * g_['fwd'].dot(ax) - eo * g_['fwd'].dot(eo); ef = ef.normalized()
-            pa = math.radians(HAND_PA); n_g = (math.cos(pa) * eo + math.sin(pa) * ef).normalized()
-            a_g = -ax                                                          # toward the grip top
-            a_l = h['a']; n_l = (h['n'] - a_l * h['n'].dot(a_l)).normalized()
-            Bl = Matrix((a_l, n_l, a_l.cross(n_l))).transposed(); Bg = Matrix((a_g, n_g, a_g.cross(n_g))).transposed()
+            a_g = -ax                                                          # toward the grip top (index end)
+            w_g = g_['arm'] - a_g * g_['arm'].dot(a_g); w_g.normalize()        # wrist toward the forearm
+            a_l, w_l = h['a'], h['w']
+            Bl = Matrix((a_l, w_l, a_l.cross(w_l))).transposed(); Bg = Matrix((a_g, w_g, a_g.cross(w_g))).transposed()
             R = Bg @ Bl.transposed()
-            cen = g_['top'] + ax * 0.050
+            cen = g_['top'] + ax * GRIP_DOWN.get(self.kind, 0.050)
             H = R.to_4x4(); H.translation = cen - R @ h['c']
             self.Hg[s] = H
         self.wR, self.wL = self.Hg['R'].translation.copy(), self.Hg['L'].translation.copy()

@@ -1,7 +1,8 @@
 UL-2 Airtrike changelog
 =======================
 
-Unreleased
+1.0.0 (2026-11-15) - first full release
+- 0.15.77: the seat 3 Machine Gunner, Grenadier and Spotter hands now use the same closed glove fist as the pilots, fitted round each grip and binocular side (no more uneven fingers; the Spotter's elbow no longer reaches into the neck); two missions ship with the mod, "UL-2 - Reservist Aerial Gunnery" and "UL-2 - Altercation"; new skin damage map in the P220 Primrose style: light bare metal with no darkening, and the hull shreds into ragged torn shards instead of straight-edged polygons.
 - 0.15.76 (release candidate 2): the seat 3 Machine Gunner, Grenadier and Spotter now hold their weapons with the soldier's own hands and soldier texture, closed into fists round the grips and binocular sides (the modelled tan gloves and wrist gaiters are gone); the machine gun support arm is removed completely; the copilot's hands close round the handset handles instead of sitting under them; AI pilots start the turn onto final earlier (turning radius 450 m) so they line up with the runway instead of overshooting it.
 - 0.15.75: flight assist is now Auto RPM Management (the toggle popup says so); moving custom axis 1 switches it off and the axis keeps the rotor until Auto RPM Management is switched back on.
 - 0.15.74 (release candidate): tyres are solid again (the new tyre faces pointed inward and the outside was culled) and the sidewall lettering reads the right way round; the tail boom sections and rudder cables meet at the bend under the prop with no gap; the rotor gauge on the HUD sits further in so its readout stays inside the canopy frame; with flight assist on, the rotor goes back to automatic a few seconds after the custom axis stops moving; AI landings stay on the ground after touchdown instead of bouncing back into the air.
