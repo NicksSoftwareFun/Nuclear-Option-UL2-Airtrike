@@ -42,16 +42,18 @@ def opt(n):
     elif n=='D': # A plus stock-style cut-outs: three tandem open seats in the pod
         body(d,wb=1.75); bar(d,0,-0.97,math.radians(35),3.75,0.46); circ(d,0,-0.97,0.42); seats(d)
         circ(d,0,-0.97,0.16,0)
+    elif n=='E': # C body + D rotor and hub circle (Nick 03:43)
+        body(d,wb=1.7,prop=1.25,wheels=False,tail=1.15); bar(d,0,-0.97,math.radians(35),3.75,0.46); circ(d,0,-0.97,0.42); circ(d,0,-0.97,0.16,0)
     a=im.resize((256,256),Image.LANCZOS)
     out=Image.new('RGBA',(256,256),(255,255,255,0)); out.putalpha(a); return out
 
 import sys
-opts={k:opt(k) for k in 'ABCD'}
+opts={k:opt(k) for k in 'ABCDE'}
 for k,v in opts.items(): v.save(f'/tmp/claude-0/icons/UL2_icon_map_{k}.png')
 cur=Image.open('/mnt/user-data/uploads/Nuclear Option Mods/_renders/icons/ul2_current.png').convert('RGBA').resize((256,256))
 ref=Image.open('/mnt/user-data/uploads/Nuclear Option Mods/_renders/icons/UtilityHelo1.png').convert('RGBA'); ref.thumbnail((256,256))
-cols=[('Now',cur),('A',opts['A']),('B',opts['B']),('C',opts['C']),('D',opts['D'])]
-W=290; sh=Image.new('RGBA',(W*5,290+120),(38,56,46,255)); dd=ImageDraw.Draw(sh)
+cols=[('Now',cur),('C',opts['C']),('D',opts['D']),('New',opts['E'])]
+W=290; sh=Image.new('RGBA',(W*4,290+120),(38,56,46,255)); dd=ImageDraw.Draw(sh)
 from PIL import ImageFont
 try: fnt=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',30)
 except: fnt=None
