@@ -31,6 +31,27 @@ burn = np.clip(0.35 + 0.6 * n1 + 0.2 * n2, 0, 0.6)
 metal = np.array([168, 168, 165], np.float32) / 255; heat = np.array([140, 134, 126], np.float32) / 255
 col = metal * (1 - burn[:, None]) + heat * burn[:, None]
 col *= (1 + 0.03 * n2)[:, None]
+# no floating skin (Nick 21:43): a ragged solid band runs round every UV island edge (the part edges, where the skin is
+# held), and at each level every piece of skin still standing must connect to that band; pieces that would be left
+# hanging in the air drop to the next lower level, so they go no later than the skin around them.
+from scipy import ndimage
+cov = m['cov'].astype(bool); ppm = float(m['ppm'])
+A = alpha.reshape(S, S).copy()
+edge = cov & ~ndimage.binary_erosion(cov)
+dist = ndimage.distance_transform_edt(~edge)
+wid = (0.025 + 0.025 * np.clip(0.5 + 0.9 * vnoise(P, 0.08, seed=73, octaves=2), 0, 1)).reshape(S, S) * ppm
+A = np.where(cov & (dist < wid), 1.0, A)
+rim = ndimage.binary_dilation(edge, iterations=1)
+st = np.ones((3, 3), bool)
+for i in range(len(LEVELS) - 1, 0, -1):
+    t = LEVELS[i] - 1e-3
+    lab, n = ndimage.label(cov & (A >= t), structure=st)
+    held = np.unique(lab[rim & (lab > 0)])
+    ok = np.zeros(n + 1, bool); ok[held] = True
+    drop = (lab > 0) & ~ok[lab]
+    A = np.where(drop, np.minimum(A, LEVELS[i - 1]), A)
+    print('level %.2f: %d pieces, %d floating -> %.2f (%d texels)' % (LEVELS[i], n, n + 1 - len(held) - 1, LEVELS[i - 1], int(drop.sum())))
+alpha = A.ravel()[idx]          # gutter texels copy their island texel again
 img = np.concatenate([np.clip(col, 0, 1), alpha[:, None]], 1)
 Image.fromarray((img * 255 + 0.5).astype(np.uint8).reshape(S, S, 4), 'RGBA').save(os.path.join(out, 'UL2_skin_dmg_b.png'))
 # normal: light crumple
