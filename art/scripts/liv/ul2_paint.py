@@ -120,8 +120,8 @@ else:
     col = np.tile(OLIVE, (len(P), 1))
     col *= (1 + 0.035 * vnoise(P, 1.2, 3) + 0.02 * vnoise(P, 0.25, 7))[:, None]      # faint mottling of matte paint
 col *= (1 - 0.06 * np.clip((0.75 - P[:, 2]) / 0.3, 0, 1) * ids('cockpit_F', 'nose', 'gunmount_R'))[:, None]   # slightly dusty belly
-MARK = {'olive': WHITE, 'steel': BLACK, 'tiger': WHITE, 'tan': BLACK, 'orca': WHITE}[LIV]   # 0.15.29 (Nick 12:29): tiger text white
-STEP = {'olive': BLACK, 'steel': BLACK, 'tiger': WHITE, 'tan': BLACK, 'orca': WHITE}[LIV]
+MARK = {'blank': WHITE, 'olive': WHITE, 'steel': BLACK, 'tiger': WHITE, 'tan': BLACK, 'orca': WHITE}[LIV]   # 0.15.29 (Nick 12:29): tiger text white
+STEP = {'blank': BLACK, 'olive': BLACK, 'steel': BLACK, 'tiger': WHITE, 'tan': BLACK, 'orca': WHITE}[LIV]
 smooth = np.full(len(P), 0.28, np.float32)
 
 def text_mask(txt, font, px=400):
@@ -168,7 +168,7 @@ if LIV == 'tiger':
     for sd in (-1, 1):
         n += stamp(ids('vstab'), '\u2588\u2588\u2588', FONT, (-2.91, 1.397), 0.24, sd, np.array([20, 20, 21], np.float32) / 255)
         n += stamp(ids('cockpit_F', 'nose'), '\u2588\u2588', FONT, (2.30, 0.95), 0.22, sd, np.array([20, 20, 21], np.float32) / 255)
-NUM = {'olive': '214', 'steel': '237', 'tiger': '251', 'tan': '262', 'orca': '271'}[LIV]     # 0.15.35 (Nick 22:15): 2 = the unit, then the airframe's own two digits
+NUM = {'blank': '214', 'olive': '214', 'steel': '237', 'tiger': '251', 'tan': '262', 'orca': '271'}[LIV]     # 0.15.35 (Nick 22:15): 2 = the unit, then the airframe's own two digits
 def stamp_img(sel, path, centre, h, side, mirror=False):
     """RGBA badge on a side face (like stamp); mirror=True flips it so it faces forward on the right side."""
     im = np.asarray(Image.open(path).convert('RGBA'), np.float32) / 255
@@ -247,7 +247,7 @@ rain = side * np.clip(vnoise(P * np.array([9, 9, 0.7], np.float32), 0.05, 65) * 
 col *= (1 - rain)[:, None]
 sill = PODS * (P[:, 2] > 1.30) * (np.abs(P[:, 0]) > 0.24) * (P[:, 1] > -0.10) * (P[:, 1] < 2.10) * (up > 0.3)
 wear = sill * np.clip((vnoise(P, 0.025, 66) + 0.25 * vnoise(P, 0.12, 67) - 0.15) / 0.12, 0, 1) * 0.35
-WEAR = {'olive': np.array([104, 106, 84], np.float32) / 255, 'steel': np.array([150, 152, 154], np.float32) / 255, 'tiger': np.array([58, 56, 52], np.float32) / 255, 'tan': np.array([206, 188, 152], np.float32) / 255, 'orca': np.array([64, 64, 66], np.float32) / 255}[LIV]
+WEAR = {'blank': np.array([200, 200, 200], np.float32) / 255, 'olive': np.array([104, 106, 84], np.float32) / 255, 'steel': np.array([150, 152, 154], np.float32) / 255, 'tiger': np.array([58, 56, 52], np.float32) / 255, 'tan': np.array([206, 188, 152], np.float32) / 255, 'orca': np.array([64, 64, 66], np.float32) / 255}[LIV]
 col = col * (1 - wear[:, None]) + WEAR * wear[:, None]
 if LIV in ('olive', 'tan'): col = col * (1 + 0.05 * np.clip(up, 0, 1))[:, None]                 # a touch of sun fade on top
 print('weathering: oil', int((oil > 0.1).sum()), 'soot', int((soot > 0.08).sum()), 'rain', int((rain > 0.02).sum()), 'sill wear', int((wear > 0.1).sum()))
@@ -293,6 +293,7 @@ dT = (height(P + T * e)[0] - height(P - T * e)[0]) / (2 * e); dB = (height(P + B
 nt = np.stack([-dT, -dB, np.ones(len(P), np.float32)], 1); nt /= np.linalg.norm(nt, axis=1, keepdims=True)
 if LIV == 'olive': save_rgb(nt * 0.5 + 0.5, 'UL2_skin_n.png')
 seam = np.clip(-h0 / 0.0006, 0, 1); fast = np.clip(mk, 0, 1)
+if LIV == 'blank': col = np.full_like(col, 0.93)                         # livery bundle base: plain white, no markings or grime
 col *= (1 - 0.18 * seam)[:, None]                                         # a little grime in the lines
 lead = np.clip((N[:, 1] - 0.75) / 0.2, 0, 1) * (HS | VS | STUB | POD)    # forward-facing edges
 chip = np.clip((vnoise(P, 0.03, 31) - 0.42) / 0.10, 0, 1) * np.clip(lead + fast * 0.8, 0, 1)
@@ -304,6 +305,7 @@ smooth -= 0.06 * np.clip((0.75 - P[:, 2]) / 0.3, 0, 1) * POD             # dusty
 smooth = np.clip(smooth, 0.12, 0.6)
 print('surface detail: seam texels', int((seam > 0.3).sum()), 'fastener', int((fast > 0.3).sum()), 'chips', int((chip > 0.3).sum()))
 if LIV != 'olive':
+    if LIV == 'blank': chip = chip * 0
     if LIV == 'steel': col = col * (1 - 0.7 * chip[:, None]) + col * 0.7 * chip[:, None] / np.maximum(BARE, 1e-3) * BARE   # chips = same steel
     save_rgb(col, f'UL2_skin_{LIV}_b.png'); print('wrote livery', LIV); sys.exit(0)
 save_rgb(np.stack([metal, np.zeros(len(P)), np.zeros(len(P)), smooth], 1), 'UL2_skin_m.png')
