@@ -1788,7 +1788,7 @@ public static partial class UL2Builder
         so.FindProperty("takeoffDistance").floatValue = 250f;
         so.FindProperty("minimumRadarAlt").floatValue = 20f;       // 0.15.54 (Nick 20:59: lower in combat): AI floor 40 -> 20 m
         so.FindProperty("verticalLanding").boolValue = false;
-        so.FindProperty("turningRadius").floatValue = 300f;
+        so.FindProperty("turningRadius").floatValue = 450f;   // 0.15.76 (Nick 18:59: AI turned onto final too late and overshot the runway): the landing AI starts the final turn and sets the final length from this; the gyro rolls and turns wider than 300 m
         so.FindProperty("cornerSpeed").floatValue = 35f;
         so.FindProperty("approachSpeed").floatValue = 26f;
         so.FindProperty("landingSpeed").floatValue = 22f;

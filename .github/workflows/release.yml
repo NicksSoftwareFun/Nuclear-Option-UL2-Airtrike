@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (for example v0.2.7-alpha)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package source
+        # GitHub lists release assets by name, so the source zip is named to sort after UL2Airtrike.dll
+        run: zip -r "Source-UL2Airtrike-${TAG}.zip" plugin unity art
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f "release/notes-${TAG}.md" ]; then
+            cp "release/notes-${TAG}.md" notes.txt
+          else
+            awk 'NR>3 && /^## /{exit} NR>3' CHANGELOG.txt > notes.txt
+          fi
+          PRE=""
+          case "$TAG" in v0*) PRE="--prerelease" ;; esac
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" release/UL2Airtrike.dll "Source-UL2Airtrike-${TAG}.zip" --clobber
+          else
+            gh release create "$TAG" release/UL2Airtrike.dll "Source-UL2Airtrike-${TAG}.zip" \
+              --target "$GITHUB_SHA" --title "UL-2 Airtrike ${TAG}" --notes-file notes.txt $PRE
+          fi

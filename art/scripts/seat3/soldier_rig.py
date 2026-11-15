@@ -27,10 +27,12 @@ B = {  # name: (head, tail, parent)
     'hips': ((0, -0.05, -0.02), (0, -0.07, 0.15), None),
     'spine': ((0, -0.07, 0.15), (0, -0.08, 0.40), 'hips'),
     'chest': ((0, -0.08, 0.40), (0, -0.07, 0.53), 'spine'),
-    'head': ((0, -0.04, 0.55), (0, -0.03, 0.86), 'chest'),
+    'neck': ((0, -0.06, 0.50), (0, -0.04, 0.60), 'chest'),         # skeleton v2 (Nick 19:37): neck, collarbones
+    'head': ((0, -0.04, 0.60), (0, -0.03, 0.86), 'neck'),
 }
 for s, sx in (('L', -1), ('R', 1)):
-    B[f'upperarm_{s}'] = ((sx * 0.20, -0.10, 0.46), (sx * 0.25, -0.03, 0.25), 'chest')
+    B[f'clavicle_{s}'] = ((sx * 0.03, -0.07, 0.47), (sx * 0.20, -0.10, 0.46), 'chest')
+    B[f'upperarm_{s}'] = ((sx * 0.20, -0.10, 0.46), (sx * 0.25, -0.03, 0.25), f'clavicle_{s}')
     B[f'forearm_{s}'] = ((sx * 0.25, -0.03, 0.25), (sx * 0.17, 0.22, 0.19), f'upperarm_{s}')
     B[f'hand_{s}'] = ((sx * 0.17, 0.22, 0.19), (sx * 0.14, 0.31, 0.15), f'forearm_{s}')
     B[f'thigh_{s}'] = ((sx * 0.10, 0.00, 0.00), (sx * 0.13, 0.33, 0.08), 'hips')
@@ -141,7 +143,26 @@ if HEAT:
     W[:, hi_] = tw * (1 - sb); W[:, sp_] = 0; W[:, ch_] = tw * sb
     W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
     for i, bn in force.items(): W[isl == i] = 0; W[isl == i, names.index(bn)] = 1
-    print('verts without heat weights', int(none.sum()))
+    # v2: the heat pass may give clavicle/neck weight anywhere; rebuild them by rule instead
+    ne_, hd_ = names.index('neck'), names.index('head')
+    for s_ in ('L', 'R'):
+        W[:, ch_] += W[:, names.index(f'clavicle_{s_}')]; W[:, names.index(f'clavicle_{s_}')] = 0
+    W[:, hd_] += W[:, ne_]; W[:, ne_] = 0
+    keep = (P[:, 2] > 0.50) & (nr < 0.085); W[~keep, ch_] += W[~keep, hd_]; W[~keep, hd_] = 0
+    for i, bn in force.items(): W[isl == i] = 0; W[isl == i, names.index(bn)] = 1
+    # neck: the neck column below the helmet rim blends from the neck bone up into the head
+    col = W[:, hd_] > 0
+    fz = np.clip((0.64 - P[:, 2]) / 0.08, 0, 1); fz = fz * fz * (3 - 2 * fz)
+    W[col, ne_] = W[col, hd_] * fz[col]; W[col, hd_] *= (1 - fz[col])
+    # collarbones: the shoulder caps (outside the plate carrier, around the shoulder joint) ride the clavicle
+    for s_, sx in (('L', -1), ('R', 1)):
+        cl = names.index(f'clavicle_{s_}'); sh = np.array((sx * 0.20, -0.10, 0.46))
+        d = np.linalg.norm(P - sh, axis=1); fx = np.clip((sx * P[:, 0] - 0.12) / 0.05, 0, 1)
+        f = np.clip(1 - d / 0.11, 0, 1) * fx; f = f * f * (3 - 2 * f)
+        moved = W[:, ch_] * f; W[:, cl] += moved; W[:, ch_] -= moved
+    W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
+    for i, bn in force.items(): W[isl == i] = 0; W[isl == i, names.index(bn)] = 1
+    print('verts without heat weights', int(none.sum()), 'neck verts', int((W[:, ne_] > 0.01).sum()), 'clavicle verts', int((W[:, names.index('clavicle_R')] > 0.01).sum()))
     for g in list(so.vertex_groups): so.vertex_groups.remove(g)
 for n in names: so.vertex_groups.new(name=n)
 for vi in range(len(P)):

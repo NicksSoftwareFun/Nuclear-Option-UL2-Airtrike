@@ -1,5 +1,5 @@
 """Seat 3 machine gunner rig for preview renders: the rigged stock soldier, the LMG with modelled gloved hands, the
-harness (hip belt, back struts, shoulder yoke, straps) and the articulated support arm, posed by gun heading and
+harness (hip belt, back struts, shoulder yoke, straps), posed by gun heading and
 elevation the same way the plugin will drive it.
 
     g = Gunner(place)            # place = 4x4 world matrix of the soldier pelvis (rig origin)
@@ -18,15 +18,12 @@ import mg_model as mg
 RIG_BLEND = '/mnt/project-files/ul2/art/blend/ul2_soldier_rig.blend'
 G_T = Vector((0.05, 0.17, 0.34))          # gun origin in the torso frame: heads-up hold (Nick 13:01), gun forward on the arm, optic well below the eyes
 H_T = Vector((0.0, 0.02, 0.33))          # swing point for the gun's yaw relative to the torso
-SOCKET = Vector((0.17, 0.06, 0.15)); HINGE = Vector((0.20, 0.10, 0.19))   # waist, front-right of the belt (Nick 12:38)   # harness arm root (hips frame)
-L1 = L2 = 0.26
-RAIL = [Vector(q) for q in ((0.20, 0.10, 0.19), (0.15, 0.15, 0.19), (0.075, 0.18, 0.19), (0.0, 0.19, 0.19), (-0.075, 0.18, 0.19), (-0.15, 0.15, 0.19), (-0.20, 0.10, 0.19))]
-POST_L = 0.15            # 2026-11-14: longer post so the links run below the gun and the hands
 ARM_SCALE = (1.14, 1.06)        # upper arm, forearm length factors
-WRIST_SINK = 0.040
+WRIST_SINK = 0.0           # 0.15.76: the soldier keeps his own hands, nothing to sink into the sleeve
 LEAN_MAX = 24.0
 GL_SHOULDER = Vector((0.150, 0.000, 0.430)); GL_CANT = 0.0   # right shoulder pocket in the torso frame   # grenadier: launcher grip in the torso frame, shouldered
 POLE_R_SPOT, POLE_L_SPOT = Vector((0.45, 0.05, -0.20)), Vector((-0.45, 0.05, -0.20))
+GRIP_DOWN = {'mg': 0.050, 'gl': 0.050, 'spot': 0.045}   # fist centre below the grip top
 POLE_R, POLE_L = Vector((0.45, -0.20, -0.70)), Vector((-0.35, 0.25, -0.75))  # torso frame
 
 
@@ -62,12 +59,21 @@ class Gunner:
         # gun + gloves built once in gun space, parented to an empty
         self.gun = bpy.data.objects.new('GUN', None); bpy.context.scene.collection.objects.link(self.gun)
         part('seat3_mg'); n0 = len(ul2lib.PARTS['seat3_mg']['objs'])
-        if kind == 'gl':
-            import gl_model as km; km.build_gl(Matrix.Identity(4)); self.wR, self.wL = km.build_hands(Matrix.Identity(4))
-        elif kind == 'spot':
-            import bino_model as km; km.build_bino(Matrix.Identity(4)); self.wR, self.wL = km.build_hands(Matrix.Identity(4))
-        else:
-            mg.build_gun(Matrix.Identity(4)); self.wR, self.wL = mg.build_hands(Matrix.Identity(4))
+        # 0.15.76 (Nick 18:58: same treatment as the pilot hands, soldier textures): no modelled gloves. The kit's
+        # build_hands still names each grip; record those and close the soldier's own hands round them
+        grips = []; _gw = mg._glove_wrap
+        mg._glove_wrap = lambda tag, top, bot, side, fwd, rg, M, arm_dir, thumb='top': grips.append(dict(top=Vector(top), bot=Vector(bot), side=side, fwd=Vector(fwd), rg=rg, arm=Vector(arm_dir), thumb=thumb)) or Vector(top)
+        try:
+            if kind == 'gl':
+                import gl_model as km; km.build_gl(Matrix.Identity(4)); km.build_hands(Matrix.Identity(4))
+            elif kind == 'spot':
+                import bino_model as km; km.build_bino(Matrix.Identity(4)); km.build_hands(Matrix.Identity(4))
+            else:
+                mg.build_gun(Matrix.Identity(4)); mg.build_hands(Matrix.Identity(4))
+        finally:
+            mg._glove_wrap = _gw
+        self.grips = {('R' if g_['side'] > 0 else 'L'): g_ for g_ in grips}
+        self._fists()
         for o in ul2lib.PARTS['seat3_mg']['objs'][n0:] + (list(mg.GUN_CUTTERS) if kind == 'mg' else []):
             o.parent = self.gun
         self.gun_objs = ul2lib.PARTS['seat3_mg']['objs'][n0:]
@@ -79,14 +85,14 @@ class Gunner:
             p = bpy.data.objects.new(f'pole_{s}', None); bpy.context.scene.collection.objects.link(p)
             c = self.pb[f'forearm_{s}'].constraints.new('IK'); c.target = e; c.chain_count = 2; c.pole_target = p; c.pole_angle = 0
             self.ik[s] = e; self.pole[s] = p
-        self.arm_objs = []; self.harness_objs = []
+        self.harness_objs = []
         if kind == 'mg': self._harness()
         elif kind == 'spot': self._chest_kit()
         self._eye_setup()
 
     # ------------------------------------------------------------------ setup helpers
     def _strip(self):
-        """drop the troop rifle between the knees and the soldier's own open hands (replaced by the modelled gloves)"""
+        """drop the troop rifle between the knees (his hands are swapped for the stock pilot fist in _fists)"""
         so = self.so; bm = bmesh.new(); bm.from_mesh(so.data); bm.verts.ensure_lookup_table(); seen = set(); kill = set()
         for v in bm.verts:
             if v.index in seen: continue
@@ -98,8 +104,6 @@ class Gunner:
                     if w.index not in seen: seen.add(w.index); st.append(w)
             lo = [min(q.co[i] for q in comp) for i in range(3)]; hi = [max(q.co[i] for q in comp) for i in range(3)]
             if lo[0] > -0.02 and hi[0] < 0.07 and lo[1] > 0.15 and hi[2] < 0.25 and lo[2] < -0.1: kill.update(comp)
-        dl = bm.verts.layers.deform.active; hidx = [so.vertex_groups[f'hand_{q}'].index for q in 'LR']
-        kill.update(v for v in bm.verts if sum(v[dl].get(i, 0) for i in hidx) > 0.5)
         bmesh.ops.delete(bm, geom=list(kill), context='VERTS'); bm.to_mesh(so.data); bm.free()
 
     def _lengthen_arms(self):
@@ -125,6 +129,34 @@ class Gunner:
                 if wf or wh: v.co += d1 * (wf + wh) + d2 * wh
         me.update()
 
+    def _fists(self):
+        """graft the stock pilot fist onto the soldier's hands (soldier texture) and work out where each hand bone sits in
+        the gun frame: the fist's hole axis on the grip axis (index toward the grip top), the wrist turned toward the
+        forearm (the grip's arm direction), the hole centre a little down the grip. wR / wL become the wrist (bone head)."""
+        import pilot_fist as pf
+        self.Hg = {}; log = []
+        for s, g_ in self.grips.items():
+            h = pf.graft(self.so, self.ao, s, log=log)
+            ax = (g_['bot'] - g_['top']).normalized()
+            a_g = -ax                                                          # toward the grip top (index end)
+            w_g = g_['arm'] - a_g * g_['arm'].dot(a_g); w_g.normalize()        # wrist toward the forearm
+            a_l, w_l = h['a'], h['w']
+            Bl = Matrix((a_l, w_l, a_l.cross(w_l))).transposed(); Bg = Matrix((a_g, w_g, a_g.cross(w_g))).transposed()
+            R = Bg @ Bl.transposed()
+            cen = g_['top'] + ax * GRIP_DOWN.get(self.kind, 0.050)
+            H = R.to_4x4(); H.translation = cen - R @ h['c']
+            self.Hg[s] = H
+        self.wR, self.wL = self.Hg['R'].translation.copy(), self.Hg['L'].translation.copy()
+        print('fists:', ' | '.join(log))
+
+    def _set_hands(self, GM):
+        """hand bones on the grips: rotation from the gun frame, the IK keeps the wrist where it reached"""
+        bpy.context.view_layer.update(); AWi = self.ao.matrix_world.inverted()
+        for s in 'RL':
+            pb = self.pb[f'hand_{s}']; t = pb.matrix.translation.copy()
+            Mh = AWi @ GM @ self.Hg[s]; Mh = Mh.to_3x3().normalized().to_4x4(); Mh.translation = t; pb.matrix = Mh
+            bpy.context.view_layer.update()
+
     def _chest_mat(self):
         b = self.ao.data.bones['chest']; return self.ao.matrix_world @ self.pb['chest'].matrix @ b.matrix_local.inverted()
 
@@ -146,16 +178,6 @@ class Gunner:
         sweep_pts = [tuple(q) for q in ring] + [tuple(ring[0])]
         ul2lib.sweep('hb_belt', sweep_pts, ul2lib.rect(0.012, 0.06), SEAT, side=(0, 0, 1), smooth=False)
         hips_objs = list(ul2lib.PARTS['seat3_harness']['objs'])
-        # socket block bolted to the belt on the right hip
-        # 2026-11-14 (Nick: the support clips through the gun and the body): the arm root runs on a rail round the front
-        # of the belt, hip to hip, so a gun swung to the left side no longer drags the arm across the lap
-        if mg.SUPPORT_ARM:   # 0.15.54: arm disabled (Nick 20:45), so no rail or sockets
-            for sx in (1, -1):
-                sk = Vector((sx * SOCKET.x, SOCKET.y, SOCKET.z))
-                box(f'hb_socket{sx}', tuple(sk), (0.06, 0.06, 0.07), DARK, bevel=0.008)
-                for k in range(2): tube(f'hb_bolt{sx}{k}', tuple(sk + Vector((sx * 0.028, -0.015 + 0.03 * k, -0.025))), tuple(sk + Vector((sx * 0.033, -0.015 + 0.03 * k, -0.025))), 0.006, MECH, segs=8)
-            for dz in (-0.022, 0.022):
-                pipe(f'hb_rail{dz > 0}', [tuple(q + Vector((0, 0, dz))) for q in RAIL], 0.0075, MECH, n=6, segs=8)
         hips_objs = list(ul2lib.PARTS['seat3_harness']['objs'])
         # back struts from the belt up to a shoulder yoke, straps over the shoulders to the chest plate
         st = []
@@ -273,7 +295,8 @@ class Gunner:
         self._shrug()
         self._sink_wrists(GM)
         self._post_ik.append(GM)
-        self._settle_elbows(TF); self.arm_len = 0.0
+        self._settle_elbows(TF)
+        self._set_hands(GM)
         return {s: ((self.ao.matrix_world @ self.pb[f'hand_{s}'].head) - self.ik[s].location).length for s in 'RL'}
 
     def _torso(self, T, lean):
@@ -391,45 +414,12 @@ class Gunner:
         for pg in self.neck_obj.data.polygons: pg.use_smooth = True
 
     def _wrist_bridge(self, GM):
-        """wrist gaiter (Nick 18:13): a tapered sleeve from inside the cut sleeve end to the glove cuff, rebuilt each pose,
-        so the glove always reads as attached to the forearm whatever the angle between the cuff and the forearm"""
-        import bmesh as _bm
-        if not hasattr(self, 'wrist_objs'):
+        """0.15.76: the soldier keeps his own hands, so no wrist gaiters; only the neck gaiter (its material keeps the
+        old name)"""
+        if 'wrist_gaiter' not in bpy.data.materials:
             mat = bpy.data.materials.new('wrist_gaiter'); mat.use_nodes = True
             mat.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.048, 0.052, 0.034, 1); mat.node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 0.95
-            self.wrist_objs = []
-            for s in 'RL':
-                me = bpy.data.meshes.new(f'wrist_{s}'); o = bpy.data.objects.new(f'wrist_{s}', me); bpy.context.scene.collection.objects.link(o)
-                me.materials.append(mat); self.wrist_objs.append(o)
-        bpy.context.view_layer.update()
-        dg = bpy.context.evaluated_depsgraph_get(); ev = self.so.evaluated_get(dg); me = ev.to_mesh(); W = self.so.matrix_world
-        src = self.so.data.vertices
         self._neck_gaiter()
-        for o, s in zip(self.wrist_objs, 'RL'):
-            el = self.ao.matrix_world @ self.pb[f'forearm_{s}'].head; wr = self.ao.matrix_world @ self.pb[f'hand_{s}'].head
-            d = (wr - el).normalized()
-            fi = self.so.vertex_groups[f'forearm_{s}'].index
-            fv = [W @ me.vertices[i].co for i in range(len(src)) if any(g.group == fi and g.weight > 0.5 for g in src[i].groups)]
-            pm = max((v - el).dot(d) for v in fv); ring = [v for v in fv if (v - el).dot(d) > pm - 0.02]
-            se = sum(ring, Vector()) / len(ring)                                      # sleeve end centre on the posed mesh
-            a = se - d * 0.025; b = GM @ (self.wR if s == 'R' else self.wL)          # 2.5 cm inside the sleeve -> cuff end
-            ax = (b - a); L = ax.length
-            if L < 1e-4: continue
-            z = ax.normalized(); x = z.orthogonal().normalized(); y = z.cross(x)
-            bm = _bm.new(); N = 12; rings = []
-            for t, r in ((0.0, 0.030), (0.5, 0.029), (1.0, 0.027)):
-                c = a + ax * t
-                rings.append([bm.verts.new(c + (x * math.cos(2 * math.pi * k / N) + y * math.sin(2 * math.pi * k / N)) * r) for k in range(N)])
-            for r0, r1 in zip(rings, rings[1:]):
-                for k in range(N): bm.faces.new((r0[k], r0[(k + 1) % N], r1[(k + 1) % N], r1[k]))
-            # 0.15.53 (review: you could see into the hollow sleeve from the front): a closing disc across the cut sleeve end
-            rr = sum(((v - se) - d * (v - se).dot(d)).length for v in ring) / len(ring) * 0.97
-            cc = se - d * 0.004; cr = [bm.verts.new(cc + (x * math.cos(2 * math.pi * k / N) + y * math.sin(2 * math.pi * k / N)) * rr) for k in range(N)]
-            ctr = bm.verts.new(cc)
-            for k in range(N): bm.faces.new((ctr, cr[k], cr[(k + 1) % N]))
-            bm.to_mesh(o.data); bm.free(); o.data.update()
-            for pg in o.data.polygons: pg.use_smooth = True
-        ev.to_mesh_clear()
 
     # ------------------------------------------------------------------ pose
     def pose(self, A, E, T=None, head=True):
@@ -467,73 +457,9 @@ class Gunner:
             if q.angle > math.radians(85): q = Quaternion(q.axis, math.radians(85))
             R3 = q.to_matrix() @ Mh.to_3x3(); M4 = R3.to_4x4(); M4.translation = Mh.translation; ph.matrix = M4
         bpy.context.view_layer.update()
-        self._arm()
-        bpy.context.view_layer.update()
+        self._set_hands(GM)
         miss = {s: ((self.ao.matrix_world @ self.pb[f'hand_{s}'].head) - self.ik[s].location).length for s in 'RL'}
         return miss
-
-    def _arm(self):
-        for o in self.arm_objs: bpy.data.objects.remove(o)
-        part('seat3_arm'); ul2lib.PARTS['seat3_arm']['objs'] = []
-        if not mg.SUPPORT_ARM: self.arm_objs = []; self.arm_len = 0.0; return   # 0.15.54: support arm disabled (Nick 20:45)
-        P = self.place
-        hl = self._hinge_local(self.A); hinge = P @ hl
-        hr = P.to_3x3() @ Vector((0, 0, 1))
-        tube('arm_carriage', tuple(hinge - hr * 0.035), tuple(hinge + hr * 0.035), 0.024, DARK, segs=14)
-        tube('arm_hinge', tuple(hinge - hr * 0.045), tuple(hinge + hr * 0.045), 0.016, MECH, segs=12)
-        post_top = self.GM @ (mg.MOUNT + Vector((0, 0, -0.028)))
-        post_bot = post_top - (self.GM.to_3x3() @ Vector((0, 0, 1))).normalized() * POST_L
-        d = post_bot - hinge; L = d.length; L_ = min(L, L1 + L2 - 0.005); self.arm_len = L
-        h = math.sqrt(max(0.0, L1 * L1 - (L_ / 2) ** 2))
-        # elbow forced outboard (away from the body centre), to the rear and up
-        cen = P @ Vector((0, -0.03, hinge.z - P.translation.z))
-        out = (hinge + post_bot) / 2 - cen; out.z = 0
-        n = (1.6 * out.normalized() + (P.to_3x3() @ Vector((0, -0.3, 0))) + Vector((0, 0, 0.8)))
-        n = (n - d.normalized() * n.dot(d.normalized())).normalized()
-        # 2026-11-14 (Nick: the support clips through the gun and the body): the elbow may swing anywhere round the
-        # hinge-post line; keep the swing that leaves the links furthest from the posed soldier and the gun, staying near
-        # the old outboard/rear/up preference and the previous pose's elbow so neighbouring poses blend smoothly
-        du = d.normalized(); bvhs = self._clear_bvhs()
-        def clear(e):
-            m = 9.0
-            for a_, b_, s0, s1 in ((hinge, e, 0.25, 1.0), (e, post_bot, 0.0, 0.65)):
-                for k in range(9):
-                    t = s0 + (s1 - s0) * k / 8.0; q = a_ + (b_ - a_) * t
-                    for bv in bvhs:
-                        r = bv.find_nearest(q)
-                        if r[0] is not None: m = min(m, r[3])
-            return m
-        prev = getattr(self, '_prev_arm_el', None); best = None
-        for k in range(24):
-            nn = Quaternion(du, math.radians(15 * k)) @ n
-            e = hinge + du * (L_ / 2) + nn * h
-            c = clear(e); score = min(c, 0.09) - 0.010 * (1 - nn.dot(n)) - (0.08 * (e - prev).length if prev is not None else 0.0)
-            if best is None or score > best[0]: best = (score, e, c)
-        elbow = best[1]; self._prev_arm_el = elbow.copy(); self.arm_clear = best[2]
-        mg.build_arm(hinge, elbow, post_bot, post_top)
-        self.arm_objs = list(ul2lib.PARTS['seat3_arm']['objs'])
-
-    def _hinge_local(self, A):
-        """arm root on the belt rail: right hip for right-side aim, left hip for left-side aim, sliding across the front
-        through the forward zone (A from +10 to -40 deg)"""
-        f = max(0.0, min(1.0, (10.0 - A) / 50.0)); f = f * f * (3 - 2 * f)
-        t = f * (len(RAIL) - 1); i = min(int(t), len(RAIL) - 2); u = t - i
-        return RAIL[i].lerp(RAIL[i + 1], u)
-
-    def _clear_bvhs(self):
-        """posed soldier (whole body) and the gun, world space, for the support arm clearance"""
-        bpy.context.view_layer.update(); dg = bpy.context.evaluated_depsgraph_get(); out = []
-        ev = self.so.evaluated_get(dg); me = ev.to_mesh(); W = self.so.matrix_world
-        out.append(BVHTree.FromPolygons([W @ v.co for v in me.vertices], [list(p.vertices) for p in me.polygons])); ev.to_mesh_clear()
-        V, F = [], []
-        for o in self.gun_objs:
-            if o.type != 'MESH': continue
-            W = o.matrix_world; b0 = len(V); V += [W @ v.co for v in o.data.vertices]; F += [[b0 + i for i in p.vertices] for p in o.data.polygons]
-        # the yoke and the post top really do meet the gun: leave out gun parts within 6 cm of the mount
-        mnt = self.GM @ mg.MOUNT
-        F = [f for f in F if min((V[i] - mnt).length for i in f) > 0.06]
-        if F: out.append(BVHTree.FromPolygons(V, F))
-        return out
 
     def clearance(self, other):
         """min distance from the gun objects (world) to another mesh object (e.g. the seat 2 crew)"""

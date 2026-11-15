@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.75")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike", "1.0.0")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -1074,8 +1074,8 @@ namespace UL2Airtrike
         }
         // 0.15.63 (Nick 02:49): each sleeve bridge sits on its wrist and points up the forearm to the elbow, covering the
         // pinched end of the stock sleeve where the folded-away hand used to be
-        static readonly Vector3 copWristL = new Vector3(-0.09466f, -0.04383f, -0.15973f), copWristR = new Vector3(0.08807f, -0.06404f, -0.16565f);
-        static readonly Quaternion copHandL = new Quaternion(0.71101f, -0.17799f, -0.12251f, 0.66917f), copHandR = new Quaternion(0.67799f, 0.16489f, 0.02893f, 0.71576f);
+        static readonly Vector3 copWristL = new Vector3(-0.12078f, -0.00792f, -0.13621f), copWristR = new Vector3(0.12057f, -0.00137f, -0.15199f);
+        static readonly Quaternion copHandL = new Quaternion(0.16110f, 0.53279f, 0.82484f, -0.09911f), copHandR = new Quaternion(-0.16110f, 0.53279f, 0.82484f, 0.09911f);
         static void Sleeves(Transform[] sl, Transform[][] b, bool on)
         {
             for (int i = 0; i < 2; i++)
