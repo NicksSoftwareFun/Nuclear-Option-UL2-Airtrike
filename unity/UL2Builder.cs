@@ -757,7 +757,7 @@ public static partial class UL2Builder
                     var fm = e.FindPropertyRelative("fastMesh").objectReferenceValue as Mesh; var fmat = e.FindPropertyRelative("fastMaterial").objectReferenceValue as Material;
                     float r = 0.55f + BS * Vector3.Distance(st.position, h0.position);
                     var bt = Find(spin, "UL2_rblur_" + sd + i) ?? New("UL2_rblur_" + sd + i, spin);
-                    bt.localPosition = dv * r + Vector3.up * (0.05f + Mathf.Max(0f, r - 0.6f) * Mathf.Tan(1.5f * Mathf.Deg2Rad));
+                    bt.localPosition = dv * r + Vector3.up * (0.005f + Mathf.Max(0f, r - 0.6f) * Mathf.Tan(1.5f * Mathf.Deg2Rad));   // 0.15.79 (Nick 21:57): level with the hub bar (was 4.5 cm high)
                     bt.localRotation = Quaternion.LookRotation(dv, Vector3.up); bt.localScale = Vector3.one * BS;
                     var mf = bt.GetComponent<MeshFilter>(); if (mf == null) mf = bt.gameObject.AddComponent<MeshFilter>(); mf.sharedMesh = fm;
                     var mr = bt.GetComponent<MeshRenderer>(); if (mr == null) mr = bt.gameObject.AddComponent<MeshRenderer>();
@@ -788,7 +788,7 @@ public static partial class UL2Builder
                 dm.Clear(); dm.SetVertices(vv); dm.SetUVs(0, uv); dm.SetTriangles(tri, 0); dm.RecalculateNormals(); dm.RecalculateBounds();
                 if (newM) AssetDatabase.CreateAsset(dm, mp); else EditorUtility.SetDirty(dm);
                 var it = Find(spin, "UL2_rinner") ?? New("UL2_rinner", spin);
-                it.localPosition = Vector3.up * 0.07f; it.localRotation = Quaternion.identity; it.localScale = Vector3.one;
+                it.localPosition = Vector3.up * 0.015f;   // 0.15.79: level with the hub bar it.localRotation = Quaternion.identity; it.localScale = Vector3.one;
                 var imf = it.GetComponent<MeshFilter>(); if (imf == null) imf = it.gameObject.AddComponent<MeshFilter>(); imf.sharedMesh = dm;
                 var imr = it.GetComponent<MeshRenderer>(); if (imr == null) imr = it.gameObject.AddComponent<MeshRenderer>();
                 imr.sharedMaterial = BlurMat("UL2_rotorinner"); imr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;

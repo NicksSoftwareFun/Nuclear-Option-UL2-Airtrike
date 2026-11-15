@@ -24,6 +24,7 @@ LEAN_MAX = 24.0
 GL_SHOULDER = Vector((0.150, 0.000, 0.430)); GL_CANT = 0.0   # right shoulder pocket in the torso frame   # grenadier: launcher grip in the torso frame, shouldered
 POLE_R_SPOT, POLE_L_SPOT = Vector((0.45, 0.05, -0.20)), Vector((-0.45, 0.05, -0.20))
 GRIP_DOWN = {'mg': 0.050, 'gl': 0.050, 'spot': 0.045}   # fist centre below the grip top
+GRIP_LIFT = {'spot': 0.016}   # fist raised along the grip's up side (Nick 21:54: knuckles clipped the binocular top)
 POLE_R, POLE_L = Vector((0.45, -0.20, -0.70)), Vector((-0.35, 0.25, -0.75))  # torso frame
 
 
@@ -144,6 +145,8 @@ class Gunner:
             Bl = Matrix((a_l, w_l, a_l.cross(w_l))).transposed(); Bg = Matrix((a_g, w_g, a_g.cross(w_g))).transposed()
             R = Bg @ Bl.transposed()
             cen = g_['top'] + ax * GRIP_DOWN.get(self.kind, 0.050)
+            up = Vector(g_['fwd']); up = up - ax * up.dot(ax)
+            if up.length > 1e-6: cen = cen + up.normalized() * GRIP_LIFT.get(self.kind, 0.0)
             H = R.to_4x4(); H.translation = cen - R @ h['c']
             self.Hg[s] = H
         self.wR, self.wL = self.Hg['R'].translation.copy(), self.Hg['L'].translation.copy()
