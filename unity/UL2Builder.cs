@@ -1142,7 +1142,7 @@ public static partial class UL2Builder
             int P = full.Count, S = 64, reps = r > 0.25f ? 12 : 10;
             // profile normals (2D, outward) from neighbours
             var pn = new Vector2[P];
-            for (int k = 0; k < P; k++) { var a = full[Mathf.Max(k - 1, 0)]; var b = full[Mathf.Min(k + 1, P - 1)]; var t = (b - a).normalized; pn[k] = new Vector2(t.y, -t.x); }
+            for (int k = 0; k < P; k++) { var a = full[Mathf.Max(k - 1, 0)]; var b = full[Mathf.Min(k + 1, P - 1)]; var t = (b - a).normalized; pn[k] = new Vector2(-t.y, t.x); }   // 0.15.73: was (t.y, -t.x), which pointed into the tyre, so the faces were wound inside out
             // the tread runs from the last sidewall point on one side to the first on the other; sidewall rings are shared by
             // index ranges, the tread band gets its own copy of the edge rings (different UVs)
             float vx0 = full[nSide - 1].x, vx1 = -vx0;
@@ -1159,7 +1159,7 @@ public static partial class UL2Builder
                 var nn = new Vector3(pn[k].x, pn[k].y * ca, pn[k].y * sa).normalized;
                 Vector2 uv;
                 if (isTread) uv = new Vector2((float)j / S * reps, Mathf.InverseLerp(vx0, vx1, q.x));
-                else { float sgn = q.x < 0f ? -1f : 1f; uv = new Vector2(0.5f + sgn * q.y * ca / (2f * r), 0.5f + q.y * sa / (2f * r)); }
+                else { float sgn = q.x < 0f ? -1f : 1f; uv = new Vector2(0.5f + sgn * q.y * ca / (2f * r), 0.5f - q.y * sa / (2f * r)); }   // 0.15.74: v flipped, the lettering read mirrored on both sides
                 V.Add(p); N.Add(nn); U.Add(uv); idx = V.Count - 1; map[key] = idx; return idx;
             };
             for (int k = 0; k < P - 1; k++)
@@ -1743,7 +1743,7 @@ public static partial class UL2Builder
             var src = go.GetComponentsInChildren<Transform>(true).First(t => t.name == "throttleGauge");
             var g = Object.Instantiate(src.gameObject, go.transform, false); g.name = "UL2_rotorGauge";
             foreach (var c in g.GetComponents<Component>()) if (c != null && c.GetType().Name == "ThrottleGauge") Object.DestroyImmediate(c);
-            var rt = (RectTransform)g.transform; rt.anchoredPosition = src.GetComponent<RectTransform>().anchoredPosition + new Vector2(140f, 0f);   // Nick 04:06: back near the old bar spot
+            var rt = (RectTransform)g.transform; rt.anchoredPosition = src.GetComponent<RectTransform>().anchoredPosition + new Vector2(95f, 0f);   // Nick 04:06: back near the old bar spot; 0.15.74 (Nick 17:52) 45 px inward so the rpm readout stays inside the canopy frame
             var piv = g.transform.Find("throttleReadingPivot");
             var piv2 = Object.Instantiate(piv.gameObject, g.transform, false); piv2.name = "readPivot";
             piv.name = "carrotPivot";

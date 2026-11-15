@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.72")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike TEST BUILD", "0.15.74")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -374,7 +374,12 @@ namespace UL2Airtrike
                 //   otherwise it follows the throttle (110 idle to 300)
                 // - flight assist off, axis untouched = no pre-spin. In the air the rotor autorotates from the airflow.
                 bool fa = false; try { if (fFa == null) fFa = AccessTools.Field(unit.GetType(), "flightAssist"); if (fFa != null) fa = (bool)fFa.GetValue(unit); } catch { }
-                bool manual = axis > 0.05f;
+                // 0.15.74 (Nick 17:52: with flight assist on the rotor never went back to auto once the axis was moved): with the
+                // assist on, the axis is manual only while it is being moved and for 4 s after it stops; then the assist takes the
+                // rotor back (ROTOR AUTO). Moving the axis again takes manual control again. Assist off: the axis stays in charge.
+                if (Mathf.Abs(axis - axisHeld) > 0.02f) { axisHeld = axis; axisLive = 4f; } else if (axisLive > 0f) axisLive -= dt;
+                bool manual = axis > 0.05f && (!fa || axisLive > 0f);
+                manualOn = manual;
                 autoSpin = !manual && fa && ground && engOn && thr > 0.05f;
                 // 0.15.47 (Nick 02:41): with flight assist OFF the custom axis is the rotor rpm in flight too (raise or lower it);
                 // in the air it sets the rpm outright instead of only adding to the autorotation. Axis at the bottom = released,
@@ -456,7 +461,7 @@ namespace UL2Airtrike
             }
             catch (Exception e) { if (!inErr) { inErr = true; Plugin.Log.LogWarning("UL-2 inputs: " + e.Message); } }
         }
-        bool inErr; float engDisp, preLoad;
+        bool inErr, manualOn; float engDisp, preLoad, axisHeld, axisLive;
         // HUD rotor gauge (Nick 22:31/22:35/22:36): the Alkyon-style label from our HUD extras prefab (UL2_rotorGauge),
         // rpm readout and an idle (110) to full (450 rpm) bar, red until the rotor is fast enough to jump (400), then green
         // 0.15.20 (Nick 03:43): styled like the stock throttle gauge: carrot = set rpm, coloured arc bar + readout = actual rpm
@@ -507,21 +512,21 @@ namespace UL2Airtrike
                     }
                     Plugin.Log.LogInfo("UL-2 HUD rotor gauge found, bar " + (barImg != null) + " carrot " + (carrotPiv != null) + " readout " + (hudRead != null));
                 }
-                bool want = axis > 0.05f || autoSpin || (alt < 0.8f && engOn) || rpm > 1f;   // 0.15.50: stays up in flight so FREE / the markers can be read
+                bool want = manualOn || autoSpin || (alt < 0.8f && engOn) || rpm > 1f;   // 0.15.50: stays up in flight so FREE / the markers can be read
                 if (want) hudShow = 3f; else if (hudShow > 0f) hudShow -= dt;
                 bool show = hudShow > 0f;
                 if (hud.gameObject.activeSelf != show) hud.gameObject.SetActive(show);
                 if (!show) return;
                 float f = Mathf.Clamp01(rpm / 450f), fs = Mathf.Clamp01(setRpm / 450f);
                 // 0.15.48 (Nick 02:43): while custom axis 1 is in use the marker shows where the axis is asking the rpm to go
-                if (axis > 0.05f) fs = Mathf.Clamp01((110f + 340f * axis) / 450f);
+                if (manualOn) fs = Mathf.Clamp01((110f + 340f * axis) / 450f);
                 var col = rpm >= 300f ? new Color(0.3f, 1f, 0.3f, 1f) : Color.Lerp(new Color(1f, 0.25f, 0.2f, 1f), new Color(1f, 0.6f, 0.1f, 1f), Mathf.Clamp01(rpm / 300f));
                 if (barImg != null) { barImg.fillAmount = f; barImg.color = col; }
                 if (carrotPiv != null) carrotPiv.localEulerAngles = new Vector3(0f, 0f, fs * 26f - 13f);
                 if (readPiv != null) { readPiv.localEulerAngles = new Vector3(0f, 0f, f * 26f - 13f); foreach (Transform ch in readPiv) ch.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }   // 0.15.29 (Nick 12:29): readout line stays flat like the throttle one
                 if (hudDash != null) hudDash.color = col;
-                if (hudRead != null) { hudRead.text = (axis <= 0.05f && !autoSpin) ? "FREE" : Mathf.RoundToInt(rpm) + " RPM"; /* 0.15.50 (Nick 02:46): axis at minimum = free airspeed rotation */ hudRead.color = col; if (hudRead.transform.parent != readPiv) hudRead.transform.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }
-                if (hudLabel != null) hudLabel.text = axis > 0.05f ? "ROTOR MANUAL" : autoSpin ? "ROTOR AUTO" : "ROTOR";
+                if (hudRead != null) { hudRead.text = (!manualOn && !autoSpin) ? "FREE" : Mathf.RoundToInt(rpm) + " RPM"; /* 0.15.50 (Nick 02:46): axis at minimum = free airspeed rotation */ hudRead.color = col; if (hudRead.transform.parent != readPiv) hudRead.transform.localEulerAngles = new Vector3(0f, 0f, -(f * 26f - 13f)); }
+                if (hudLabel != null) hudLabel.text = manualOn ? "ROTOR MANUAL" : autoSpin ? "ROTOR AUTO" : "ROTOR";
             }
             catch (Exception e) { if (!hudErr) { hudErr = true; Plugin.Log.LogWarning("UL-2 HUD gauge: " + e.Message); } }
         }
@@ -688,7 +693,7 @@ namespace UL2Airtrike
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 rotor lift: " + e); pRb = null; }
         }
-        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax, aiGamMin, aiObst = -1f; bool aiPilot, aiLanding;
+        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax, aiGamMin, aiObst = -1f; bool aiPilot, aiLanding, aiRoll;
         bool IsAI()
         {
             if ((aiChk -= Time.fixedDeltaTime) > 0f) return aiPilot; aiChk = 0.5f;
@@ -841,6 +846,11 @@ namespace UL2Airtrike
             float cl = a >= 0f ? 1.15f * (float)Math.Tanh(a / 12f) : (spd > 8f ? Mathf.Max(-0.08f, a / 15f) : 0f);
             float q = 0.5f * 1.225f * rb.velocity.sqrMagnitude;
             float T = Mathf.Min(rotorK * cl * q * area * 1.6f, 2.5f * W);
+            // 0.15.74 (Nick 17:54: AI landings bounced off the runway and glided back up a few metres, then stalled in): once an
+            // AI landing has its wheels on the ground the rotor can no longer lift more than half the weight, like a pilot
+            // holding the disc flat on the rollout, so it stays down and slows on the brakes
+            if (aiLanding && aiPilot) { if (alt < 0.8f) aiRoll = true; } else aiRoll = false;
+            if (aiRoll) T = Mathf.Min(T, 0.5f * W);
             var dir = -rb.velocity.normalized;
             float Dp = rotorK * 0.009f * q * area;                        // blade profile drag; induced drag comes from the disc tilt
             return rotorN * T + dir * Dp;

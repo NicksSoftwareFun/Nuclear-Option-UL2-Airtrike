@@ -1090,11 +1090,15 @@ for n in ('engine_core', 'engine_L', 'engine_R'):
 # ================================================================ tail boom (dips under the prop) + tail
 part('tailboom_F', 'frame_R', (0, -1.40, KZ))
 BOOM = [(0, -1.40, KZ), (0, -1.75, 0.52), (0, -2.15, 0.44)]
-sweep('boom_F', crom(BOOM, 6), SQ, FRAME, smooth=False)
+# 0.15.73 (Nick 17:49): the two booms meet at a kink under the prop and the end faces left a wedge gap on the outside of
+# the bend; each boom now runs 6 cm past the joint along its own line (the thinner rear boom ends inside the front one)
+_bf = crom(BOOM, 6); _bf.append(_bf[-1] + (_bf[-1] - _bf[-2]).normalized() * 0.06)
+sweep('boom_F', _bf, SQ, FRAME, smooth=False)
 for sx in (-1, 1): tube(f'boom_brace{sx}', (sx * 0.26, -1.25, RAIL_Z - 0.03), (sx * 0.03, -1.95, 0.48), 0.016, FRAME, 8)
 part('tailboom_R', 'tailboom_F', (0, -2.15, 0.44))
 BOOM2 = [(0, -2.15, 0.44), (0, -2.50, 0.56), (0, -2.85, 0.82), (0, -3.30, 0.96)]
-sweep('boom_R', crom(BOOM2, 8), [(x * 0.9, y * 0.9) for x, y in SQ], FRAME, smooth=False)
+_br = crom(BOOM2, 8); _br.insert(0, _br[0] - (_br[1] - _br[0]).normalized() * 0.06)
+sweep('boom_R', _br, [(x * 0.9, y * 0.9) for x, y in SQ], FRAME, smooth=False)
 box('tail_saddle', (0, -3.10, 0.98), (0.14, 0.50, 0.05), MECH, bevel=0.008)
 tube('tail_skid_strut', (0, -3.12, 0.92), (0, -3.30, 0.62), 0.016, FRAME, 8)
 box('tail_skid', (0, -3.31, 0.60), (0.05, 0.16, 0.035), DARK, rot=(R(-8), 0, 0), bevel=0.01)
@@ -1130,7 +1134,7 @@ for k in range(3): tube(f'rudder_hinge{k}', (0, -3.375, 0.88 + 0.26 * k), (0, -3
 # 0.15.29 (Nick 12:29): the cables are split at the boom joint, so a broken-off tail no longer drags two lines with it
 for sx in (-1, 1): pipe(f'rudder_cable{sx}', [(sx * 0.04, -2.15, 0.50), (sx * 0.045, -2.50, 0.62), (sx * 0.05, -2.85, 0.88), (sx * 0.05, -3.25, 0.98)], 0.003, MECH, 4, segs=4)
 part('tailboom_F')
-for sx in (-1, 1): pipe(f'rudder_cableF{sx}', [(sx * 0.03, -1.40, KZ + 0.06), (sx * 0.035, -1.75, 0.58), (sx * 0.04, -2.14, 0.50)], 0.003, MECH, 4, segs=4)
+for sx in (-1, 1): pipe(f'rudder_cableF{sx}', [(sx * 0.03, -1.40, KZ + 0.06), (sx * 0.035, -1.75, 0.58), (sx * 0.04, -2.158, 0.502)], 0.003, MECH, 4, segs=4)   # 0.15.74: runs just past the joint so no gap shows at the bend
 part('tailboom_R')
 
 # ================================================================ main gear: composite bow halves

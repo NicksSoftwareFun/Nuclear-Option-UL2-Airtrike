@@ -4,7 +4,7 @@ UL-2 Airtrike
 A three-seat armed gyrocopter for Nuclear Option, built with Blueprinter.
 Based on the Shaanxi Baoji Lie Ying military gyrocopter.
 
-Status: early work in progress. Nothing here is playable yet.
+Status: release candidate. See README.md for the full description, media and install steps.
 
 Planned
 -------
