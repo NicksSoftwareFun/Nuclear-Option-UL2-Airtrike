@@ -72,6 +72,8 @@ namespace UL2Airtrike
                 Logger.LogInfo("UL-2 tactics patches: attack " + (run != null) + ", radar warning " + (rw != null));
                 // 0.15.63 (Nick 03:01, AI aborting landings like the PB-22 and P220 did): same fix as theirs
                 LandingFix.Patch(h);
+                // 0.15.86 (Nick 23:16): slow climb-out sat on the runway centreline in the way of other traffic; side-step off it
+                TakeoffFix.Patch(h);
                 // 0.15.64 (Nick 03:07, Lynchpins all missing): only fire laser-guided rockets once the nose laser is on the target
                 LaserFix.Patch(h);
                 // passenger module (Nick 2026-11-16 21:39): one mount with four turrets. Stock SpawnMount attaches only the first
@@ -1803,6 +1805,66 @@ namespace UL2Airtrike
                 var runway = fRunway?.GetValue(usage); if (runway == null) return;
                 mDereg = mDereg ?? AccessTools.Method(runway.GetType(), "DeregisterLanding");
                 if (mDereg != null) mDereg.Invoke(runway, new object[] { ac });
+            }
+            catch { }
+        }
+    }
+
+    // 0.15.86 (Nick 23:16): the stock takeoff state aims 300 m straight down the runway until 75 m radar altitude. The UL-2
+    // climbs slowly, so it stays on the centreline for a long time in the way of traffic behind it. Once it is clear of the
+    // ground the aim point is swung 25 degrees to one side (eased in from 3 to 12 m) so it banks gently off the centreline.
+    // Each aircraft keeps one side; odd and even instances go opposite ways so a stream of takeoffs fans out.
+    internal static class TakeoffFix
+    {
+        const float SIDE_DEG = 25f, START = 3f, FULL = 12f, DIST = 300f;
+        static FieldInfo fAc, fTaken, fRv, radarAlt, fX, fZ;
+        [ThreadStatic] static bool active; [ThreadStatic] static Vector3 shift;
+        public static void Patch(Harmony h)
+        {
+            try
+            {
+                var t = AccessTools.TypeByName("AIPilotTakeoffState"); var m = t == null ? null : AccessTools.Method(t, "FixedUpdateState");
+                var tAp = AccessTools.TypeByName("AutopilotPlane"); var tGp = AccessTools.TypeByName("GlobalPosition");
+                var aim = tAp == null || tGp == null ? null : AccessTools.Method(tAp, "AutoAim", new[] { tGp, typeof(bool), typeof(bool), typeof(bool), typeof(float), typeof(float), typeof(bool), typeof(float), typeof(Vector3) });
+                fAc = AccessTools.Field(t, "aircraft"); fTaken = AccessTools.Field(t, "takenOff"); fRv = AccessTools.Field(t, "runwayVector");
+                radarAlt = AccessTools.Field(AccessTools.TypeByName("Unit"), "radarAlt");
+                fX = tGp == null ? null : AccessTools.Field(tGp, "x"); fZ = tGp == null ? null : AccessTools.Field(tGp, "z");
+                if (m == null || aim == null || fAc == null || fTaken == null || fRv == null || radarAlt == null || fX == null || fZ == null)
+                { Plugin.Log.LogWarning("UL-2: AI takeoff state not found, takeoff side-step off"); return; }
+                h.Patch(m, prefix: new HarmonyMethod(typeof(TakeoffFix), nameof(Pre)), postfix: new HarmonyMethod(typeof(TakeoffFix), nameof(Post)));
+                h.Patch(aim, prefix: new HarmonyMethod(typeof(TakeoffFix), nameof(PreAim)));
+                Plugin.Log.LogInfo("UL-2 takeoff side-step patched");
+            }
+            catch (Exception e) { Plugin.Log.LogWarning("UL-2 takeoff side-step not applied: " + e.Message); }
+        }
+        static void Pre(object __instance)
+        {
+            active = false;
+            try
+            {
+                var ac = fAc.GetValue(__instance) as Component;
+                if (ac == null || !ac.name.StartsWith("UL2Airtrike") || !(bool)fTaken.GetValue(__instance)) return;
+                float alt = (float)radarAlt.GetValue(ac); if (alt <= START) return;
+                Vector3 rv = (Vector3)fRv.GetValue(__instance); rv.y = 0f; if (rv.sqrMagnitude < 0.01f) return;
+                rv.Normalize();
+                float side = (ac.GetInstanceID() & 1) == 0 ? 1f : -1f;
+                float ang = SIDE_DEG * side * Mathf.Clamp01((alt - START) / (FULL - START));
+                shift = (Quaternion.Euler(0f, ang, 0f) * rv - rv) * DIST;
+                active = true;
+            }
+            catch { }
+        }
+        static void Post() { active = false; }
+        static void PreAim(object[] __args)
+        {
+            if (!active) return;
+            active = false;
+            try
+            {
+                object gp = __args[0];
+                fX.SetValue(gp, (float)fX.GetValue(gp) + shift.x);
+                fZ.SetValue(gp, (float)fZ.GetValue(gp) + shift.z);
+                __args[0] = gp;
             }
             catch { }
         }
