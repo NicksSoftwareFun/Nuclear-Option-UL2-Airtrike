@@ -1,7 +1,7 @@
 UL-2 Airtrike changelog
 =======================
 
-Unreleased
+1.1.0 (2026-11-16) - Special Operations Team update
 - 0.15.81: the seat 3 Machine Gunner and Grenadier can no longer shoot the crew: the gun stays on safety until the turret has swung onto its aim, so it cannot fire while the barrel is still passing the pilots (at spawn it rests pointing forward) or while the aim is held at the edge of the forward or aft no-fire zone.
 - 0.15.82: the IRM-S2 no longer breaks the main gear off in the aircraft select screen or at spawn (it sits 20 cm further forward, clear of the main wheel); the Expedient 1.5kt Bomb can is no longer see-through from the top and bottom; Racing Navy is taken back out of the mod and will be a separate Steam Workshop livery.
 - 0.15.83: new Passenger Module loadout (Special Operations Team): two outward-facing machine gunners in the third seat row and a grenadier on each wing stub, with footrests. The two MGs and the two grenade launchers each fire as one weapon, with 50% more range than the single gunner and 3 extra magazines each; captures like a full infantry bay (8 soldiers). Gunner heads now face where they aim (they looked off to their left before). Leftover rifle pieces removed from the seated soldiers. The tyres no longer sink into the ground (nose wheel most).
