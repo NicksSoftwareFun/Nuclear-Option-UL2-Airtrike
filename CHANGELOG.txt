@@ -3,7 +3,7 @@ UL-2 Airtrike changelog
 
 Unreleased
 - 0.15.81: the seat 3 Machine Gunner and Grenadier can no longer shoot the crew: the gun stays on safety until the turret has swung onto its aim, so it cannot fire while the barrel is still passing the pilots (at spawn it rests pointing forward) or while the aim is held at the edge of the forward or aft no-fire zone.
-- 0.15.80: new livery Racing Navy (navy over white with a red and gold cheat line and a checkered fin), painted from the Livery Bundle.
+- 0.15.82: the IRM-S2 no longer breaks the main gear off in the aircraft select screen or at spawn (it sits 20 cm further forward, clear of the main wheel); the Expedient 1.5kt Bomb can is no longer see-through from the top and bottom; Racing Navy is taken back out of the mod and will be a separate Steam Workshop livery.
 
 1.0.0 (2026-11-15, updated) - first full release
 - 0.15.79: the seat 3 soldiers' hands take the camo colour of their sleeves; the Spotter's fists sit higher on the binoculars so the knuckles no longer cut into the top; the main rotor blur sits level with the hub bar.

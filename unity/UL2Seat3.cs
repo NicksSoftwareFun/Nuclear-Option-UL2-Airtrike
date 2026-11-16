@@ -341,7 +341,8 @@ public static partial class UL2Builder
         {
             int c = v.Count; var nz = up ? Z : -Z; v.Add(o + Z * z); n.Add(nz);
             for (int i = 0; i <= seg; i++) { float a = i * Mathf.PI * 2f / seg; v.Add(o + (X * Mathf.Cos(a) + Y * Mathf.Sin(a)) * r + Z * z); n.Add(nz); }
-            for (int i = 0; i < seg; i++) { if (up) t[sm].AddRange(new[] { c, c + 2 + i, c + 1 + i }); else t[sm].AddRange(new[] { c, c + 1 + i, c + 2 + i }); }
+            // 0.15.82 (Nick 2026-11-16: the can was see-through from the top and bottom): the two windings were swapped, so both end discs faced inward
+            for (int i = 0; i < seg; i++) { if (up) t[sm].AddRange(new[] { c, c + 1 + i, c + 2 + i }); else t[sm].AddRange(new[] { c, c + 2 + i, c + 1 + i }); }
         }
         // a box from p0 to p1 (length axis), width w along wdir, thickness h
         public void Strip(int sm, Vector3 p0, Vector3 p1, Vector3 wdir, float w, float h)
@@ -384,7 +385,7 @@ public static partial class UL2Builder
             mb.Tube(2, o, X, Y, Z, 0.165f, Mathf.Min(f, g), Mathf.Max(f, g), sg);              // end cap
             mb.Disc(2, o, X, Y, Z, 0.165f, g, sgn > 0, sg);
             for (int k = 0; k < 6; k++)                                                        // cap bolts
-            { float a = k * Mathf.PI / 3f; var p = (X * Mathf.Cos(a) + Y * Mathf.Sin(a)) * 0.13f + Z * g; mb.Box(2, p, Z * 0.012f * sgn, X * 0.012f, Y * 0.012f); }
+            { float a = k * Mathf.PI / 3f; var p = (X * Mathf.Cos(a) + Y * Mathf.Sin(a)) * 0.13f + Z * g; mb.Box(2, p, Z * 0.012f * sgn, X * 0.012f, Y * (0.012f * sgn)); }   // flip a second axis with the length so the bottom bolts stay right-handed (faces out)
         }
         mb.Tube(1, o, X, Y, Z, 0.1865f, 0.53f, 0.59f, sg);   // yellow band (above the upper strap)
         // 0.15.41 (Nick 00:30): radiation trefoil on the left and right sides, between the straps: black on a yellow disc,

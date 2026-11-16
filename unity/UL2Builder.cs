@@ -1009,8 +1009,6 @@ public static partial class UL2Builder
         ExtraLivery("steel", 0.6f); ExtraLivery("tiger", 0f);
         // 0.15.59 (Nick 01:53): faction liveries, PALA Camel Corps (desert tan) and BDF Orca
         ExtraLivery("tan", 0f); ExtraLivery("orca", 0f);
-        // 0.15.80 (Nick 22:33): Racing Navy, the Livery Bundle test livery, held for the first bug-fix release
-        ExtraLivery("navy", 0.3f);
         return mat;
     }
     // tapered sleeve along +Z: z 0 at the wrist (inside the glove cuff, r 0.029) to z 0.11 up the forearm (r 0.041), with a
@@ -1539,11 +1537,14 @@ public static partial class UL2Builder
         // 0.15.64 (Nick 03:08: the pair looked like it floated over the stub): the stock twin rack is kept between the stub and
         // the two missiles, and the missiles stay at their stock height on it
         RailMount("AGM1_double_compact", "UL2_AGM1_double", float.NaN);
-        RailMount("AAM3_single", "UL2_AAM3_rail", -0.076f);
+        // 0.15.82 (Nick 2026-11-16: IRM-S2 broke the main gear off in the select screen and at spawn): the missile's stock
+        // collider (capsule 2.71 m) reached back over the main wheel, and LandingGear's suspension linecast from the bump stop
+        // (+-0.81, -0.32, -0.67) hit it, read full compression and broke the wheel. Slid 0.20 m forward: capsule ends at z -0.49.
+        RailMount("AAM3_single", "UL2_AAM3_rail", -0.076f, 0.20f);
     }
     // AGM-48 / IRM-S2 straight on the beefed-up built-in pylon (Nick 2026-11-12 21:35): the stock single mount without
     // its launch pylon, missile raised so its body sits on the pylon's rail. Same info, cost and stats as the stock mount.
-    static void RailMount(string src, string key, float y)
+    static void RailMount(string src, string key, float y, float dz = 0f)
     {
         var go = CopyPrefab(src, key);
         try
@@ -1552,7 +1553,7 @@ public static partial class UL2Builder
             // (0.15.5 destroyed the pylon with the missile inside it, so nothing spawned - Nick 22:02)
             var ms = go.GetComponentsInChildren<MonoBehaviour>(true).Where(mm => mm.GetType().Name == "MountedMissile").Select(mm => mm.transform).Distinct().ToList();
             bool keepRack = float.IsNaN(y);
-            if (!keepRack) foreach (var mt in ms) { mt.SetParent(go.transform, true); var lp = mt.localPosition; mt.localPosition = new Vector3(lp.x, y, lp.z); }
+            if (!keepRack) foreach (var mt in ms) { mt.SetParent(go.transform, true); var lp = mt.localPosition; mt.localPosition = new Vector3(lp.x, y, lp.z + dz); }
             // 0.15.60 (Nick 02:07): the twin rack's two missiles were both named "agm1"; in game the second one came out with no
             // info/mesh (only one AGM-48 showed and MountedMissile.AttachToHardpoint threw, breaking the whole loadout).
             // Every missile gets its own name so each one resolves on its own path.
@@ -1801,11 +1802,12 @@ public static partial class UL2Builder
         var sdp = StatusDisplayUL2(); if (sdp != null) so.FindProperty("StatusDisplay").objectReferenceValue = sdp;
         so.FindProperty("DefaultFuelLevel").floatValue = 1f;
         so.FindProperty("cruiseThrottle").floatValue = 0.75f;
-        var liv = so.FindProperty("liveries"); liv.arraySize = 6;
-        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger", "PALA Camel Corps", "BDF Orca", "Racing Navy" };
-        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger"), LiveryPath("tan"), LiveryPath("orca"), LiveryPath("navy") };
+        var liv = so.FindProperty("liveries"); liv.arraySize = 5;
+        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger", "PALA Camel Corps", "BDF Orca" };
+        // 0.15.82 (Nick 2026-11-16 21:29): Racing Navy (0.15.80) taken back out, it goes to the Steam Workshop on its own
+        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger"), LiveryPath("tan"), LiveryPath("orca") };
         // 0.15.59 (Nick 01:53): faction locked like stock faction liveries (PALA = Primeva, BDF = Boscali)
-        string[] livFac = { null, null, null, PH + "MonoBehaviour/Primeva_PLACEHOLDER.asset", PH + "MonoBehaviour/Boscali_PLACEHOLDER.asset", null };
+        string[] livFac = { null, null, null, PH + "MonoBehaviour/Primeva_PLACEHOLDER.asset", PH + "MonoBehaviour/Boscali_PLACEHOLDER.asset" };
         for (int i = 0; i < livName.Length; i++)
         {
             var li = liv.GetArrayElementAtIndex(i);
