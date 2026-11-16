@@ -1635,7 +1635,9 @@ public static partial class UL2Builder
         J("cockpit_F", "COIN_PLACEHOLDER", 32000f, "cockpit_R", 20000f, "fuselage", 3000f);   // 0.15.5: every overlapping collider pair is jointed (stock joints switch their collision off), so nothing pushes apart at spawn
         J("nose", "cockpit_F", 3000f);
         J("fuselage", "COIN_PLACEHOLDER", 9000f);
-        J("intake", "fuselage", 5000f, "cockpit_R", 3000f, "COIN_PLACEHOLDER", 3000f);
+        // 0.15.85 (Nick 23:01, Passenger Module): the seat 3 part carries the hardpoint, so up to ~280 kg of team and ammo hang on
+        // it (was ~110 kg with one gunner); joints tripled so a firm pull or touchdown does not tear the seat off
+        J("intake", "fuselage", 15000f, "cockpit_R", 9000f, "COIN_PLACEHOLDER", 9000f);
         J("mast", "fuselage", 25000f, "intake", 6000f, "COIN_PLACEHOLDER", 8000f, "cockpit_R", 3000f);   // carries head, blades and part of the engine
         J("rotorHead", "mast", 15000f, "fuselage", 8000f);
         J("engine_core", "mast", 15000f, "fuselage", 10000f, "COIN_PLACEHOLDER", 5000f);

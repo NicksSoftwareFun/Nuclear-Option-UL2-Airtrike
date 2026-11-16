@@ -79,6 +79,8 @@ namespace UL2Airtrike
                 // so the two machine guns fire as one weapon and the two grenade launchers as another.
                 var spawnM = AccessTools.Method(AccessTools.TypeByName("Hardpoint"), "SpawnMount");
                 if (spawnM != null) h.Patch(spawnM, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostSpawnMount)));
+                var remM = AccessTools.Method(AccessTools.TypeByName("Hardpoint"), "RemoveMount");
+                if (remM != null) h.Patch(remM, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreRemoveMount)));
                 Logger.LogInfo("UL-2 passenger module turret patch " + (spawnM != null));
                 // 0.15.84 (Nick 22:47): the stock WeaponMount.Initialize names a gun mount "<first gun's weapon> (N rounds)" and swaps
                 // the mount's info for the first gun's. Keep the team's own name, description and icon in the loadout menu.
@@ -111,11 +113,49 @@ namespace UL2Airtrike
             catch (Exception e) { Log.LogError("UL-2 passenger module name: " + e); }
         }
         static MethodInfo mAttachTurret;
-        static void PostSpawnMount(object aircraft, GameObject __result)
+        // 0.15.84b (Nick 23:01: backflip on the takeoff pitch-up): the stock hardpoint puts the whole mount mass on its part (the
+        // seat 3 part, z -0.55, almost over the main wheels), but two of the four soldiers sit on the stubs at z +0.40. 60 % of the
+        // team's empty mass moves to the rear cockpit part (z +0.23), so the module's mass centre sits near its real one (z -0.08);
+        // the ammo stays on the seat part. Put back when the mount is removed.
+        const float PM_FWD = 0.6f;
+        static readonly Dictionary<object, KeyValuePair<Component, float>> pmShift = new Dictionary<object, KeyValuePair<Component, float>>();
+        static FieldInfo fHpPart, fHpMount, fMountEmpty; static MethodInfo mPartMass, mAllParts;
+        static void PmMass(object hp, object aircraft, bool on)
+        {
+            try
+            {
+                var tHp = hp.GetType(); fHpPart = fHpPart ?? AccessTools.Field(tHp, "part"); fHpMount = fHpMount ?? AccessTools.Field(tHp, "mount");
+                var part = fHpPart.GetValue(hp) as Component; if (part == null) return;
+                mPartMass = mPartMass ?? AccessTools.Method(part.GetType(), "ModifyMass");
+                object id = hp; KeyValuePair<Component, float> kv;
+                if (!on)
+                {
+                    if (!pmShift.TryGetValue(id, out kv)) return; pmShift.Remove(id);
+                    if (kv.Key != null) mPartMass.Invoke(kv.Key, new object[] { -kv.Value });
+                    mPartMass.Invoke(part, new object[] { kv.Value });
+                    return;
+                }
+                if (pmShift.ContainsKey(id)) return;
+                var mount = fHpMount.GetValue(hp); if (mount == null) return;
+                fMountEmpty = fMountEmpty ?? AccessTools.Field(mount.GetType(), "emptyMass");
+                float m = (float)fMountEmpty.GetValue(mount) * PM_FWD;
+                mAllParts = mAllParts ?? AccessTools.Method(aircraft.GetType(), "GetAllParts");
+                Component fwd = null;
+                if (mAllParts.Invoke(aircraft, null) is System.Collections.IEnumerable all) foreach (var o in all) if (o is Component c && c != null && c.name == "cockpit_R") { fwd = c; break; }
+                if (fwd == null) { Log.LogWarning("UL-2 passenger module: no cockpit_R part, mass left on " + part.name); return; }
+                mPartMass.Invoke(part, new object[] { -m }); mPartMass.Invoke(fwd, new object[] { m });
+                pmShift[id] = new KeyValuePair<Component, float>(fwd, m);
+                Log.LogInfo("UL-2 passenger module: " + m.ToString("0") + " kg moved from " + part.name + " to " + fwd.name);
+            }
+            catch (Exception e) { Log.LogError("UL-2 passenger module mass: " + e); }
+        }
+        static void PreRemoveMount(object __instance) { if (__instance != null && pmShift.ContainsKey(__instance)) PmMass(__instance, null, false); }
+        static void PostSpawnMount(object aircraft, GameObject __result, object __instance)
         {
             try
             {
                 if (__result == null || !__result.name.StartsWith("UL2_pm")) return;
+                PmMass(__instance, aircraft, true);
                 var tT = AccessTools.TypeByName("Turret");
                 mAttachTurret = mAttachTurret ?? AccessTools.Method(tT, "AttachToWeaponManager");
                 var ts = __result.GetComponentsInChildren(tT, true);
@@ -1480,7 +1520,7 @@ namespace UL2Airtrike
     internal static class PmArc
     {
         class Cfg { public float centre, lo, hi; }
-        const float CLEAR = 12f, MARGIN = 6f;
+        const float CLEAR = 12f, MARGIN = 4f;
         static readonly Dictionary<int, Cfg> cfg = new Dictionary<int, Cfg>();
         static FieldInfo fT, fE, fTR, fER, fElev;
         static Cfg Get(Component t)
@@ -1490,8 +1530,8 @@ namespace UL2Airtrike
             c = null;
             for (var p = t.transform.parent; p != null; p = p.parent)
             {
-                if (p.name == "pm_mg_R") { c = new Cfg { centre = -22f, lo = -80f, hi = -52f }; break; }
-                if (p.name == "pm_mg_L") { c = new Cfg { centre = 22f, lo = 56f, hi = 84f }; break; }
+                if (p.name == "pm_mg_R") { c = new Cfg { centre = -11.5f, lo = -76f, hi = -46f }; break; }   // 0.15.85: head + neck + shoulders
+                if (p.name == "pm_mg_L") { c = new Cfg { centre = 11.5f, lo = 50f, hi = 80f }; break; }
                 if (p.name.StartsWith("UL2_pm") || p.parent == null) break;
             }
             if (c != null && fT == null)

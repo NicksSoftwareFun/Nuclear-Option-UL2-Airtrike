@@ -11,23 +11,25 @@ using UnityEngine;
 // Seats and soldiers: art/scripts/pm (pm_model.py, pm_bake.py outward pose tables, pm_kitdump.py, pm_arcs.py firing arcs).
 public static partial class UL2Builder
 {
-    class PmStation { public string name, src, kind; public Vector3 pos; public float sx, centre; public float[][] cones; }
+    class PmStation { public string name, src, kind; public Vector3 pos; public float sx, centre, trav; public float[][] cones; }
 
     // firing arcs from pm_arcs.py (rays against the airframe, crew, the other soldiers and the prop, not the rotor disc).
-    // Headings in the seat frame: 0 = straight out, + = clockwise from above. Traverse is +-94 deg about 'centre'; the
+    // Headings in the seat frame: 0 = straight out, + = clockwise from above. Traverse is +-trav deg about 'centre'; the
     // exclusion cones (heading, elevation, half angle; greedy fit, pm/cones3.py) cover what is still blocked inside that: the
     // stub seat and grenadier ahead of and below the gunners (level fire straight ahead stays open, only the grenadier's head is
     // coned out), the prop edge and frame behind them, the gunner behind and above the grenadiers, the stub under them.
     static readonly PmStation[] PM = {
-        new PmStation { name = "pm_mg_L", src = "turret_12.7mm_door", kind = "pmmg", pos = new Vector3(-0.45f, -0.02f, 0f), sx = -1f, centre = 22f,
-                        cones = new[] { new[] { 90f, -34f, 34f }, new[] { 114f, -6f, 16f }, new[] { 70f, -2f, 8f }, new[] { -82f, -2f, 14f }, new[] { 58f, -18f, 6f } } },
-        new PmStation { name = "pm_mg_R", src = "turret_12.7mm_door", kind = "pmmg", pos = new Vector3(0.45f, -0.02f, 0f), sx = 1f, centre = -22f,
-                        cones = new[] { new[] { -98f, -42f, 40f }, new[] { -66f, -2f, 8f }, new[] { -126f, -30f, 38f }, new[] { -50f, -22f, 6f }, new[] { 82f, -2f, 14f }, new[] { -70f, -6f, 6f } } },
-        new PmStation { name = "pm_gl_L", src = "turret_40mm_grenade", kind = "pmgl", pos = new Vector3(-0.82f, -0.34f, 0.95f), sx = -1f, centre = 8f,
+        new PmStation { name = "pm_mg_L", src = "turret_12.7mm_door", kind = "pmmg", pos = new Vector3(-0.45f, -0.02f, 0f), sx = -1f, centre = 11.5f, trav = 83.5f,
+                        cones = new[] { new[] { 90f, -34f, 34f }, new[] { 114f, -6f, 16f }, new[] { 70f, -2f, 8f }, new[] { 70f, -14f, 8f }, new[] { 60f, -12f, 8f }, new[] { -82f, -2f, 14f }, new[] { 58f, -18f, 6f } } },
+        new PmStation { name = "pm_mg_R", src = "turret_12.7mm_door", kind = "pmmg", pos = new Vector3(0.45f, -0.02f, 0f), sx = 1f, centre = -11.5f, trav = 83.5f,
+                        cones = new[] { new[] { -98f, -42f, 40f }, new[] { -66f, -2f, 8f }, new[] { -66f, -14f, 8f }, new[] { -56f, -12f, 8f }, new[] { -126f, -30f, 38f }, new[] { -50f, -22f, 6f }, new[] { 82f, -2f, 14f }, new[] { -70f, -6f, 6f } } },
+        new PmStation { name = "pm_gl_L", src = "turret_40mm_grenade", kind = "pmgl", pos = new Vector3(-0.82f, -0.34f, 0.95f), sx = -1f, centre = 4.5f, trav = 90.5f,
                         cones = new[] { new[] { -96f, -50f, 18f }, new[] { -72f, 14f, 6f }, new[] { -88f, 14f, 6f }, new[] { -48f, 6f, 4f } } },
-        new PmStation { name = "pm_gl_R", src = "turret_40mm_grenade", kind = "pmgl", pos = new Vector3(0.82f, -0.34f, 0.95f), sx = 1f, centre = -8f,
+        new PmStation { name = "pm_gl_R", src = "turret_40mm_grenade", kind = "pmgl", pos = new Vector3(0.82f, -0.34f, 0.95f), sx = 1f, centre = -4.5f, trav = 90.5f,
                         cones = new[] { new[] { 76f, 14f, 6f }, new[] { 96f, -50f, 18f }, new[] { 68f, 10f, 4f }, new[] { 92f, 14f, 8f } } } };
-    const float PM_TRAVERSE = 94f;
+    // 0.15.85 (Nick 23:04): no aiming more than 5 deg inboard of straight ahead (they aimed at the pilots' heads); the neck
+    // under each grenadier's head is coned out too. Arcs: MG 5 deg inboard of forward to 18 deg outboard of aft, GL 5 deg
+    // inboard of forward to 4 deg outboard of aft.
 
     static void PassengerModule()
     {
@@ -51,7 +53,7 @@ public static partial class UL2Builder
                 var mz = br.Find("muzzle"); mz.localPosition = new Vector3(0f, 0f, 0.5f); mz.localRotation = Quaternion.identity;
                 foreach (var n in new[] { "firingConeNegative_up", "firingConeNegative_down" }) { var c0 = tt.Find(n); if (c0 != null) Object.DestroyImmediate(c0.gameObject); }
                 var tu = C(tr, "Turret"); var gun = C(br, "Gun");
-                Set(tu, "traverseRange", PM_TRAVERSE); Set(tu, "minElevation", -40f); Set(tu, "maxElevation", 20f);
+                Set(tu, "traverseRange", S.trav); Set(tu, "minElevation", -40f); Set(tu, "maxElevation", 20f);
                 Set(tu, "traverseRate", 100f); Set(tu, "elevationRate", 70f);
                 var so = new SerializedObject(tu); var fc = so.FindProperty("firingCones"); fc.arraySize = S.cones.Length;
                 for (int i = 0; i < S.cones.Length; i++)
