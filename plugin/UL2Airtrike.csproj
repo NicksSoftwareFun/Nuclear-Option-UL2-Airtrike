@@ -18,6 +18,8 @@
     <EmbeddedResource Include="seat3\UL2_s3_mg_pose.bytes"><LogicalName>UL2Airtrike.UL2_s3_mg_pose.bytes</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="seat3\UL2_s3_gl_pose.bytes"><LogicalName>UL2Airtrike.UL2_s3_gl_pose.bytes</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="seat3\UL2_s3_spot_pose.bytes"><LogicalName>UL2Airtrike.UL2_s3_spot_pose.bytes</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="seat3\UL2_s3_pmmg_pose.bytes"><LogicalName>UL2Airtrike.UL2_s3_pmmg_pose.bytes</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="seat3\UL2_s3_pmgl_pose.bytes"><LogicalName>UL2Airtrike.UL2_s3_pmgl_pose.bytes</LogicalName></EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />

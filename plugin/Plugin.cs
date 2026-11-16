@@ -68,8 +68,28 @@ namespace UL2Airtrike
                 LandingFix.Patch(h);
                 // 0.15.64 (Nick 03:07, Lynchpins all missing): only fire laser-guided rockets once the nose laser is on the target
                 LaserFix.Patch(h);
+                // passenger module (Nick 2026-11-16 21:39): one mount with four turrets. Stock SpawnMount attaches only the first
+                // turret of a turret mount to the weapon manager; attach the rest. The weapon manager groups them by weapon info,
+                // so the two machine guns fire as one weapon and the two grenade launchers as another.
+                var spawnM = AccessTools.Method(AccessTools.TypeByName("Hardpoint"), "SpawnMount");
+                if (spawnM != null) h.Patch(spawnM, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostSpawnMount)));
+                Logger.LogInfo("UL-2 passenger module turret patch " + (spawnM != null));
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
+        }
+        static MethodInfo mAttachTurret;
+        static void PostSpawnMount(object aircraft, GameObject __result)
+        {
+            try
+            {
+                if (__result == null || !__result.name.StartsWith("UL2_pm")) return;
+                var tT = AccessTools.TypeByName("Turret");
+                mAttachTurret = mAttachTurret ?? AccessTools.Method(tT, "AttachToWeaponManager");
+                var ts = __result.GetComponentsInChildren(tT, true);
+                for (int i = 1; i < ts.Length; i++) mAttachTurret.Invoke(ts[i], new[] { aircraft });
+                Log.LogInfo("UL-2 passenger module: " + ts.Length + " turrets, attached " + Math.Max(0, ts.Length - 1) + " more");
+            }
+            catch (Exception e) { Log.LogError("UL-2 passenger module attach: " + e); }
         }
         static readonly System.Collections.Generic.Dictionary<int, Transform> noseGunBase = new System.Collections.Generic.Dictionary<int, Transform>();
         static void PreAimManual(Component __instance, ref Vector3 aimVector)
@@ -876,7 +896,7 @@ namespace UL2Airtrike
                 if (c == null) continue;
                 foreach (var t in c.GetComponentsInChildren<Transform>(true))
                 {
-                    if (t.name.StartsWith("UL2_s3kit_")) { if (t.GetComponent<Seat3Pose>() == null) t.gameObject.AddComponent<Seat3Pose>(); if (t.gameObject.activeInHierarchy) { kit = true; if (t.name == "UL2_s3kit_spot") spot = true; } }
+                    if (t.name.StartsWith("UL2_s3kit_")) { if (t.GetComponent<Seat3Pose>() == null) t.gameObject.AddComponent<Seat3Pose>(); if (t.gameObject.activeInHierarchy && !t.name.StartsWith("UL2_s3kit_pm")) { kit = true; if (t.name == "UL2_s3kit_spot") spot = true; } }   // passenger module kits (pm*) are not seat 3: no seat 3 lap belt
                     else if (t.name.StartsWith("UL2_harness") && t.name.Length == 12) { int k = t.name[11] - '1'; if (k >= 0 && k < 3) harness[k] = t.gameObject; }
                 }
             }
@@ -1476,7 +1496,7 @@ namespace UL2Airtrike
         // 0.15.23 (Nick 04:21, 04:24): any seat 3 passenger gives the aircraft 1/8 of a full Ibis troop load's capture power (16 troops,
         // 8 per bay, 8 capture each = 16), i.e. 2. Same rule as the stock MountedTroops: only while landed and stopped.
         static FieldInfo fSpd, fRalt; static MethodInfo mCap, mPartDet; Component seatPart; bool capOn; float capT;
-        const float CAPTURE = 2f;
+        const float CAPTURE = 2f;   // passenger module: four kits x 2 = 8, one full Ibis infantry bay (Nick 22:09)
         void Capture()
         {
             if ((capT -= Time.deltaTime) > 0f || aircraft == null) return; capT = 2f;
@@ -1524,7 +1544,8 @@ namespace UL2Airtrike
                         }
                 }
                 float t = Time.unscaledTime + t0;
-                if (!active) { tA = side * (kind == "spot" ? 75f + 20f * Mathf.Sin(t * 0.21f) : 52f); tE = kind == "spot" ? -12f + 6f * Mathf.Sin(t * 0.17f + 1.3f) : -12f; }   // idle: sitting up, weapon slightly low on his side (Nick 21:53: -40 read as slouched); spotter scans
+                if (!active && kind.StartsWith("pm")) { tA = 0f; tE = -12f; }   // passenger module: faces out, idle weapon low and straight out
+                else if (!active) { tA = side * (kind == "spot" ? 75f + 20f * Mathf.Sin(t * 0.21f) : 52f); tE = kind == "spot" ? -12f + 6f * Mathf.Sin(t * 0.17f + 1.3f) : -12f; }   // idle: sitting up, weapon slightly low on his side (Nick 21:53: -40 read as slouched); spotter scans
                 tA = Mathf.Clamp(tA, -T.ar, T.ar);
                 if (tA > T.afr) side = 1f; else if (tA < -T.afl) side = -1f;
                 vA = Mathf.MoveTowards(vA, tA, 150f * dt);

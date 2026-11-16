@@ -390,6 +390,7 @@ public static partial class UL2Builder
         try { Seat3Mounts(); } catch (System.Exception ex) { log.AppendLine("SEAT3 MOUNTS ERROR " + ex); }
         try { Seat3Ecm(); } catch (System.Exception ex) { log.AppendLine("SEAT3 ECM ERROR " + ex); }
         try { Seat3XBomb(); } catch (System.Exception ex) { log.AppendLine("SEAT3 XBOMB ERROR " + ex); }
+        try { PassengerModule(); } catch (System.Exception ex) { log.AppendLine("PM ERROR " + ex); }   // Nick 2026-11-16 21:36
 
         root = PrefabUtility.LoadPrefabContents(SRC).transform;
         root.name = "COIN_PLACEHOLDER";
@@ -947,6 +948,12 @@ public static partial class UL2Builder
             // it over. Gentle pedal brake, and tyres that slide before they trip.
             else { Set(lg, "differentialBrakeFactor", g == "L" ? -0.25f : 0.25f); Set(lg, "frictionCoef", 0.55f); }
             var bc = gt.GetComponent<BoxCollider>(); if (bc) bc.size = bc.size * 0.4f;
+            // 16 Nov (Nick: nose tyre sinks into the ground, mains slightly): the suspension cast starts at the Cricket bump stop,
+            // so the ground sat 0.9 m below it (front -1.163, mains -1.219) while the UL-2 tyres (fixed to the airframe) reach
+            // -1.200, and the static spring squat (front ~2 cm, mains ~5 cm) sank them further. Bump stops lowered so that under
+            // the static load the ground sits at the tyre bottom (~0.5 cm squash left for a loaded look).
+            var bsGo = new SerializedObject(lg).FindProperty("bumpStop").objectReferenceValue as GameObject;
+            if (bsGo != null) bsGo.transform.position += Vector3.down * (g == "F" ? 0.05f : 0.025f);
         }
     }
 
@@ -1472,6 +1479,7 @@ public static partial class UL2Builder
             }
         }
         Seat3Hardpoint(sets);
+        PmHardpoint(sets);
         so.ApplyModifiedPropertiesWithoutUndo();
         log.AppendLine("hardpoint sets: " + sets.arraySize);
     }
