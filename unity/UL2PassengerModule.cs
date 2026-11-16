@@ -73,7 +73,9 @@ public static partial class UL2Builder
             var m = SaveMount(go, "UL2_pm", "turret_12.7mm_door", PmInfo(), "Special Operations Team");   // Nick 22:09: station "Passenger Module", weapon "Special Operations Team"
             var ms = new SerializedObject(m);
             ms.FindProperty("GearSafety").boolValue = false; ms.FindProperty("GroundSafety").boolValue = false;
-            ms.FindProperty("emptyMass").floatValue = 470f;   // four soldiers with kit (seat 3: 100-115 each) + seats and footrests
+            // 0.15.84 (Nick 22:47): 1200 kg gross (the max weight) with only the team loaded: airframe 651 + fuel 60 + ammo 115.5
+            // (2 x 750 x 0.045 + 2 x 60 x 0.4) + 374. The nose gun is extra, at the player's risk.
+            ms.FindProperty("emptyMass").floatValue = 374f;
             ms.FindProperty("drag").floatValue = 0.08f; ms.FindProperty("emptyDrag").floatValue = 0.08f;
             ms.FindProperty("emptyCost").floatValue = 0.08f;
             ms.FindProperty("ammo").intValue = 675;            // MG: 75 x 9 per gun as the loadout figure
@@ -147,7 +149,8 @@ public static partial class UL2Builder
         var so = new SerializedObject(m);
         so.FindProperty("weaponName").stringValue = "Special Operations Team";
         so.FindProperty("shortName").stringValue = "SOT";
-        so.FindProperty("description").stringValue = "Four soldiers on outward facing seats: two .338 machine gunners back to back in the third row and two 40 mm grenadiers on the wing stubs. Takes the third seat and both stubs. The gunners and the grenadiers each fire as a pair. On the ground they capture like a full Ibis infantry bay.";
+        so.FindProperty("description").stringValue = "A 4-man special operations team meant to capture enemy facilities with a smaller footprint than an Ibis raid. They bring two .338 Lapua machine guns and two 40mm grenade launchers. They will judge your flying ability harshly.";   // Nick 22:47
+        so.FindProperty("weaponIcon").objectReferenceValue = IconSprite(ART + "Icons/UL2_icon_pm.png");   // Nick 22:48: crossed MG and grenade launcher
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
         return m;
     }

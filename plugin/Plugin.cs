@@ -48,6 +48,12 @@ namespace UL2Airtrike
                 var aimM = AccessTools.Method(AccessTools.TypeByName("Turret"), "AimTurret", new[] { typeof(Vector3) });
                 if (aimM != null) h.Patch(aimM, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreAimManual)));
                 Logger.LogInfo("UL-2 nose gun fixed-aim patch " + (aimM != null));
+                // 0.15.84 (Nick 22:51): passenger module machine gunners swing the gun OVER the stub grenadier's head
+                var tTur = AccessTools.TypeByName("Turret");
+                var aimS = AccessTools.Method(tTur, "AimTurret", new[] { AccessTools.TypeByName("WeaponStation") });
+                if (aimM != null) h.Patch(aimM, prefix: new HarmonyMethod(typeof(PmArc), nameof(PmArc.Pre)), postfix: new HarmonyMethod(typeof(PmArc), nameof(PmArc.Post)));
+                if (aimS != null) h.Patch(aimS, prefix: new HarmonyMethod(typeof(PmArc), nameof(PmArc.Pre)), postfix: new HarmonyMethod(typeof(PmArc), nameof(PmArc.Post)));
+                Logger.LogInfo("UL-2 passenger MG over-head patch " + (aimM != null) + "/" + (aimS != null));
                 // 0.15.54 (Nick 20:59): the stock combat AI climbs its target height 5 m a second up to 200 m over the ground.
                 // For the UL-2 the target height is held low so it masks behind terrain; with the spotter aboard it may go higher.
                 var alt = AccessTools.Method(AccessTools.TypeByName("AIPilotCombatModes"), "ManageAltitude");
@@ -74,8 +80,35 @@ namespace UL2Airtrike
                 var spawnM = AccessTools.Method(AccessTools.TypeByName("Hardpoint"), "SpawnMount");
                 if (spawnM != null) h.Patch(spawnM, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostSpawnMount)));
                 Logger.LogInfo("UL-2 passenger module turret patch " + (spawnM != null));
+                // 0.15.84 (Nick 22:47): the stock WeaponMount.Initialize names a gun mount "<first gun's weapon> (N rounds)" and swaps
+                // the mount's info for the first gun's. Keep the team's own name, description and icon in the loadout menu.
+                var wmInit = AccessTools.Method(AccessTools.TypeByName("WeaponMount"), "Initialize");
+                if (wmInit != null) h.Patch(wmInit, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreMountInit)), postfix: new HarmonyMethod(typeof(Plugin), nameof(PostMountInit)));
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
+        }
+        static FieldInfo fMountInfo, fMountName;
+        static void PreMountInit(object __instance, out object __state)
+        {
+            __state = null;
+            try
+            {
+                if (!(__instance is UnityEngine.Object o) || o.name != "UL2_pm") return;
+                fMountInfo = fMountInfo ?? AccessTools.Field(__instance.GetType(), "info");
+                __state = fMountInfo.GetValue(__instance);
+            }
+            catch (Exception e) { Log.LogError("UL-2 passenger module name: " + e); }
+        }
+        static void PostMountInit(object __instance, object __state)
+        {
+            try
+            {
+                if (__state == null) return;
+                fMountName = fMountName ?? AccessTools.Field(__instance.GetType(), "mountName");
+                fMountInfo.SetValue(__instance, __state);
+                fMountName.SetValue(__instance, "Special Operations Team");
+            }
+            catch (Exception e) { Log.LogError("UL-2 passenger module name: " + e); }
         }
         static MethodInfo mAttachTurret;
         static void PostSpawnMount(object aircraft, GameObject __result)
@@ -269,6 +302,7 @@ namespace UL2Airtrike
                 if (mounted == null)
                 {
                     if (clock < scanT) return; scanT = clock + 2f;
+                    if (clock > 30f) { enabled = false; return; }   // 0.15.84: the bomb is mounted at spawn; stop searching every part's transforms
                     // 0.15.45: the parts detach from the aircraft root at spawn (seat 3 rides on its own part), so search the
                     // unit's part list (RotorSpinner keeps it), not the root's children
                     var rs = GetComponent<RotorSpinner>();
@@ -573,12 +607,12 @@ namespace UL2Airtrike
             catch { }
         }
         // diagnostics for the prop RPM loop (Nick 22:09): log the prop state when its RPM falls away
-        Component prop; static FieldInfo fpRpm, fpPitch, fpAoA, fpPow, fpAng; float propPeak, propLogT;
+        Component prop; float propLook; static Type tProp; static FieldInfo fpRpm, fpPitch, fpAoA, fpPow, fpAng; float propPeak, propLogT;
         void PropWatch(float dt)
         {
             try
             {
-                if (prop == null) { var tp = AccessTools.TypeByName("ConstantSpeedProp"); if (tp == null) return; foreach (var c in partList) { if (c == null) continue; var pc = c.GetComponentInChildren(tp, true); if (pc != null) { prop = pc; break; } } if (prop == null) return;
+                if (prop == null) { if ((propLook -= dt) > 0f) return; propLook = 3f; var tp = tProp = tProp ?? AccessTools.TypeByName("ConstantSpeedProp"); if (tp == null) return; foreach (var c in partList) { if (c == null) continue; var pc = c.GetComponentInChildren(tp, true); if (pc != null) { prop = pc; break; } } if (prop == null) return;
                     var td = AccessTools.TypeByName("PropStrikeDetector"); if (td != null) foreach (var d in prop.transform.root.GetComponentsInChildren(td, true)) Plugin.OurDetectors.Add(d.GetInstanceID());
                     foreach (var c in partList) if (c != null && td != null) foreach (var d in c.GetComponentsInChildren(td, true)) Plugin.OurDetectors.Add(d.GetInstanceID());
                     Plugin.Log.LogInfo("UL-2 prop watch on " + prop.name + ", " + Plugin.OurDetectors.Count + " strike detector(s)");
@@ -1438,11 +1472,68 @@ namespace UL2Airtrike
     // Seat 3 passenger: poses the kit's bones from the baked table (heading x elevation, same IK solutions as the
     // Blender rig), following the stock turret it rides on. The visual heading moves linearly inside the side arcs, so a
     // swap from one side to the other always goes forward over the seat 2 crewman, never round the back.
+    // Passenger module machine gunners (Nick 22:51): the stock turret slews traverse and elevation independently, so swinging
+    // forward at a low aim put the barrel through the stub grenadier's head. Inside the grenadier's heading band the gun must be
+    // at least CLEAR deg up: the elevation is lifted first and the traverse is held at the band edge until it is up, so the
+    // gun passes over his head. Headings are in the gunner's outward seat frame (0 = straight out, + = clockwise from above),
+    // from the head exclusion cones in UL2PassengerModule.cs (right: -66 +-8, left: 70 +-8, both 2 deg down).
+    internal static class PmArc
+    {
+        class Cfg { public float centre, lo, hi; }
+        const float CLEAR = 12f, MARGIN = 6f;
+        static readonly Dictionary<int, Cfg> cfg = new Dictionary<int, Cfg>();
+        static FieldInfo fT, fE, fTR, fER, fElev;
+        static Cfg Get(Component t)
+        {
+            int id = t.GetInstanceID(); Cfg c;
+            if (cfg.TryGetValue(id, out c)) return c;
+            c = null;
+            for (var p = t.transform.parent; p != null; p = p.parent)
+            {
+                if (p.name == "pm_mg_R") { c = new Cfg { centre = -22f, lo = -80f, hi = -52f }; break; }
+                if (p.name == "pm_mg_L") { c = new Cfg { centre = 22f, lo = 56f, hi = 84f }; break; }
+                if (p.name.StartsWith("UL2_pm") || p.parent == null) break;
+            }
+            if (c != null && fT == null)
+            {
+                var tt = t.GetType();
+                fT = AccessTools.Field(tt, "traverseAngle"); fE = AccessTools.Field(tt, "elevationAngle");
+                fTR = AccessTools.Field(tt, "traverseRate"); fER = AccessTools.Field(tt, "elevationRate"); fElev = AccessTools.Field(tt, "elevationTransform");
+            }
+            cfg[id] = c; return c;
+        }
+        public static void Pre(Component __instance, out float __state)
+        {
+            __state = float.NaN;
+            try { if (__instance != null && Get(__instance) != null && fT != null) __state = (float)fT.GetValue(__instance); } catch { }
+        }
+        public static void Post(Component __instance, float __state)
+        {
+            try
+            {
+                if (float.IsNaN(__state)) return;
+                var c = cfg[__instance.GetInstanceID()];
+                float tr = (float)fT.GetValue(__instance), el = (float)fE.GetValue(__instance);   // elevationAngle: negative = up
+                float h0 = c.centre + __state, h1 = c.centre + tr, up = -el;
+                bool in1 = h1 > c.lo - MARGIN && h1 < c.hi + MARGIN;
+                if (!in1 || up >= CLEAR) return;
+                bool in0 = h0 > c.lo - MARGIN && h0 < c.hi + MARGIN;
+                float dt = Time.fixedDeltaTime, er = (float)fER.GetValue(__instance);
+                if (!in0) { tr = __state; fT.SetValue(__instance, tr); __instance.transform.localEulerAngles = new Vector3(0f, tr, 0f); }   // hold at the band edge
+                el = Mathf.MoveTowards(el, -CLEAR, Mathf.Max(er, 60f) * dt);                                                    // lift over the head
+                fE.SetValue(__instance, el);
+                var et = fElev.GetValue(__instance) as Transform; if (et != null) et.localEulerAngles = new Vector3(el, 0f, 0f);
+            }
+            catch { }
+        }
+    }
+
     public class Seat3Pose : MonoBehaviour
     {
         class Table { public float afr, afl, ar; public string[] bones; public float[] A, E, d; }
         static readonly Dictionary<string, Table> tables = new Dictionary<string, Table>();
         static Type tTurret, tAircraft, tDetector; static FieldInfo fElev, fWm, fMag, fVis, fManual; static MethodInfo mGetTarget; static MethodInfo mTargets;
+        float lastA = 999f, lastE = 999f; bool posedOnce; SkinnedMeshRenderer smr;
         Table T; Transform[] bones; Behaviour turret; Transform elev; Component aircraft; string kind;
         float vA = 52f, vE = -40f, side = 1f, t0, logT;
         readonly Dictionary<Component, float> magOrig = new Dictionary<Component, float>(), visOrig = new Dictionary<Component, float>();
@@ -1495,14 +1586,15 @@ namespace UL2Airtrike
         }
         // 0.15.23 (Nick 04:21, 04:24): any seat 3 passenger gives the aircraft 1/8 of a full Ibis troop load's capture power (16 troops,
         // 8 per bay, 8 capture each = 16), i.e. 2. Same rule as the stock MountedTroops: only while landed and stopped.
-        static FieldInfo fSpd, fRalt; static MethodInfo mCap, mPartDet; Component seatPart; bool capOn; float capT;
+        static FieldInfo fSpd, fRalt; static MethodInfo mCap, mPartDet; static Type tUnitS; bool seatSearched; Component seatPart; bool capOn; float capT;
         const float CAPTURE = 2f;   // passenger module: four kits x 2 = 8, one full Ibis infantry bay (Nick 22:09)
         void Capture()
         {
             if ((capT -= Time.deltaTime) > 0f || aircraft == null) return; capT = 2f;
-            var tU = AccessTools.TypeByName("Unit");
+            // 0.15.84 (Nick 22:51: frame drops): AccessTools.TypeByName scans every loaded assembly; it ran every 2 s per kit
+            var tU = tUnitS = tUnitS ?? AccessTools.TypeByName("Unit");
             fSpd = fSpd ?? AccessTools.Field(tU, "speed"); fRalt = fRalt ?? AccessTools.Field(tU, "radarAlt"); mCap = mCap ?? AccessTools.Method(tU, "ModifyCaptureStrength");
-            if (seatPart == null) { var tP = AccessTools.TypeByName("UnitPart"); seatPart = GetComponentInParent(tP); mPartDet = mPartDet ?? AccessTools.Method(tP, "IsDetached"); }
+            if (seatPart == null && !seatSearched) { seatSearched = true; var tP = AccessTools.TypeByName("UnitPart"); seatPart = GetComponentInParent(tP); mPartDet = mPartDet ?? AccessTools.Method(tP, "IsDetached"); }
             bool gone = seatPart != null && mPartDet != null && (bool)mPartDet.Invoke(seatPart, null);
             bool on = !gone && fSpd != null && fRalt != null && (float)fSpd.GetValue(aircraft) < 2f && (float)fRalt.GetValue(aircraft) < 1f;
             if (on != capOn && mCap != null) { capOn = on; mCap.Invoke(aircraft, new object[] { on ? CAPTURE : -CAPTURE }); Plugin.Log.LogInfo("UL-2 seat 3 capture " + (on ? "on" : "off")); }
@@ -1550,7 +1642,13 @@ namespace UL2Airtrike
                 if (tA > T.afr) side = 1f; else if (tA < -T.afl) side = -1f;
                 vA = Mathf.MoveTowards(vA, tA, 150f * dt);
                 vE = Mathf.MoveTowards(vE, Mathf.Clamp(tE, T.E[0], T.E[T.E.Length - 1]), 90f * dt);
-                Apply(vA, vE);
+                // 0.15.84 (Nick 22:51: frame drops): writing the bones every frame re-skins the whole soldier (20-30k verts) even
+                // when he holds still or is off screen; only pose him when the pose changed and a renderer can be seen
+                if (Mathf.Abs(vA - lastA) > 0.05f || Mathf.Abs(vE - lastE) > 0.05f)
+                {
+                    if (smr == null) smr = GetComponentInChildren<SkinnedMeshRenderer>(true);
+                    if (smr == null || smr.isVisible || !posedOnce) { Apply(vA, vE); lastA = vA; lastE = vE; posedOnce = true; }
+                }
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 seat 3 pose: " + e); enabled = false; }
         }

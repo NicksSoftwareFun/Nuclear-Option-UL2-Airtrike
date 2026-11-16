@@ -1016,6 +1016,8 @@ public static partial class UL2Builder
         ExtraLivery("steel", 0.6f); ExtraLivery("tiger", 0f);
         // 0.15.59 (Nick 01:53): faction liveries, PALA Camel Corps (desert tan) and BDF Orca
         ExtraLivery("tan", 0f); ExtraLivery("orca", 0f);
+        // 0.15.84 (Nick 22:47): Delta Digital, UCP-style four-tone pixel camo (art/scripts/livery/paint_ucp_livery.py)
+        ExtraLivery("ucp", 0f);
         return mat;
     }
     // tapered sleeve along +Z: z 0 at the wrist (inside the glove cuff, r 0.029) to z 0.11 up the forearm (r 0.041), with a
@@ -1810,12 +1812,12 @@ public static partial class UL2Builder
         var sdp = StatusDisplayUL2(); if (sdp != null) so.FindProperty("StatusDisplay").objectReferenceValue = sdp;
         so.FindProperty("DefaultFuelLevel").floatValue = 1f;
         so.FindProperty("cruiseThrottle").floatValue = 0.75f;
-        var liv = so.FindProperty("liveries"); liv.arraySize = 5;
-        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger", "PALA Camel Corps", "BDF Orca" };
+        var liv = so.FindProperty("liveries"); liv.arraySize = 6;
+        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger", "PALA Camel Corps", "BDF Orca", "Delta Digital" };
         // 0.15.82 (Nick 2026-11-16 21:29): Racing Navy (0.15.80) taken back out, it goes to the Steam Workshop on its own
-        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger"), LiveryPath("tan"), LiveryPath("orca") };
+        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger"), LiveryPath("tan"), LiveryPath("orca"), LiveryPath("ucp") };
         // 0.15.59 (Nick 01:53): faction locked like stock faction liveries (PALA = Primeva, BDF = Boscali)
-        string[] livFac = { null, null, null, PH + "MonoBehaviour/Primeva_PLACEHOLDER.asset", PH + "MonoBehaviour/Boscali_PLACEHOLDER.asset" };
+        string[] livFac = { null, null, null, PH + "MonoBehaviour/Primeva_PLACEHOLDER.asset", PH + "MonoBehaviour/Boscali_PLACEHOLDER.asset", null };
         for (int i = 0; i < livName.Length; i++)
         {
             var li = liv.GetArrayElementAtIndex(i);
