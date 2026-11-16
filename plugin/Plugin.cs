@@ -796,7 +796,7 @@ namespace UL2Airtrike
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 rotor lift: " + e); pRb = null; }
         }
-        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax, aiGamMin, aiObst = -1f; bool aiPilot, aiLanding, aiRoll;
+        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax, aiGamMin, aiObst = -1f; bool aiPilot, aiLanding, aiRoll; object aiTakeoff;
         bool IsAI()
         {
             if ((aiChk -= Time.fixedDeltaTime) > 0f) return aiPilot; aiChk = 0.5f;
@@ -810,9 +810,10 @@ namespace UL2Airtrike
                     var st = fState?.GetValue(p);
                     aiPilot = st != null && st.GetType().Name.StartsWith("AI");
                     aiLanding = aiPilot && st.GetType().Name.Contains("Landing");
+                    aiTakeoff = aiPilot && st.GetType().Name == "AIPilotTakeoffState" ? st : null;
                 }
             }
-            catch { aiPilot = false; aiLanding = false; }
+            catch { aiPilot = false; aiLanding = false; aiTakeoff = null; }
             return aiPilot;
         }
         // flight path limiter: the AI's pitch is kept at or nose-down of what holds the flight path at or below gammaMax
@@ -829,6 +830,30 @@ namespace UL2Airtrike
                 float bank = Vector3.SignedAngle(Vector3.ProjectOnPlane(Vector3.up, transform.forward), transform.up, transform.forward);
                 fRoll.SetValue(ci, Mathf.Clamp(bank * 0.03f, -1f, 1f));            // roll back toward wings level
             }
+            else if (aiTakeoff != null && fRoll != null && alt > TakeoffFix.START) SideStep(rb, ci);
+        }
+        // 0.15.87 (Nick 23:23: 0.15.86 turn never showed, a Cricket taking off behind flew into it): moving the stock aim point
+        // was not enough, the autopilot barely banks that close to the ground. Now the bank is flown directly: up to 20 deg
+        // toward this aircraft's side until the track is 30 deg off the runway, then wings level on that heading until the
+        // combat AI takes over at 75 m.
+        float sideLog;
+        void SideStep(Rigidbody rb, object ci)
+        {
+            try
+            {
+                Vector3 rv = TakeoffFix.RunwayDir(aiTakeoff); if (rv == Vector3.zero) return;
+                var vh = new Vector3(rb.velocity.x, 0f, rb.velocity.z); if (vh.sqrMagnitude < 25f) return;
+                float s = TakeoffFix.Side(unit);
+                float off = Vector3.SignedAngle(rv, vh, Vector3.up) * s;                // track off the runway toward our side, deg
+                float ramp = Mathf.Clamp01((alt - TakeoffFix.START) / 5f);
+                float want = Mathf.Clamp((TakeoffFix.SIDE_DEG - off) * 0.8f, 0f, 20f) * ramp;   // bank magnitude wanted
+                float bankWant = -s * want;                                             // + = left wing down, so a right turn is negative
+                float bank = Vector3.SignedAngle(Vector3.ProjectOnPlane(Vector3.up, transform.forward), transform.up, transform.forward);
+                float input = -1.08f * Mathf.Sin(bankWant * Mathf.Deg2Rad) + 0.04f * (bank - bankWant);   // hold against the rotor's roll-level pull
+                fRoll.SetValue(ci, Mathf.Clamp(input, -1f, 1f));
+                if (Time.time - sideLog > 1f) { sideLog = Time.time; Plugin.Log.LogInfo($"UL-2 AI side-step: alt {alt:0.0} track off {off:0} deg bank {bank:0} want {bankWant:0} roll in {input:0.00}"); }
+            }
+            catch { }
         }
         bool aiLevel; float aiNeedT, aiNeed = -90f;
         static System.Type tUnitT;
@@ -868,6 +893,7 @@ namespace UL2Airtrike
             float gMax;
             if (alt < 1.5f) { aiGamMax = 0f; return spd < V80 ? Mathf.Max(p, 0f) : Mathf.Max(p, -0.3f); }   // no rotation before 80 km/h
             if (spd < V80) gMax = -4f * Mathf.InverseLerp(8f, 25f, alt);               // level near the ground, gentle dive with height
+            else if (aiTakeoff != null) gMax = Mathf.Lerp(2f, 7f, Mathf.InverseLerp(V80, 30f, spd));   // 0.15.87 (Nick 23:16): steeper climb-out after takeoff
             else gMax = Mathf.Lerp(0f, 6f, Mathf.InverseLerp(V80, 30f, spd));          // shallow climb once speed builds
             // stay low (0.15.54, Nick 20:59: lower in combat, masking behind terrain): no climbing above ~45 m over the ground,
             // or ~190 m with the spotter aboard so he can see over the terrain
@@ -1816,7 +1842,7 @@ namespace UL2Airtrike
     // Each aircraft keeps one side; odd and even instances go opposite ways so a stream of takeoffs fans out.
     internal static class TakeoffFix
     {
-        const float SIDE_DEG = 25f, START = 3f, FULL = 12f, DIST = 300f;
+        internal const float SIDE_DEG = 30f, START = 3f; const float FULL = 12f, DIST = 300f;
         static FieldInfo fAc, fTaken, fRv, radarAlt, fX, fZ;
         [ThreadStatic] static bool active; [ThreadStatic] static Vector3 shift;
         public static void Patch(Harmony h)
@@ -1847,7 +1873,7 @@ namespace UL2Airtrike
                 float alt = (float)radarAlt.GetValue(ac); if (alt <= START) return;
                 Vector3 rv = (Vector3)fRv.GetValue(__instance); rv.y = 0f; if (rv.sqrMagnitude < 0.01f) return;
                 rv.Normalize();
-                float side = (ac.GetInstanceID() & 1) == 0 ? 1f : -1f;
+                float side = Side(ac);
                 float ang = SIDE_DEG * side * Mathf.Clamp01((alt - START) / (FULL - START));
                 shift = (Quaternion.Euler(0f, ang, 0f) * rv - rv) * DIST;
                 active = true;
@@ -1855,6 +1881,11 @@ namespace UL2Airtrike
             catch { }
         }
         static void Post() { active = false; }
+        internal static float Side(Component ac) { return ac == null || ((ac.gameObject.GetInstanceID() >> 1) & 1) == 0 ? 1f : -1f; }
+        internal static Vector3 RunwayDir(object st)
+        {
+            try { var rv = (Vector3)fRv.GetValue(st); rv.y = 0f; return rv.sqrMagnitude < 0.01f ? Vector3.zero : rv.normalized; } catch { return Vector3.zero; }
+        }
         static void PreAim(object[] __args)
         {
             if (!active) return;

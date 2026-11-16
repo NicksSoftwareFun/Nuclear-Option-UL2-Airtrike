@@ -8,6 +8,7 @@ Unreleased
 - 0.15.84: new Delta Digital livery (four-tone pixel camo). Special Operations Team: plain name in the loadout menu, new description and a crossed machine gun and grenade launcher icon; lighter, so the aircraft is at its 1200 kg max weight with only the team loaded (the nose gun is extra). The machine gunners now lift their guns over the grenadiers' heads when swinging forward. Smoother frame rate with the team aboard.
 - 0.15.85: Special Operations Team: the team's weight now sits where the soldiers do (most of it had been over the main wheels, which flipped the aircraft backwards on the takeoff pull) and the seat mounts are stronger; the machine gunners clear the grenadiers' necks as well as their heads, and no gunner aims more than 5 degrees inboard of straight ahead (no more aiming at the pilots).
 - 0.15.86: AI pilots bank gently off the runway centreline once airborne (about 25 degrees to one side, eased in from 3 m) instead of climbing straight out in the way of the next aircraft.
+- 0.15.87: the AI takeoff turn is now flown directly: from 3 m it banks up to 20 degrees until it is 30 degrees off the runway heading, then flies wings level until the combat AI takes over; it also climbs out steeper after takeoff. Aircraft alternate left and right turns.
 
 1.0.0 (2026-11-15, updated) - first full release
 - 0.15.79: the seat 3 soldiers' hands take the camo colour of their sleeves; the Spotter's fists sit higher on the binoculars so the knuckles no longer cut into the top; the main rotor blur sits level with the hub bar.
