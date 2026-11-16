@@ -390,6 +390,7 @@ public static partial class UL2Builder
         try { Seat3Mounts(); } catch (System.Exception ex) { log.AppendLine("SEAT3 MOUNTS ERROR " + ex); }
         try { Seat3Ecm(); } catch (System.Exception ex) { log.AppendLine("SEAT3 ECM ERROR " + ex); }
         try { Seat3XBomb(); } catch (System.Exception ex) { log.AppendLine("SEAT3 XBOMB ERROR " + ex); }
+        try { PassengerModule(); } catch (System.Exception ex) { log.AppendLine("PM ERROR " + ex); }   // Nick 2026-11-16 21:36
 
         root = PrefabUtility.LoadPrefabContents(SRC).transform;
         root.name = "COIN_PLACEHOLDER";
@@ -947,6 +948,12 @@ public static partial class UL2Builder
             // it over. Gentle pedal brake, and tyres that slide before they trip.
             else { Set(lg, "differentialBrakeFactor", g == "L" ? -0.25f : 0.25f); Set(lg, "frictionCoef", 0.55f); }
             var bc = gt.GetComponent<BoxCollider>(); if (bc) bc.size = bc.size * 0.4f;
+            // 16 Nov (Nick: nose tyre sinks into the ground, mains slightly): the suspension cast starts at the Cricket bump stop,
+            // so the ground sat 0.9 m below it (front -1.163, mains -1.219) while the UL-2 tyres (fixed to the airframe) reach
+            // -1.200, and the static spring squat (front ~2 cm, mains ~5 cm) sank them further. Bump stops lowered so that under
+            // the static load the ground sits at the tyre bottom (~0.5 cm squash left for a loaded look).
+            var bsGo = new SerializedObject(lg).FindProperty("bumpStop").objectReferenceValue as GameObject;
+            if (bsGo != null) bsGo.transform.position += Vector3.down * (g == "F" ? 0.05f : 0.025f);
         }
     }
 
@@ -1009,6 +1016,8 @@ public static partial class UL2Builder
         ExtraLivery("steel", 0.6f); ExtraLivery("tiger", 0f);
         // 0.15.59 (Nick 01:53): faction liveries, PALA Camel Corps (desert tan) and BDF Orca
         ExtraLivery("tan", 0f); ExtraLivery("orca", 0f);
+        // 0.15.84 (Nick 22:47): Delta Digital, UCP-style four-tone pixel camo (art/scripts/livery/paint_ucp_livery.py)
+        ExtraLivery("ucp", 0f);
         return mat;
     }
     // tapered sleeve along +Z: z 0 at the wrist (inside the glove cuff, r 0.029) to z 0.11 up the forearm (r 0.041), with a
@@ -1472,6 +1481,7 @@ public static partial class UL2Builder
             }
         }
         Seat3Hardpoint(sets);
+        PmHardpoint(sets);
         so.ApplyModifiedPropertiesWithoutUndo();
         log.AppendLine("hardpoint sets: " + sets.arraySize);
     }
@@ -1537,11 +1547,14 @@ public static partial class UL2Builder
         // 0.15.64 (Nick 03:08: the pair looked like it floated over the stub): the stock twin rack is kept between the stub and
         // the two missiles, and the missiles stay at their stock height on it
         RailMount("AGM1_double_compact", "UL2_AGM1_double", float.NaN);
-        RailMount("AAM3_single", "UL2_AAM3_rail", -0.076f);
+        // 0.15.82 (Nick 2026-11-16: IRM-S2 broke the main gear off in the select screen and at spawn): the missile's stock
+        // collider (capsule 2.71 m) reached back over the main wheel, and LandingGear's suspension linecast from the bump stop
+        // (+-0.81, -0.32, -0.67) hit it, read full compression and broke the wheel. Slid 0.20 m forward: capsule ends at z -0.49.
+        RailMount("AAM3_single", "UL2_AAM3_rail", -0.076f, 0.20f);
     }
     // AGM-48 / IRM-S2 straight on the beefed-up built-in pylon (Nick 2026-11-12 21:35): the stock single mount without
     // its launch pylon, missile raised so its body sits on the pylon's rail. Same info, cost and stats as the stock mount.
-    static void RailMount(string src, string key, float y)
+    static void RailMount(string src, string key, float y, float dz = 0f)
     {
         var go = CopyPrefab(src, key);
         try
@@ -1550,7 +1563,7 @@ public static partial class UL2Builder
             // (0.15.5 destroyed the pylon with the missile inside it, so nothing spawned - Nick 22:02)
             var ms = go.GetComponentsInChildren<MonoBehaviour>(true).Where(mm => mm.GetType().Name == "MountedMissile").Select(mm => mm.transform).Distinct().ToList();
             bool keepRack = float.IsNaN(y);
-            if (!keepRack) foreach (var mt in ms) { mt.SetParent(go.transform, true); var lp = mt.localPosition; mt.localPosition = new Vector3(lp.x, y, lp.z); }
+            if (!keepRack) foreach (var mt in ms) { mt.SetParent(go.transform, true); var lp = mt.localPosition; mt.localPosition = new Vector3(lp.x, y, lp.z + dz); }
             // 0.15.60 (Nick 02:07): the twin rack's two missiles were both named "agm1"; in game the second one came out with no
             // info/mesh (only one AGM-48 showed and MountedMissile.AttachToHardpoint threw, breaking the whole loadout).
             // Every missile gets its own name so each one resolves on its own path.
@@ -1622,7 +1635,9 @@ public static partial class UL2Builder
         J("cockpit_F", "COIN_PLACEHOLDER", 32000f, "cockpit_R", 20000f, "fuselage", 3000f);   // 0.15.5: every overlapping collider pair is jointed (stock joints switch their collision off), so nothing pushes apart at spawn
         J("nose", "cockpit_F", 3000f);
         J("fuselage", "COIN_PLACEHOLDER", 9000f);
-        J("intake", "fuselage", 5000f, "cockpit_R", 3000f, "COIN_PLACEHOLDER", 3000f);
+        // 0.15.85 (Nick 23:01, Passenger Module): the seat 3 part carries the hardpoint, so up to ~280 kg of team and ammo hang on
+        // it (was ~110 kg with one gunner); joints tripled so a firm pull or touchdown does not tear the seat off
+        J("intake", "fuselage", 15000f, "cockpit_R", 9000f, "COIN_PLACEHOLDER", 9000f);
         J("mast", "fuselage", 25000f, "intake", 6000f, "COIN_PLACEHOLDER", 8000f, "cockpit_R", 3000f);   // carries head, blades and part of the engine
         J("rotorHead", "mast", 15000f, "fuselage", 8000f);
         J("engine_core", "mast", 15000f, "fuselage", 10000f, "COIN_PLACEHOLDER", 5000f);
@@ -1799,12 +1814,13 @@ public static partial class UL2Builder
         var sdp = StatusDisplayUL2(); if (sdp != null) so.FindProperty("StatusDisplay").objectReferenceValue = sdp;
         so.FindProperty("DefaultFuelLevel").floatValue = 1f;
         so.FindProperty("cruiseThrottle").floatValue = 0.75f;
-        var liv = so.FindProperty("liveries"); liv.arraySize = 5;
-        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger", "PALA Camel Corps", "BDF Orca" };
-        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger"), LiveryPath("tan"), LiveryPath("orca") };
+        var liv = so.FindProperty("liveries"); liv.arraySize = 6;
+        string[] livName = { "Reservist Olive", "Stainless Steel", "Black Tiger", "PALA Camel Corps", "BDF Orca", "Delta Digital" };
+        // 0.15.82 (Nick 2026-11-16 21:29): Racing Navy (0.15.80) taken back out, it goes to the Steam Workshop on its own
+        string[] livPath = { LIVERY, LiveryPath("steel"), LiveryPath("tiger"), LiveryPath("tan"), LiveryPath("orca"), LiveryPath("ucp") };
         // 0.15.59 (Nick 01:53): faction locked like stock faction liveries (PALA = Primeva, BDF = Boscali)
-        string[] livFac = { null, null, null, PH + "MonoBehaviour/Primeva_PLACEHOLDER.asset", PH + "MonoBehaviour/Boscali_PLACEHOLDER.asset" };
-        for (int i = 0; i < 5; i++)
+        string[] livFac = { null, null, null, PH + "MonoBehaviour/Primeva_PLACEHOLDER.asset", PH + "MonoBehaviour/Boscali_PLACEHOLDER.asset", null };
+        for (int i = 0; i < livName.Length; i++)
         {
             var li = liv.GetArrayElementAtIndex(i);
             li.FindPropertyRelative("name").stringValue = livName[i];

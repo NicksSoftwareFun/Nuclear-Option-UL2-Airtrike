@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike", "1.0.0")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike", "1.1.0")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -48,6 +48,12 @@ namespace UL2Airtrike
                 var aimM = AccessTools.Method(AccessTools.TypeByName("Turret"), "AimTurret", new[] { typeof(Vector3) });
                 if (aimM != null) h.Patch(aimM, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreAimManual)));
                 Logger.LogInfo("UL-2 nose gun fixed-aim patch " + (aimM != null));
+                // 0.15.84 (Nick 22:51): passenger module machine gunners swing the gun OVER the stub grenadier's head
+                var tTur = AccessTools.TypeByName("Turret");
+                var aimS = AccessTools.Method(tTur, "AimTurret", new[] { AccessTools.TypeByName("WeaponStation") });
+                if (aimM != null) h.Patch(aimM, prefix: new HarmonyMethod(typeof(PmArc), nameof(PmArc.Pre)), postfix: new HarmonyMethod(typeof(PmArc), nameof(PmArc.Post)));
+                if (aimS != null) h.Patch(aimS, prefix: new HarmonyMethod(typeof(PmArc), nameof(PmArc.Pre)), postfix: new HarmonyMethod(typeof(PmArc), nameof(PmArc.Post)));
+                Logger.LogInfo("UL-2 passenger MG over-head patch " + (aimM != null) + "/" + (aimS != null));
                 // 0.15.54 (Nick 20:59): the stock combat AI climbs its target height 5 m a second up to 200 m over the ground.
                 // For the UL-2 the target height is held low so it masks behind terrain; with the spotter aboard it may go higher.
                 var alt = AccessTools.Method(AccessTools.TypeByName("AIPilotCombatModes"), "ManageAltitude");
@@ -66,10 +72,99 @@ namespace UL2Airtrike
                 Logger.LogInfo("UL-2 tactics patches: attack " + (run != null) + ", radar warning " + (rw != null));
                 // 0.15.63 (Nick 03:01, AI aborting landings like the PB-22 and P220 did): same fix as theirs
                 LandingFix.Patch(h);
+                // 0.15.86 (Nick 23:16): slow climb-out sat on the runway centreline in the way of other traffic; side-step off it
+                TakeoffFix.Patch(h);
                 // 0.15.64 (Nick 03:07, Lynchpins all missing): only fire laser-guided rockets once the nose laser is on the target
                 LaserFix.Patch(h);
+                // passenger module (Nick 2026-11-16 21:39): one mount with four turrets. Stock SpawnMount attaches only the first
+                // turret of a turret mount to the weapon manager; attach the rest. The weapon manager groups them by weapon info,
+                // so the two machine guns fire as one weapon and the two grenade launchers as another.
+                var spawnM = AccessTools.Method(AccessTools.TypeByName("Hardpoint"), "SpawnMount");
+                if (spawnM != null) h.Patch(spawnM, postfix: new HarmonyMethod(typeof(Plugin), nameof(PostSpawnMount)));
+                var remM = AccessTools.Method(AccessTools.TypeByName("Hardpoint"), "RemoveMount");
+                if (remM != null) h.Patch(remM, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreRemoveMount)));
+                Logger.LogInfo("UL-2 passenger module turret patch " + (spawnM != null));
+                // 0.15.84 (Nick 22:47): the stock WeaponMount.Initialize names a gun mount "<first gun's weapon> (N rounds)" and swaps
+                // the mount's info for the first gun's. Keep the team's own name, description and icon in the loadout menu.
+                var wmInit = AccessTools.Method(AccessTools.TypeByName("WeaponMount"), "Initialize");
+                if (wmInit != null) h.Patch(wmInit, prefix: new HarmonyMethod(typeof(Plugin), nameof(PreMountInit)), postfix: new HarmonyMethod(typeof(Plugin), nameof(PostMountInit)));
             }
             catch (Exception e) { Logger.LogError("UL-2 patch failed: " + e); }
+        }
+        static FieldInfo fMountInfo, fMountName;
+        static void PreMountInit(object __instance, out object __state)
+        {
+            __state = null;
+            try
+            {
+                if (!(__instance is UnityEngine.Object o) || o.name != "UL2_pm") return;
+                fMountInfo = fMountInfo ?? AccessTools.Field(__instance.GetType(), "info");
+                __state = fMountInfo.GetValue(__instance);
+            }
+            catch (Exception e) { Log.LogError("UL-2 passenger module name: " + e); }
+        }
+        static void PostMountInit(object __instance, object __state)
+        {
+            try
+            {
+                if (__state == null) return;
+                fMountName = fMountName ?? AccessTools.Field(__instance.GetType(), "mountName");
+                fMountInfo.SetValue(__instance, __state);
+                fMountName.SetValue(__instance, "Special Operations Team");
+            }
+            catch (Exception e) { Log.LogError("UL-2 passenger module name: " + e); }
+        }
+        static MethodInfo mAttachTurret;
+        // 0.15.84b (Nick 23:01: backflip on the takeoff pitch-up): the stock hardpoint puts the whole mount mass on its part (the
+        // seat 3 part, z -0.55, almost over the main wheels), but two of the four soldiers sit on the stubs at z +0.40. 60 % of the
+        // team's empty mass moves to the rear cockpit part (z +0.23), so the module's mass centre sits near its real one (z -0.08);
+        // the ammo stays on the seat part. Put back when the mount is removed.
+        const float PM_FWD = 0.6f;
+        static readonly Dictionary<object, KeyValuePair<Component, float>> pmShift = new Dictionary<object, KeyValuePair<Component, float>>();
+        static FieldInfo fHpPart, fHpMount, fMountEmpty; static MethodInfo mPartMass, mAllParts;
+        static void PmMass(object hp, object aircraft, bool on)
+        {
+            try
+            {
+                var tHp = hp.GetType(); fHpPart = fHpPart ?? AccessTools.Field(tHp, "part"); fHpMount = fHpMount ?? AccessTools.Field(tHp, "mount");
+                var part = fHpPart.GetValue(hp) as Component; if (part == null) return;
+                mPartMass = mPartMass ?? AccessTools.Method(part.GetType(), "ModifyMass");
+                object id = hp; KeyValuePair<Component, float> kv;
+                if (!on)
+                {
+                    if (!pmShift.TryGetValue(id, out kv)) return; pmShift.Remove(id);
+                    if (kv.Key != null) mPartMass.Invoke(kv.Key, new object[] { -kv.Value });
+                    mPartMass.Invoke(part, new object[] { kv.Value });
+                    return;
+                }
+                if (pmShift.ContainsKey(id)) return;
+                var mount = fHpMount.GetValue(hp); if (mount == null) return;
+                fMountEmpty = fMountEmpty ?? AccessTools.Field(mount.GetType(), "emptyMass");
+                float m = (float)fMountEmpty.GetValue(mount) * PM_FWD;
+                mAllParts = mAllParts ?? AccessTools.Method(aircraft.GetType(), "GetAllParts");
+                Component fwd = null;
+                if (mAllParts.Invoke(aircraft, null) is System.Collections.IEnumerable all) foreach (var o in all) if (o is Component c && c != null && c.name == "cockpit_R") { fwd = c; break; }
+                if (fwd == null) { Log.LogWarning("UL-2 passenger module: no cockpit_R part, mass left on " + part.name); return; }
+                mPartMass.Invoke(part, new object[] { -m }); mPartMass.Invoke(fwd, new object[] { m });
+                pmShift[id] = new KeyValuePair<Component, float>(fwd, m);
+                Log.LogInfo("UL-2 passenger module: " + m.ToString("0") + " kg moved from " + part.name + " to " + fwd.name);
+            }
+            catch (Exception e) { Log.LogError("UL-2 passenger module mass: " + e); }
+        }
+        static void PreRemoveMount(object __instance) { if (__instance != null && pmShift.ContainsKey(__instance)) PmMass(__instance, null, false); }
+        static void PostSpawnMount(object aircraft, GameObject __result, object __instance)
+        {
+            try
+            {
+                if (__result == null || !__result.name.StartsWith("UL2_pm")) return;
+                PmMass(__instance, aircraft, true);
+                var tT = AccessTools.TypeByName("Turret");
+                mAttachTurret = mAttachTurret ?? AccessTools.Method(tT, "AttachToWeaponManager");
+                var ts = __result.GetComponentsInChildren(tT, true);
+                for (int i = 1; i < ts.Length; i++) mAttachTurret.Invoke(ts[i], new[] { aircraft });
+                Log.LogInfo("UL-2 passenger module: " + ts.Length + " turrets, attached " + Math.Max(0, ts.Length - 1) + " more");
+            }
+            catch (Exception e) { Log.LogError("UL-2 passenger module attach: " + e); }
         }
         static readonly System.Collections.Generic.Dictionary<int, Transform> noseGunBase = new System.Collections.Generic.Dictionary<int, Transform>();
         static void PreAimManual(Component __instance, ref Vector3 aimVector)
@@ -249,6 +344,7 @@ namespace UL2Airtrike
                 if (mounted == null)
                 {
                     if (clock < scanT) return; scanT = clock + 2f;
+                    if (clock > 30f) { enabled = false; return; }   // 0.15.84: the bomb is mounted at spawn; stop searching every part's transforms
                     // 0.15.45: the parts detach from the aircraft root at spawn (seat 3 rides on its own part), so search the
                     // unit's part list (RotorSpinner keeps it), not the root's children
                     var rs = GetComponent<RotorSpinner>();
@@ -553,12 +649,12 @@ namespace UL2Airtrike
             catch { }
         }
         // diagnostics for the prop RPM loop (Nick 22:09): log the prop state when its RPM falls away
-        Component prop; static FieldInfo fpRpm, fpPitch, fpAoA, fpPow, fpAng; float propPeak, propLogT;
+        Component prop; float propLook; static Type tProp; static FieldInfo fpRpm, fpPitch, fpAoA, fpPow, fpAng; float propPeak, propLogT;
         void PropWatch(float dt)
         {
             try
             {
-                if (prop == null) { var tp = AccessTools.TypeByName("ConstantSpeedProp"); if (tp == null) return; foreach (var c in partList) { if (c == null) continue; var pc = c.GetComponentInChildren(tp, true); if (pc != null) { prop = pc; break; } } if (prop == null) return;
+                if (prop == null) { if ((propLook -= dt) > 0f) return; propLook = 3f; var tp = tProp = tProp ?? AccessTools.TypeByName("ConstantSpeedProp"); if (tp == null) return; foreach (var c in partList) { if (c == null) continue; var pc = c.GetComponentInChildren(tp, true); if (pc != null) { prop = pc; break; } } if (prop == null) return;
                     var td = AccessTools.TypeByName("PropStrikeDetector"); if (td != null) foreach (var d in prop.transform.root.GetComponentsInChildren(td, true)) Plugin.OurDetectors.Add(d.GetInstanceID());
                     foreach (var c in partList) if (c != null && td != null) foreach (var d in c.GetComponentsInChildren(td, true)) Plugin.OurDetectors.Add(d.GetInstanceID());
                     Plugin.Log.LogInfo("UL-2 prop watch on " + prop.name + ", " + Plugin.OurDetectors.Count + " strike detector(s)");
@@ -700,7 +796,7 @@ namespace UL2Airtrike
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 rotor lift: " + e); pRb = null; }
         }
-        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax, aiGamMin, aiObst = -1f; bool aiPilot, aiLanding, aiRoll;
+        static FieldInfo fState; float aiChk, aiRawLog, aiGamMax, aiGamMin, aiObst = -1f; bool aiPilot, aiLanding, aiRoll; object aiTakeoff;
         bool IsAI()
         {
             if ((aiChk -= Time.fixedDeltaTime) > 0f) return aiPilot; aiChk = 0.5f;
@@ -714,9 +810,10 @@ namespace UL2Airtrike
                     var st = fState?.GetValue(p);
                     aiPilot = st != null && st.GetType().Name.StartsWith("AI");
                     aiLanding = aiPilot && st.GetType().Name.Contains("Landing");
+                    aiTakeoff = aiPilot && st.GetType().Name == "AIPilotTakeoffState" ? st : null;
                 }
             }
-            catch { aiPilot = false; aiLanding = false; }
+            catch { aiPilot = false; aiLanding = false; aiTakeoff = null; }
             return aiPilot;
         }
         // flight path limiter: the AI's pitch is kept at or nose-down of what holds the flight path at or below gammaMax
@@ -733,6 +830,30 @@ namespace UL2Airtrike
                 float bank = Vector3.SignedAngle(Vector3.ProjectOnPlane(Vector3.up, transform.forward), transform.up, transform.forward);
                 fRoll.SetValue(ci, Mathf.Clamp(bank * 0.03f, -1f, 1f));            // roll back toward wings level
             }
+            else if (aiTakeoff != null && fRoll != null && alt > TakeoffFix.START) SideStep(rb, ci);
+        }
+        // 0.15.87 (Nick 23:23: 0.15.86 turn never showed, a Cricket taking off behind flew into it): moving the stock aim point
+        // was not enough, the autopilot barely banks that close to the ground. Now the bank is flown directly: up to 20 deg
+        // toward this aircraft's side until the track is 30 deg off the runway, then wings level on that heading until the
+        // combat AI takes over at 75 m.
+        float sideLog;
+        void SideStep(Rigidbody rb, object ci)
+        {
+            try
+            {
+                Vector3 rv = TakeoffFix.RunwayDir(aiTakeoff); if (rv == Vector3.zero) return;
+                var vh = new Vector3(rb.velocity.x, 0f, rb.velocity.z); if (vh.sqrMagnitude < 25f) return;
+                float s = TakeoffFix.Side(unit);
+                float off = Vector3.SignedAngle(rv, vh, Vector3.up) * s;                // track off the runway toward our side, deg
+                float ramp = Mathf.Clamp01((alt - TakeoffFix.START) / 5f);
+                float want = Mathf.Clamp((TakeoffFix.SIDE_DEG - off) * 0.8f, 0f, 20f) * ramp;   // bank magnitude wanted
+                float bankWant = -s * want;                                             // + = left wing down, so a right turn is negative
+                float bank = Vector3.SignedAngle(Vector3.ProjectOnPlane(Vector3.up, transform.forward), transform.up, transform.forward);
+                float input = -1.08f * Mathf.Sin(bankWant * Mathf.Deg2Rad) + 0.04f * (bank - bankWant);   // hold against the rotor's roll-level pull
+                fRoll.SetValue(ci, Mathf.Clamp(input, -1f, 1f));
+                if (Time.time - sideLog > 1f) { sideLog = Time.time; Plugin.Log.LogInfo($"UL-2 AI side-step: alt {alt:0.0} track off {off:0} deg bank {bank:0} want {bankWant:0} roll in {input:0.00}"); }
+            }
+            catch { }
         }
         bool aiLevel; float aiNeedT, aiNeed = -90f;
         static System.Type tUnitT;
@@ -772,6 +893,7 @@ namespace UL2Airtrike
             float gMax;
             if (alt < 1.5f) { aiGamMax = 0f; return spd < V80 ? Mathf.Max(p, 0f) : Mathf.Max(p, -0.3f); }   // no rotation before 80 km/h
             if (spd < V80) gMax = -4f * Mathf.InverseLerp(8f, 25f, alt);               // level near the ground, gentle dive with height
+            else if (aiTakeoff != null) gMax = Mathf.Lerp(2f, 7f, Mathf.InverseLerp(V80, 30f, spd));   // 0.15.87 (Nick 23:16): steeper climb-out after takeoff
             else gMax = Mathf.Lerp(0f, 6f, Mathf.InverseLerp(V80, 30f, spd));          // shallow climb once speed builds
             // stay low (0.15.54, Nick 20:59: lower in combat, masking behind terrain): no climbing above ~45 m over the ground,
             // or ~190 m with the spotter aboard so he can see over the terrain
@@ -876,7 +998,7 @@ namespace UL2Airtrike
                 if (c == null) continue;
                 foreach (var t in c.GetComponentsInChildren<Transform>(true))
                 {
-                    if (t.name.StartsWith("UL2_s3kit_")) { if (t.GetComponent<Seat3Pose>() == null) t.gameObject.AddComponent<Seat3Pose>(); if (t.gameObject.activeInHierarchy) { kit = true; if (t.name == "UL2_s3kit_spot") spot = true; } }
+                    if (t.name.StartsWith("UL2_s3kit_")) { if (t.GetComponent<Seat3Pose>() == null) t.gameObject.AddComponent<Seat3Pose>(); if (t.gameObject.activeInHierarchy && !t.name.StartsWith("UL2_s3kit_pm")) { kit = true; if (t.name == "UL2_s3kit_spot") spot = true; } }   // passenger module kits (pm*) are not seat 3: no seat 3 lap belt
                     else if (t.name.StartsWith("UL2_harness") && t.name.Length == 12) { int k = t.name[11] - '1'; if (k >= 0 && k < 3) harness[k] = t.gameObject; }
                 }
             }
@@ -1418,11 +1540,68 @@ namespace UL2Airtrike
     // Seat 3 passenger: poses the kit's bones from the baked table (heading x elevation, same IK solutions as the
     // Blender rig), following the stock turret it rides on. The visual heading moves linearly inside the side arcs, so a
     // swap from one side to the other always goes forward over the seat 2 crewman, never round the back.
+    // Passenger module machine gunners (Nick 22:51): the stock turret slews traverse and elevation independently, so swinging
+    // forward at a low aim put the barrel through the stub grenadier's head. Inside the grenadier's heading band the gun must be
+    // at least CLEAR deg up: the elevation is lifted first and the traverse is held at the band edge until it is up, so the
+    // gun passes over his head. Headings are in the gunner's outward seat frame (0 = straight out, + = clockwise from above),
+    // from the head exclusion cones in UL2PassengerModule.cs (right: -66 +-8, left: 70 +-8, both 2 deg down).
+    internal static class PmArc
+    {
+        class Cfg { public float centre, lo, hi; }
+        const float CLEAR = 12f, MARGIN = 4f;
+        static readonly Dictionary<int, Cfg> cfg = new Dictionary<int, Cfg>();
+        static FieldInfo fT, fE, fTR, fER, fElev;
+        static Cfg Get(Component t)
+        {
+            int id = t.GetInstanceID(); Cfg c;
+            if (cfg.TryGetValue(id, out c)) return c;
+            c = null;
+            for (var p = t.transform.parent; p != null; p = p.parent)
+            {
+                if (p.name == "pm_mg_R") { c = new Cfg { centre = -11.5f, lo = -76f, hi = -46f }; break; }   // 0.15.85: head + neck + shoulders
+                if (p.name == "pm_mg_L") { c = new Cfg { centre = 11.5f, lo = 50f, hi = 80f }; break; }
+                if (p.name.StartsWith("UL2_pm") || p.parent == null) break;
+            }
+            if (c != null && fT == null)
+            {
+                var tt = t.GetType();
+                fT = AccessTools.Field(tt, "traverseAngle"); fE = AccessTools.Field(tt, "elevationAngle");
+                fTR = AccessTools.Field(tt, "traverseRate"); fER = AccessTools.Field(tt, "elevationRate"); fElev = AccessTools.Field(tt, "elevationTransform");
+            }
+            cfg[id] = c; return c;
+        }
+        public static void Pre(Component __instance, out float __state)
+        {
+            __state = float.NaN;
+            try { if (__instance != null && Get(__instance) != null && fT != null) __state = (float)fT.GetValue(__instance); } catch { }
+        }
+        public static void Post(Component __instance, float __state)
+        {
+            try
+            {
+                if (float.IsNaN(__state)) return;
+                var c = cfg[__instance.GetInstanceID()];
+                float tr = (float)fT.GetValue(__instance), el = (float)fE.GetValue(__instance);   // elevationAngle: negative = up
+                float h0 = c.centre + __state, h1 = c.centre + tr, up = -el;
+                bool in1 = h1 > c.lo - MARGIN && h1 < c.hi + MARGIN;
+                if (!in1 || up >= CLEAR) return;
+                bool in0 = h0 > c.lo - MARGIN && h0 < c.hi + MARGIN;
+                float dt = Time.fixedDeltaTime, er = (float)fER.GetValue(__instance);
+                if (!in0) { tr = __state; fT.SetValue(__instance, tr); __instance.transform.localEulerAngles = new Vector3(0f, tr, 0f); }   // hold at the band edge
+                el = Mathf.MoveTowards(el, -CLEAR, Mathf.Max(er, 60f) * dt);                                                    // lift over the head
+                fE.SetValue(__instance, el);
+                var et = fElev.GetValue(__instance) as Transform; if (et != null) et.localEulerAngles = new Vector3(el, 0f, 0f);
+            }
+            catch { }
+        }
+    }
+
     public class Seat3Pose : MonoBehaviour
     {
         class Table { public float afr, afl, ar; public string[] bones; public float[] A, E, d; }
         static readonly Dictionary<string, Table> tables = new Dictionary<string, Table>();
         static Type tTurret, tAircraft, tDetector; static FieldInfo fElev, fWm, fMag, fVis, fManual; static MethodInfo mGetTarget; static MethodInfo mTargets;
+        float lastA = 999f, lastE = 999f; bool posedOnce; SkinnedMeshRenderer smr;
         Table T; Transform[] bones; Behaviour turret; Transform elev; Component aircraft; string kind;
         float vA = 52f, vE = -40f, side = 1f, t0, logT;
         readonly Dictionary<Component, float> magOrig = new Dictionary<Component, float>(), visOrig = new Dictionary<Component, float>();
@@ -1475,14 +1654,15 @@ namespace UL2Airtrike
         }
         // 0.15.23 (Nick 04:21, 04:24): any seat 3 passenger gives the aircraft 1/8 of a full Ibis troop load's capture power (16 troops,
         // 8 per bay, 8 capture each = 16), i.e. 2. Same rule as the stock MountedTroops: only while landed and stopped.
-        static FieldInfo fSpd, fRalt; static MethodInfo mCap, mPartDet; Component seatPart; bool capOn; float capT;
-        const float CAPTURE = 2f;
+        static FieldInfo fSpd, fRalt; static MethodInfo mCap, mPartDet; static Type tUnitS; bool seatSearched; Component seatPart; bool capOn; float capT;
+        const float CAPTURE = 2f;   // passenger module: four kits x 2 = 8, one full Ibis infantry bay (Nick 22:09)
         void Capture()
         {
             if ((capT -= Time.deltaTime) > 0f || aircraft == null) return; capT = 2f;
-            var tU = AccessTools.TypeByName("Unit");
+            // 0.15.84 (Nick 22:51: frame drops): AccessTools.TypeByName scans every loaded assembly; it ran every 2 s per kit
+            var tU = tUnitS = tUnitS ?? AccessTools.TypeByName("Unit");
             fSpd = fSpd ?? AccessTools.Field(tU, "speed"); fRalt = fRalt ?? AccessTools.Field(tU, "radarAlt"); mCap = mCap ?? AccessTools.Method(tU, "ModifyCaptureStrength");
-            if (seatPart == null) { var tP = AccessTools.TypeByName("UnitPart"); seatPart = GetComponentInParent(tP); mPartDet = mPartDet ?? AccessTools.Method(tP, "IsDetached"); }
+            if (seatPart == null && !seatSearched) { seatSearched = true; var tP = AccessTools.TypeByName("UnitPart"); seatPart = GetComponentInParent(tP); mPartDet = mPartDet ?? AccessTools.Method(tP, "IsDetached"); }
             bool gone = seatPart != null && mPartDet != null && (bool)mPartDet.Invoke(seatPart, null);
             bool on = !gone && fSpd != null && fRalt != null && (float)fSpd.GetValue(aircraft) < 2f && (float)fRalt.GetValue(aircraft) < 1f;
             if (on != capOn && mCap != null) { capOn = on; mCap.Invoke(aircraft, new object[] { on ? CAPTURE : -CAPTURE }); Plugin.Log.LogInfo("UL-2 seat 3 capture " + (on ? "on" : "off")); }
@@ -1524,12 +1704,19 @@ namespace UL2Airtrike
                         }
                 }
                 float t = Time.unscaledTime + t0;
-                if (!active) { tA = side * (kind == "spot" ? 75f + 20f * Mathf.Sin(t * 0.21f) : 52f); tE = kind == "spot" ? -12f + 6f * Mathf.Sin(t * 0.17f + 1.3f) : -12f; }   // idle: sitting up, weapon slightly low on his side (Nick 21:53: -40 read as slouched); spotter scans
+                if (!active && kind.StartsWith("pm")) { tA = 0f; tE = -12f; }   // passenger module: faces out, idle weapon low and straight out
+                else if (!active) { tA = side * (kind == "spot" ? 75f + 20f * Mathf.Sin(t * 0.21f) : 52f); tE = kind == "spot" ? -12f + 6f * Mathf.Sin(t * 0.17f + 1.3f) : -12f; }   // idle: sitting up, weapon slightly low on his side (Nick 21:53: -40 read as slouched); spotter scans
                 tA = Mathf.Clamp(tA, -T.ar, T.ar);
                 if (tA > T.afr) side = 1f; else if (tA < -T.afl) side = -1f;
                 vA = Mathf.MoveTowards(vA, tA, 150f * dt);
                 vE = Mathf.MoveTowards(vE, Mathf.Clamp(tE, T.E[0], T.E[T.E.Length - 1]), 90f * dt);
-                Apply(vA, vE);
+                // 0.15.84 (Nick 22:51: frame drops): writing the bones every frame re-skins the whole soldier (20-30k verts) even
+                // when he holds still or is off screen; only pose him when the pose changed and a renderer can be seen
+                if (Mathf.Abs(vA - lastA) > 0.05f || Mathf.Abs(vE - lastE) > 0.05f)
+                {
+                    if (smr == null) smr = GetComponentInChildren<SkinnedMeshRenderer>(true);
+                    if (smr == null || smr.isVisible || !posedOnce) { Apply(vA, vE); lastA = vA; lastE = vE; posedOnce = true; }
+                }
             }
             catch (Exception e) { Plugin.Log.LogError("UL-2 seat 3 pose: " + e); enabled = false; }
         }
@@ -1644,6 +1831,71 @@ namespace UL2Airtrike
                 var runway = fRunway?.GetValue(usage); if (runway == null) return;
                 mDereg = mDereg ?? AccessTools.Method(runway.GetType(), "DeregisterLanding");
                 if (mDereg != null) mDereg.Invoke(runway, new object[] { ac });
+            }
+            catch { }
+        }
+    }
+
+    // 0.15.86 (Nick 23:16): the stock takeoff state aims 300 m straight down the runway until 75 m radar altitude. The UL-2
+    // climbs slowly, so it stays on the centreline for a long time in the way of traffic behind it. Once it is clear of the
+    // ground the aim point is swung 25 degrees to one side (eased in from 3 to 12 m) so it banks gently off the centreline.
+    // Each aircraft keeps one side; odd and even instances go opposite ways so a stream of takeoffs fans out.
+    internal static class TakeoffFix
+    {
+        internal const float SIDE_DEG = 30f, START = 3f; const float FULL = 12f, DIST = 300f;
+        static FieldInfo fAc, fTaken, fRv, radarAlt, fX, fZ;
+        [ThreadStatic] static bool active; [ThreadStatic] static Vector3 shift;
+        public static void Patch(Harmony h)
+        {
+            try
+            {
+                var t = AccessTools.TypeByName("AIPilotTakeoffState"); var m = t == null ? null : AccessTools.Method(t, "FixedUpdateState");
+                var tAp = AccessTools.TypeByName("AutopilotPlane"); var tGp = AccessTools.TypeByName("GlobalPosition");
+                var aim = tAp == null || tGp == null ? null : AccessTools.Method(tAp, "AutoAim", new[] { tGp, typeof(bool), typeof(bool), typeof(bool), typeof(float), typeof(float), typeof(bool), typeof(float), typeof(Vector3) });
+                fAc = AccessTools.Field(t, "aircraft"); fTaken = AccessTools.Field(t, "takenOff"); fRv = AccessTools.Field(t, "runwayVector");
+                radarAlt = AccessTools.Field(AccessTools.TypeByName("Unit"), "radarAlt");
+                fX = tGp == null ? null : AccessTools.Field(tGp, "x"); fZ = tGp == null ? null : AccessTools.Field(tGp, "z");
+                if (m == null || aim == null || fAc == null || fTaken == null || fRv == null || radarAlt == null || fX == null || fZ == null)
+                { Plugin.Log.LogWarning("UL-2: AI takeoff state not found, takeoff side-step off"); return; }
+                h.Patch(m, prefix: new HarmonyMethod(typeof(TakeoffFix), nameof(Pre)), postfix: new HarmonyMethod(typeof(TakeoffFix), nameof(Post)));
+                h.Patch(aim, prefix: new HarmonyMethod(typeof(TakeoffFix), nameof(PreAim)));
+                Plugin.Log.LogInfo("UL-2 takeoff side-step patched");
+            }
+            catch (Exception e) { Plugin.Log.LogWarning("UL-2 takeoff side-step not applied: " + e.Message); }
+        }
+        static void Pre(object __instance)
+        {
+            active = false;
+            try
+            {
+                var ac = fAc.GetValue(__instance) as Component;
+                if (ac == null || !ac.name.StartsWith("UL2Airtrike") || !(bool)fTaken.GetValue(__instance)) return;
+                float alt = (float)radarAlt.GetValue(ac); if (alt <= START) return;
+                Vector3 rv = (Vector3)fRv.GetValue(__instance); rv.y = 0f; if (rv.sqrMagnitude < 0.01f) return;
+                rv.Normalize();
+                float side = Side(ac);
+                float ang = SIDE_DEG * side * Mathf.Clamp01((alt - START) / (FULL - START));
+                shift = (Quaternion.Euler(0f, ang, 0f) * rv - rv) * DIST;
+                active = true;
+            }
+            catch { }
+        }
+        static void Post() { active = false; }
+        internal static float Side(Component ac) { return ac == null || ((ac.gameObject.GetInstanceID() >> 1) & 1) == 0 ? 1f : -1f; }
+        internal static Vector3 RunwayDir(object st)
+        {
+            try { var rv = (Vector3)fRv.GetValue(st); rv.y = 0f; return rv.sqrMagnitude < 0.01f ? Vector3.zero : rv.normalized; } catch { return Vector3.zero; }
+        }
+        static void PreAim(object[] __args)
+        {
+            if (!active) return;
+            active = false;
+            try
+            {
+                object gp = __args[0];
+                fX.SetValue(gp, (float)fX.GetValue(gp) + shift.x);
+                fZ.SetValue(gp, (float)fZ.GetValue(gp) + shift.z);
+                __args[0] = gp;
             }
             catch { }
         }
