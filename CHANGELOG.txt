@@ -2,6 +2,7 @@ UL-2 Airtrike changelog
 =======================
 
 Unreleased
+- 0.15.81: the seat 3 Machine Gunner and Grenadier can no longer shoot the crew: the gun stays on safety until the turret has swung onto its aim, so it cannot fire while the barrel is still passing the pilots (at spawn it rests pointing forward) or while the aim is held at the edge of the forward or aft no-fire zone.
 - 0.15.80: new livery Racing Navy (navy over white with a red and gold cheat line and a checkered fin), painted from the Livery Bundle.
 
 1.0.0 (2026-11-15, updated) - first full release

@@ -132,6 +132,11 @@ public static partial class UL2Builder
                     fc.GetArrayElementAtIndex(1).FindPropertyRelative("transform").objectReferenceValue = ca;
                     fc.GetArrayElementAtIndex(1).FindPropertyRelative("coneAngle").floatValue = K.aft;
                     fc.GetArrayElementAtIndex(1).FindPropertyRelative("exclusion").boolValue = true;
+                    // 0.15.81 (user report via Nick 2026-11-16: fired at spawn looking forward and hit the pilot): the turret rests
+                    // pointing forward, inside the no-fire cone, and slews out of it while the gun already fires. Stock
+                    // aimSafetyWeapon puts the gun on safety whenever the turret is not on its (cone-limited) aim, so it can
+                    // never fire while the barrel is still swinging or the aim is held at the edge of a no-fire cone.
+                    so.FindProperty("aimSafetyWeapon").objectReferenceValue = gun;
                     so.ApplyModifiedPropertiesWithoutUndo();
                     // Nick 20:20: MG 75-round belts, 5 s reload, 2.1 km range (own weapon info so it is its own station); GL 6-round
                     // magazine, 7 s reload, a third of the Ibis 40 mm turret's 340 rpm
