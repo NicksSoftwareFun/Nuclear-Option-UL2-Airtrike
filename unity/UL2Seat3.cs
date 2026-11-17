@@ -172,9 +172,14 @@ public static partial class UL2Builder
         var m = AssetDatabase.LoadMainAssetAtPath(path);
         if (m == null) { AssetDatabase.CopyAsset(src != null ? AssetDatabase.GetAssetPath(src) : PH + "MonoBehaviour/Grenade_40mm_PLACEHOLDER.asset", path); AssetDatabase.ImportAsset(path); m = AssetDatabase.LoadMainAssetAtPath(path); }
         var so = new SerializedObject(m);
-        so.FindProperty("weaponName").stringValue = "40 mm Grenadier";
-        so.FindProperty("shortName").stringValue = "40mm GL";
-        so.FindProperty("description").stringValue = "A third seat grenadier with a six-shot 40 mm grenade launcher with HEDP ammo.";
+        so.FindProperty("weaponName").stringValue = "40mm High Velocity";   // Nick 15:40 / 15:42: new round for both grenadier loadouts
+        so.FindProperty("shortName").stringValue = "40mm HV";
+        so.FindProperty("description").stringValue = "A third seat grenadier with a six-shot, long-barrelled 40 mm grenade launcher firing high velocity grenades.";
+        // 0.15.89 (Nick 15:38): faster round for less flight time against moving targets, bigger blast that hurts Linebreakers but
+        // stays under MBT blast armour; stock pierce kept
+        so.FindProperty("muzzleVelocity").floatValue = 400f;
+        var msp = so.FindProperty("maxSpeed"); if (msp != null && msp.floatValue > 0f) msp.floatValue = Mathf.Max(msp.floatValue, 400f);
+        so.FindProperty("blastDamage").floatValue = 0.7f;
         so.FindProperty("weaponIcon").objectReferenceValue = UL2Builder.IconSprite(ART + "Icons/UL2_icon_s3_gl.png");
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
         return m;
@@ -222,7 +227,7 @@ public static partial class UL2Builder
         so.FindProperty("targetRequirements.maxRange").floatValue = 2100f;
         // .338 Lapua Magnum round (Nick 20:24): faster and slightly more penetrating than 12.7, less damage per hit
         so.FindProperty("muzzleVelocity").floatValue = 950f; so.FindProperty("maxSpeed").floatValue = 950f;
-        so.FindProperty("dragCoef").floatValue = 0.16f; so.FindProperty("pierceDamage").floatValue = 150f;   // 0.15.36 (Nick 22:44: kills too slowly): 120 -> 150, near the 12.7 (160); armour tier stays 3.3 (12.7 is 3)
+        so.FindProperty("dragCoef").floatValue = 0.16f; so.FindProperty("pierceDamage").floatValue = 355f;   // 0.15.36 (Nick 22:44: kills too slowly): 120 -> 150; 1.1.1 (Nick 23:29): 355 like the Special Operations Team, so it gets through an MRAP at 3 km; armour tier stays 3.3
         so.FindProperty("armorTierEffectiveness").floatValue = 3.3f; so.FindProperty("massPerRound").floatValue = 0.045f;
         so.FindProperty("costPerRound").floatValue = 0.0000025f;
         so.FindProperty("effectiveness.antiAir").floatValue = 0.10f; so.FindProperty("effectiveness.antiSurface").floatValue = 0.10f;

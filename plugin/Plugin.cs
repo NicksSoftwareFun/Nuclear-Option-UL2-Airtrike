@@ -13,7 +13,7 @@ namespace UL2Airtrike
     // so the spinning blades are a visual copy turned here with airspeed. The only stock spinner, ConstantSpeedProp,
     // is engine driven and would make thrust. When a blade section breaks off, its spinning copy is hidden and the
     // broken part shows its own mesh.
-    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike", "1.1.0")]
+    [BepInPlugin("nick.nuclearoption.ul2airtrike", "UL-2 Airtrike", "1.1.1")]
     [BepInDependency("com.nikkorap.blueprinter", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -76,6 +76,8 @@ namespace UL2Airtrike
                 TakeoffFix.Patch(h);
                 // 0.15.64 (Nick 03:07, Lynchpins all missing): only fire laser-guided rockets once the nose laser is on the target
                 LaserFix.Patch(h);
+                // 0.15.92 (Nick 21:34): Hangball Mk.II x2 on the stub pylons, only when the Hangball mod is installed
+                StartCoroutine(HangballLink.Run());
                 // passenger module (Nick 2026-11-16 21:39): one mount with four turrets. Stock SpawnMount attaches only the first
                 // turret of a turret mount to the weapon manager; attach the rest. The weapon manager groups them by weapon info,
                 // so the two machine guns fire as one weapon and the two grenade launchers as another.
@@ -120,6 +122,9 @@ namespace UL2Airtrike
         // team's empty mass moves to the rear cockpit part (z +0.23), so the module's mass centre sits near its real one (z -0.08);
         // the ammo stays on the seat part. Put back when the mount is removed.
         const float PM_FWD = 0.6f;
+        // 0.15.95 (Nick 23:16: still tips onto its tail with the team aboard): the shifted share goes to the front cockpit part
+        // (z +1.08) instead of the rear one (z +0.23), about 16 cm further forward for the whole aircraft's centre of mass
+        const string PM_PART = "cockpit_F";
         static readonly Dictionary<object, KeyValuePair<Component, float>> pmShift = new Dictionary<object, KeyValuePair<Component, float>>();
         static FieldInfo fHpPart, fHpMount, fMountEmpty; static MethodInfo mPartMass, mAllParts;
         static void PmMass(object hp, object aircraft, bool on)
@@ -143,8 +148,8 @@ namespace UL2Airtrike
                 float m = (float)fMountEmpty.GetValue(mount) * PM_FWD;
                 mAllParts = mAllParts ?? AccessTools.Method(aircraft.GetType(), "GetAllParts");
                 Component fwd = null;
-                if (mAllParts.Invoke(aircraft, null) is System.Collections.IEnumerable all) foreach (var o in all) if (o is Component c && c != null && c.name == "cockpit_R") { fwd = c; break; }
-                if (fwd == null) { Log.LogWarning("UL-2 passenger module: no cockpit_R part, mass left on " + part.name); return; }
+                if (mAllParts.Invoke(aircraft, null) is System.Collections.IEnumerable all) foreach (var o in all) if (o is Component c && c != null && c.name == PM_PART) { fwd = c; break; }
+                if (fwd == null) { Log.LogWarning("UL-2 passenger module: no " + PM_PART + " part, mass left on " + part.name); return; }
                 mPartMass.Invoke(part, new object[] { -m }); mPartMass.Invoke(fwd, new object[] { m });
                 pmShift[id] = new KeyValuePair<Component, float>(fwd, m);
                 Log.LogInfo("UL-2 passenger module: " + m.ToString("0") + " kg moved from " + part.name + " to " + fwd.name);
@@ -1906,6 +1911,56 @@ namespace UL2Airtrike
     // leaves before its target is lased starts with no target and never picks one up again (LaserSeeker.Initialize), so it
     // flies straight. For the UL-2 AI only, the target is put in the list first and the shot is held until the laser is on
     // it (at most 3 s, then the stock shot goes anyway). Every UL-2 laser rocket logs whether it had the laser at launch.
+    // 0.15.92 (Nick 2026-11-17 21:34): the stubs take a twin Eyeball Mk.II (built into the mod like the twin AGM-48) and,
+    // only when Nick's Hangball Mk.II mod is installed, its twin Hangball rack too. The UL-2 does not depend on that mod: the
+    // rack is looked up by its key in the game's weapon list and added to both stub stations' options after the Eyeball x2.
+    // Loadouts save mounts by key, so a saved Hangball loadout simply drops it when the mod is missing.
+    internal static class HangballLink
+    {
+        const string KEY = "AGM_scanner1_hangball_double_compact", AFTER = "UL2_EYE_double";
+        static readonly string[] STATIONS = { "Left Stub", "Right Stub" };
+        internal static System.Collections.IEnumerator Run()
+        {
+            var wait = new WaitForSeconds(3f);
+            System.Type tEnc = null; bool logged = false;
+            while (true)
+            {
+                yield return wait;
+                try
+                {
+                    tEnc = tEnc ?? AccessTools.TypeByName("Encyclopedia");
+                    if (tEnc == null) continue;
+                    var units = AccessTools.Field(tEnc, "Lookup")?.GetValue(null) as System.Collections.IDictionary;
+                    var mounts = AccessTools.Field(tEnc, "WeaponLookup")?.GetValue(null) as System.Collections.IDictionary;
+                    if (units == null || mounts == null || !units.Contains("UL2Airtrike") || !mounts.Contains(KEY)) continue;
+                    var hb = mounts[KEY]; var def = units["UL2Airtrike"];
+                    var prefab = AccessTools.Field(def.GetType(), "unitPrefab")?.GetValue(def) as GameObject;
+                    if (prefab == null) continue;
+                    var wm = prefab.GetComponentsInChildren<MonoBehaviour>(true).FirstOrDefault(c => c != null && c.GetType().Name == "WeaponManager");
+                    var sets = wm == null ? null : AccessTools.Field(wm.GetType(), "hardpointSets")?.GetValue(wm) as System.Array;
+                    if (sets == null) continue;
+                    int added = 0;
+                    foreach (var set in sets)
+                    {
+                        var nm = AccessTools.Field(set.GetType(), "name")?.GetValue(set) as string;
+                        if (System.Array.IndexOf(STATIONS, nm) < 0) continue;
+                        var opts = AccessTools.Field(set.GetType(), "weaponOptions")?.GetValue(set) as System.Collections.IList;
+                        if (opts == null || opts.Contains(hb)) continue;
+                        int at = opts.Count;
+                        for (int i = 0; i < opts.Count; i++)
+                        {
+                            var o = opts[i] as ScriptableObject;
+                            if (o != null && (AccessTools.Field(o.GetType(), "jsonKey")?.GetValue(o) as string) == AFTER) { at = i + 1; break; }
+                        }
+                        opts.Insert(at, hb); added++;
+                    }
+                    if (added > 0 || !logged) { Plugin.Log.LogInfo("UL-2: Hangball Mk.II x2 added to " + added + " stub station(s)"); logged = true; }
+                }
+                catch (System.Exception e) { Plugin.Log.LogWarning("UL-2 Hangball link: " + e.Message); wait = new WaitForSeconds(30f); }
+            }
+        }
+    }
+
     internal static class LaserFix
     {
         const BindingFlags F = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;

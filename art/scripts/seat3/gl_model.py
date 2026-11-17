@@ -15,11 +15,15 @@ CY0, CY1 = 0.072, 0.212       # cylinder rear / front faces
 BORE = CZ + CPR               # barrel axis (top chamber)
 FP0, FP1 = 0.214, 0.232       # front frame plate
 HG0, HG1 = 0.240, 0.470       # handguard
-MUZ = 0.505
+MUZ0 = 0.505                  # original muzzle (end of the standard barrel)
+MUZ = 0.665                   # 0.15.89 (Nick 15:42 / 15:58): high velocity barrel, the same single tube 16 cm longer; handguard unchanged
 GRIP_TOP, GRIP_BOT = Vector((0, 0.008, -0.012)), Vector((0, -0.032, -0.118))
 VG_Y = 0.255
 VG_TOP, VG_BOT = Vector((0, VG_Y, BORE - 0.044)), Vector((0, VG_Y, BORE - 0.174))
-SIGHT = Vector((-0.040, 0.110, BORE + 0.064))   # tube reflex sight on a left side mount (axis centre)
+RAIL_TOP = BORE + 0.0625
+OPT_Y = 0.132                 # boxy day/thermal optic on the top rail over the cylinder (Nick 2026-11-17 16:11)
+OPT_WIN_Z = RAIL_TOP + 0.038  # optic window centre height
+SIGHT = Vector((-0.040, 0.110, BORE + 0.064))   # gunner head aim point: kept at the old tube sight so head poses stay as they were (Nick 16:23)
 STOCK_TUBE = (Vector((0, 0.000, 0.064)), Vector((0, -0.190, 0.064)))
 BUTT_Y = -0.230
 
@@ -78,9 +82,10 @@ def build_gl(M):
     box('gl_hinge_lug', (-0.012, FP0 + 0.004, CZ - CR + 0.004), (0.024, 0.020, 0.030), DARK, bevel=0.004, M=M)
     box('gl_latch', (-0.029, 0.046, 0.024), (0.010, 0.030, 0.012), MECH, bevel=0.003, M=M)
     # ---- barrel with a quad-rail handguard (vented, rails on all four faces), muzzle ring
-    tube('gl_barrel', (0, FP1, BORE), (0, MUZ, BORE), 0.0255, DARK, segs=24, M=M)
-    tube('gl_bore', (0, MUZ - 0.004, BORE), (0, MUZ + 0.0005, BORE), 0.0205, SCREEN, segs=20, M=M)
-    revolve('gl_muzzle', (0, MUZ - 0.020, BORE), (0, 1, 0), [(0, 0.0255), (0, 0.030), (0.016, 0.030), (0.020, 0.027), (0.020, 0.0255)], DARK, segs=24, M=M)
+    # barrel: plain tube with an open bored muzzle (no muzzle device, Nick 16:05); the last 8 cm are one closed revolve
+    # (outer wall, muzzle face, bore wall, bore bottom) so the bore reads as a hole
+    tube('gl_barrel', (0, FP1, BORE), (0, MUZ - 0.080, BORE), 0.0255, DARK, segs=24, M=M)
+    revolve('gl_muzzle_bore', (0, MUZ - 0.080, BORE), (0, 1, 0), [(0, 0.0255), (0.080, 0.0255), (0.080, 0.0205), (0.002, 0.0205), (0.002, 0)], DARK, segs=24, M=M)
     hgc = Vector((0, (HG0 + HG1) / 2, BORE)); L = HG1 - HG0
     for nm, off, sz in (('t', (0, 0, 0.029), (0.040, L, 0.010)), ('b', (0, 0, -0.029), (0.040, L, 0.010)),
                         ('l', (-0.029, 0, 0), (0.010, L, 0.040)), ('r', (0.029, 0, 0), (0.010, L, 0.040))):
@@ -103,17 +108,64 @@ def build_gl(M):
     revolve('gl_vg', tuple(VG_TOP), (0, 0, -1), [(0, 0), (0, 0.015), (0.010, 0.016), (0.120, 0.018), (0.126, 0.021), (0.130, 0.021), (0.132, 0.0)], DARK, segs=14, M=M)
     for k in range(4):
         tube(f'gl_vg_rib{k}', (0, VG_Y, VG_TOP.z - 0.030 - k * 0.018), (0, VG_Y, VG_TOP.z - 0.034 - k * 0.018), 0.0178, MECH, segs=14, M=M)
-    # ---- reflex sight on the top rail and a folding leaf range sight at the front of the strap
-    S = SIGHT
-    box('gl_sight_mount', (-0.024, S.y, BORE + 0.056), (0.030, 0.060, 0.012), DARK, bevel=0.002, M=M)
-    box('gl_sight_arm', (-0.040, S.y, S.z - 0.012), (0.012, 0.040, 0.026), DARK, bevel=0.002, M=M)
-    revolve('gl_sight', tuple(S + Vector((0, -0.055, 0))), (0, 1, 0), [(0, 0.016), (0, 0.020), (0.008, 0.020), (0.010, 0.0175), (0.100, 0.0175), (0.102, 0.020), (0.110, 0.020), (0.110, 0.016)], DARK, segs=24, M=M)
-    tube('gl_sight_glass', tuple(S + Vector((0, 0.050, 0))), tuple(S + Vector((0, 0.051, 0))), 0.016, SCREEN, segs=20, M=M)
-    tube('gl_sight_glassR', tuple(S + Vector((0, -0.050, 0))), tuple(S + Vector((0, -0.049, 0))), 0.016, SCREEN, segs=20, M=M)
-    revolve('gl_sight_drum', tuple(S + Vector((-0.018, -0.005, 0))), (-1, 0, 0), [(0, 0), (0, 0.0175), (0.020, 0.0175), (0.022, 0.015), (0.022, 0)], MECH, segs=20, M=M)
-    for k in range(8):
-        a_ = math.radians(k * 45); box(f'gl_sight_tick{k}', tuple(S + Vector((-0.039, -0.005 + 0.0176 * math.cos(a_), 0.0176 * math.sin(a_)))), (0.004, 0.002, 0.002), DARK, M=M)
-    tube('gl_sight_knob', tuple(S + Vector((0.010, -0.030, 0.016))), tuple(S + Vector((0.010, -0.030, 0.026))), 0.006, MECH, segs=12, M=M)
+    # ---- boxy computer-sighted optic (original design): rail clamp base, square-window body with hoods, front cover
+    #      flipped down on its hinge, top camera module with a forward lens under a rubber shade, side controls
+    zt = RAIL_TOP; y0, L = OPT_Y, 0.066; yf, yr = OPT_Y + L / 2, OPT_Y - L / 2
+    box('gl_opt_base', (0, y0, zt + 0.0085), (0.042, 0.072, 0.017), DARK, bevel=0.003, M=M)
+    tube('gl_opt_xbolt', (-0.0225, y0 + 0.004, zt + 0.004), (0.0225, y0 + 0.004, zt + 0.004), 0.0035, MECH, segs=10, M=M)
+    for sx in (-1, 1):   # angled lightening cuts in the mount sides
+        for k in (-1, 1):
+            box(f'gl_opt_cut{sx}{k}', (sx * 0.0212, y0 + k * 0.022, zt + 0.010), (0.002, 0.012, 0.005), SCREEN, rot=(math.radians(25 * k), 0, 0), M=M)
+    for k, y in enumerate((y0 - 0.018, y0 + 0.018)):
+        tube(f'gl_opt_knob{k}', (0.021, y, zt + 0.008), (0.029, y, zt + 0.008), 0.0065, MECH, segs=14, M=M)   # rail clamp nuts on the right
+        box(f'gl_opt_knob_slot{k}', (0.0295, y, zt + 0.008), (0.002, 0.009, 0.0016), SCREEN, M=M)
+    box('gl_opt_body', (0, y0, zt + 0.038), (0.048, L, 0.052), DARK, bevel=0.004, M=M)
+    # sloped shoulder from the body top up to the camera module front, and angled cuts low on the body sides
+    box('gl_opt_shoulder', (0, yf - 0.012, zt + 0.064), (0.044, 0.014, 0.014), DARK, rot=(math.radians(45), 0, 0), bevel=0.001, M=M)
+    for sx in (-1, 1):
+        box(f'gl_opt_slash{sx}', (sx * 0.0245, y0 - 0.004, zt + 0.020), (0.002, 0.040, 0.004), DARK, rot=(math.radians(-18), 0, 0), bevel=0.0006, M=M)
+    wz = OPT_WIN_Z
+    for nm, yy, sgn in (('f', yf, 1), ('r', yr, -1)):
+        box(f'gl_opt_win_{nm}', (0, yy + sgn * 0.0005, wz), (0.034, 0.002, 0.032), SCREEN, M=M)
+        for bn, off, sz in (('t', (0, 0, 0.019), (0.042, 0.010, 0.006)), ('b', (0, 0, -0.019), (0.042, 0.010, 0.006)),
+                            ('l', (-0.019, 0, 0), (0.006, 0.010, 0.042)), ('r', (0.019, 0, 0), (0.006, 0.010, 0.042))):
+            box(f'gl_opt_hood_{nm}{bn}', tuple(Vector((0, yy + sgn * 0.004, wz)) + Vector(off)), sz, DARK, bevel=0.0015, M=M)
+    # front cover: hinge barrel along the bottom of the front hood, the cover hanging forward and down (flipped open)
+    hy, hz = yf + 0.009, wz - 0.023
+    tube('gl_opt_hinge', (-0.017, hy, hz), (0.017, hy, hz), 0.0045, MECH, segs=12, M=M)
+    for sx in (-1, 1):   # hinge knuckles joining the pin to the body
+        box(f'gl_opt_knuckle{sx}', (sx * 0.014, hy - 0.006, hz), (0.006, 0.012, 0.009), DARK, bevel=0.001, M=M)
+    th = math.radians(112); d = Vector((0, math.sin(th), math.cos(th)))
+    box('gl_opt_cover', tuple(Vector((0, hy, hz)) + d * 0.021), (0.040, 0.004, 0.038), DARK, rot=(-th, 0, 0), bevel=0.0015, M=M)
+    nrm = Vector((0, math.cos(th), -math.sin(th)))   # cover inner face normal (faces up and back when flipped open)
+    box('gl_opt_cover_rim', tuple(Vector((0, hy, hz)) + d * 0.022 - nrm * 0.0035), (0.034, 0.004, 0.032), MECH, rot=(-th, 0, 0), M=M)
+    box('gl_opt_cover_tab', tuple(Vector((0, hy, hz)) + d * 0.039 + nrm * 0.002), (0.020, 0.005, 0.006), MECH, rot=(-th, 0, 0), bevel=0.001, M=M)
+    # top camera module, set back from the front, lens forward on the right of centre under a rubber shade
+    cz = zt + 0.064 + 0.014; cy = y0 - 0.004
+    box('gl_opt_cam', (0, cy, cz), (0.036, 0.050, 0.028), DARK, bevel=0.003, M=M)
+    lx, lz = 0.004, cz - 0.001
+    tube('gl_opt_lens_barrel', (lx, cy + 0.025, lz), (lx, cy + 0.044, lz), 0.0115, DARK, segs=20, M=M)
+    tube('gl_opt_lens_ring', (lx, cy + 0.041, lz), (lx, cy + 0.046, lz), 0.0128, MECH, segs=20, M=M)
+    tube('gl_opt_lens', (lx, cy + 0.0455, lz), (lx, cy + 0.0462, lz), 0.0092, SCREEN, segs=18, M=M)
+    # rubber shade: a strip on the housing top that bends down over the lens
+    box('gl_opt_shade_base', (lx, cy + 0.020, cz + 0.0155), (0.030, 0.012, 0.003), SEAT, bevel=0.001, M=M)
+    box('gl_opt_shade', (lx, cy + 0.036, cz + 0.0135), (0.032, 0.024, 0.004), SEAT, rot=(math.radians(-16), 0, 0), bevel=0.0015, M=M)
+    box('gl_opt_btn', (0, cy - 0.012, cz + 0.0145), (0.016, 0.014, 0.003), MECH, bevel=0.001, M=M)
+    # D-pad on the rear face of the camera module, facing the shooter (Nick 16:22): recessed ring, cross rocker, centre button
+    ry = cy - 0.025
+    tube('gl_opt_dpad_ring', (0, ry + 0.0005, cz), (0, ry - 0.0010, cz), 0.0105, SCREEN, segs=24, M=M)
+    for nm, (dx, dz), sz in (('u', (0, 0.0055), (0.0055, 0.0025, 0.0050)), ('d', (0, -0.0055), (0.0055, 0.0025, 0.0050)),
+                             ('l', (-0.0055, 0), (0.0050, 0.0025, 0.0055)), ('r', (0.0055, 0), (0.0050, 0.0025, 0.0055))):
+        box(f'gl_opt_dpad_{nm}', (dx, ry - 0.0012, cz + dz), sz, MECH, bevel=0.0008, M=M)
+    tube('gl_opt_dpad_c', (0, ry - 0.0005, cz), (0, ry - 0.0028, cz), 0.0026, MECH, segs=14, M=M)
+    box('gl_opt_usb', (-0.0185, cy + 0.006, cz - 0.004), (0.003, 0.014, 0.012), MECH, bevel=0.001, M=M)
+    # left side: battery cap and brightness dial
+    for k, (y, z, r) in enumerate(((y0 - 0.017, zt + 0.024, 0.0115), (y0 + 0.014, zt + 0.036, 0.0070))):   # big battery cap low at the rear, small dial higher forward
+        tube(f'gl_opt_cap{k}', (-0.024, y, z), (-0.0290, y, z), r, MECH, segs=18, M=M)
+        box(f'gl_opt_cap_slot{k}', (-0.0295, y, z), (0.0015, r * 1.2, 0.002), SCREEN, M=M)
+    box('gl_opt_tab', (-0.0255, yr + 0.006, zt + 0.050), (0.004, 0.010, 0.016), MECH, bevel=0.001, M=M)   # rear side lever
+    for sx in (-1, 1):   # raised side panels with a chamfered lower edge, like the reference housing
+        box(f'gl_opt_panel{sx}', (sx * 0.0245, y0 + 0.004, zt + 0.049), (0.002, 0.046, 0.022), DARK, bevel=0.0008, M=M)
     # ---- pistol grip, trigger guard and trigger, safety
     plate('gl_grip', [(0.022, 0.010), (-0.018, 0.010), (-0.052, -0.116), (-0.044, -0.130), (-0.008, -0.130), (0.006, -0.090), (0.024, -0.040)], 0.034, DARK, Mm @ side_at(0.0), bevel=0.008)
     for k in range(4):
@@ -145,8 +197,9 @@ def build_gl(M):
         tube(f'gl_tube_hole{k}', (0, -0.110 - k * 0.016, 0.064 - 0.0145), (0, -0.110 - k * 0.016, 0.064 - 0.017), 0.003, SCREEN, segs=8, M=M)
     rz = BORE + 0.066                                            # top of the strap rail / handguard top rail
     box('gl_bus_r_base', (0, 0.046, BORE + 0.068), (0.026, 0.020, 0.008), DARK, bevel=0.0015, M=M)
-    _plate_yz('gl_bus_r', [(0.038, 0.000), (0.054, 0.000), (0.052, 0.026), (0.040, 0.026)], -0.009, 0.009, DARK, Mm @ Matrix.Translation((0, 0, BORE + 0.072)), bevel=0.0015)
-    tube('gl_bus_r_ap', (0, 0.044, BORE + 0.090), (0, 0.050, BORE + 0.090), 0.0035, SCREEN, segs=10, M=M)
+    # rear flip-up sight folded flat under the optic's line of sight (0.15.9x optic)
+    _plate_yz('gl_bus_r', [(0.036, 0.000), (0.064, 0.000), (0.064, 0.007), (0.036, 0.007)], -0.009, 0.009, DARK, Mm @ Matrix.Translation((0, 0, BORE + 0.072)), bevel=0.0015)
+    tube('gl_bus_r_ap', (0, 0.058, BORE + 0.0785), (0, 0.058, BORE + 0.0795), 0.0035, SCREEN, segs=10, M=M)
     box('gl_bus_f_base', (0, HG1 - 0.024, BORE + 0.048), (0.026, 0.022, 0.008), DARK, bevel=0.0015, M=M)
     for sx in (-1, 1):
         box(f'gl_bus_f_ear{sx}', (sx * 0.010, HG1 - 0.024, BORE + 0.066), (0.004, 0.012, 0.030), DARK, bevel=0.001, M=M)

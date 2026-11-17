@@ -1,6 +1,14 @@
 UL-2 Airtrike changelog
 =======================
 
+1.1.1 (2026-11-17) - Balance Pass
+- 1.1.1: the seat 3 Machine Gunner gets the same harder hitting .338 as the Special Operations Team (pierce 150 -> 355).
+- 0.15.95: with the Special Operations Team aboard the centre of gravity sits further forward, so the airtrike no longer tips back onto its tail as easily.
+- 0.15.94: Special Operations Team machine gunners hit harder (.338 pierce 150 -> 355) so they can knock out MRAPs and light trucks out to about 3 km.
+- 0.15.93: boxy optic with a flip-down front cover, a top camera and a D-pad on both grenade launchers; new Eyeball Mk.II x2 option on the stub pylons, plus Hangball Mk.II x2 when the Hangball Mk.II mod is installed; the AI can now fly the Special Operations Team ("Special Operations" loadout); the Special Operations Team machine gunners are back to the stock aim (10% spread, no shot correction) so they engage ground targets again, and only the grenadiers keep the tighter aim with correction.
+- 0.15.89: new 40mm High Velocity round for both the seat 3 Grenadier and the Special Operations Team (muzzle velocity 400 m/s, blast 0.7, same pierce) and a grenade launcher barrel 16 cm longer with an open bored muzzle (no muzzle device); the Special Operations Team turrets spread their lead less (5% instead of 10%) and correct their aim from where their rounds land.
+- 0.15.88: Special Operations Team grenades no longer burst in the air before reaching targets near the 3,300 m maximum range (fuse 18 s -> 25 s).
+
 1.1.0 (2026-11-16) - Special Operations Team update
 - 0.15.81: the seat 3 Machine Gunner and Grenadier can no longer shoot the crew: the gun stays on safety until the turret has swung onto its aim, so it cannot fire while the barrel is still passing the pilots (at spawn it rests pointing forward) or while the aim is held at the edge of the forward or aft no-fire zone.
 - 0.15.82: the IRM-S2 no longer breaks the main gear off in the aircraft select screen or at spawn (it sits 20 cm further forward, clear of the main wheel); the Expedient 1.5kt Bomb can is no longer see-through from the top and bottom; Racing Navy is taken back out of the mod and will be a separate Steam Workshop livery.

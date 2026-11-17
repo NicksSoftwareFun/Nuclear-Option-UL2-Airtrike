@@ -65,10 +65,19 @@ public static partial class UL2Builder
                     e.FindPropertyRelative("exclusion").boolValue = true;
                 }
                 so.FindProperty("aimSafetyWeapon").objectReferenceValue = gun;   // no firing while the barrel slews (0.15.81)
+                // 0.15.89 (Nick 15:45, SOF only): lead spray 10% -> 5% and shot correction on (the turret watches where its
+                // rounds land and walks the aim onto the target)
+                // 0.15.93 (Nick 21:40: machine gunners stopped engaging ground targets): grenadiers only. The machine gun aim
+                // is bent over the grenadier's head by the plugin, so shot correction read every burst as a miss and walked the
+                // aim off the target; the machine gunners keep the stock 10% spray with no correction, as in 1.1.0.
+                bool gl = S.kind != "pmmg";
+                so.FindProperty("aimSolver.rakeAmount").floatValue = gl ? 0.05f : 0.1f;   // Nick 15:58: 5% for now
+                so.FindProperty("aimSolver.correctShots").boolValue = gl;
                 so.ApplyModifiedPropertiesWithoutUndo();
                 // seat 3 gun settings + 3 spare magazines (Nick 21:59), own infos with +50% range (Nick 21:56)
                 if (S.kind == "pmmg") { Set(gun, "fireRate", 650f); Set(gun, "magazineCapacity", 75); Set(gun, "magazines", 9); Set(gun, "reloadTime", 5f); Set(gun, "bulletSpread", 2.5f); Set(gun, "recoilImpulse", 25f); Set(gun, "info", PmMgInfo()); Set(gun, "tracerRatio", 3); Set(gun, "pitch", 0.72f); }
-                else { Set(gun, "fireRate", 113f); Set(gun, "magazineCapacity", 6); Set(gun, "magazines", 9); Set(gun, "reloadTime", 7f); Set(gun, "info", PmGlInfo()); }
+                else { Set(gun, "fireRate", 113f); Set(gun, "magazineCapacity", 6); Set(gun, "magazines", 9); Set(gun, "reloadTime", 7f); Set(gun, "info", PmGlInfo());
+                    Set(gun, "bulletSelfDestruct", 25f); }   // 0.15.88: a 3300 m shot takes up to 24 s; stock 18 s burst them in the air past ~3 km
                 S3Kit(st.gameObject, S.kind);
                 log.AppendLine("pm station " + S.name + " at " + S.pos + " centre " + S.centre + " cones " + S.cones.Length);
             }
@@ -122,6 +131,8 @@ public static partial class UL2Builder
         var m = PmInfoCopy(MNT + "UL2_pm_mg_info.asset", MgInfo());
         var so = new SerializedObject(m);
         so.FindProperty("targetRequirements.maxRange").floatValue = 3150f;   // seat 3 MG 2100 m +50%
+        // 0.15.94 (Nick 22:48): pierce 150 -> 355 so the team can kill MRAPs/LCVs out at 3 km (about 4 typical hits there); since 1.1.1 the seat 3 info has it too
+        so.FindProperty("pierceDamage").floatValue = 355f;
         so.FindProperty("weaponName").stringValue = ".338 LM Machine Gunners";
         so.FindProperty("shortName").stringValue = "MG-338 x2";
         so.FindProperty("description").stringValue = "Two outward facing machine gunners in the third row with belt-fed .338 Lapua Magnum machine guns. They fire together.";
@@ -136,13 +147,16 @@ public static partial class UL2Builder
         float r0 = ss.FindProperty("targetRequirements.maxRange").floatValue, v0 = ss.FindProperty("muzzleVelocity").floatValue;
         // +50% range (Nick 21:56): the AI engagement range and, for the lobbed grenade, the muzzle velocity by sqrt(1.5) so it carries 50% further
         so.FindProperty("targetRequirements.maxRange").floatValue = r0 * 1.5f;
-        so.FindProperty("muzzleVelocity").floatValue = v0 * 1.2247f;
-        var ms = so.FindProperty("maxSpeed"); if (ms != null && ms.floatValue > 0f) ms.floatValue = Mathf.Max(ms.floatValue, v0 * 1.2247f);
-        so.FindProperty("weaponName").stringValue = "40 mm Grenadiers";
-        so.FindProperty("shortName").stringValue = "40mm GL x2";
+        // 0.15.89 (Nick 15:38): faster round (less flight time against moving convoys) and a bigger blast that hurts
+        // Linebreakers but stays under MBT blast armour; pierce stays at the stock value
+        so.FindProperty("muzzleVelocity").floatValue = 400f;
+        var ms = so.FindProperty("maxSpeed"); if (ms != null && ms.floatValue > 0f) ms.floatValue = Mathf.Max(ms.floatValue, 400f);
+        so.FindProperty("blastDamage").floatValue = 0.7f;
+        so.FindProperty("weaponName").stringValue = "40mm High Velocity";   // Nick 15:40
+        so.FindProperty("shortName").stringValue = "40mm HV x2";
         so.FindProperty("description").stringValue = "Two outward facing grenadiers on the wing stubs with six-shot 40 mm grenade launchers. They fire together.";
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
-        log.AppendLine("pm gl info: range " + r0 + " -> " + r0 * 1.5f + ", muzzle " + v0 + " -> " + v0 * 1.2247f);
+        log.AppendLine("pm gl info: range " + r0 + " -> " + r0 * 1.5f + ", muzzle " + v0 + " -> 400, blast 0.7");
         return m;
     }
     static Object PmInfo()
