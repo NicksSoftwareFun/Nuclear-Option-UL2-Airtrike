@@ -172,9 +172,14 @@ public static partial class UL2Builder
         var m = AssetDatabase.LoadMainAssetAtPath(path);
         if (m == null) { AssetDatabase.CopyAsset(src != null ? AssetDatabase.GetAssetPath(src) : PH + "MonoBehaviour/Grenade_40mm_PLACEHOLDER.asset", path); AssetDatabase.ImportAsset(path); m = AssetDatabase.LoadMainAssetAtPath(path); }
         var so = new SerializedObject(m);
-        so.FindProperty("weaponName").stringValue = "40 mm Grenadier";
-        so.FindProperty("shortName").stringValue = "40mm GL";
-        so.FindProperty("description").stringValue = "A third seat grenadier with a six-shot 40 mm grenade launcher with HEDP ammo.";
+        so.FindProperty("weaponName").stringValue = "40mm High Velocity";   // Nick 15:40 / 15:42: new round for both grenadier loadouts
+        so.FindProperty("shortName").stringValue = "40mm HV";
+        so.FindProperty("description").stringValue = "A third seat grenadier with a six-shot, long-barrelled 40 mm grenade launcher firing high velocity grenades.";
+        // 0.15.89 (Nick 15:38): faster round for less flight time against moving targets, bigger blast that hurts Linebreakers but
+        // stays under MBT blast armour; stock pierce kept
+        so.FindProperty("muzzleVelocity").floatValue = 400f;
+        var msp = so.FindProperty("maxSpeed"); if (msp != null && msp.floatValue > 0f) msp.floatValue = Mathf.Max(msp.floatValue, 400f);
+        so.FindProperty("blastDamage").floatValue = 0.7f;
         so.FindProperty("weaponIcon").objectReferenceValue = UL2Builder.IconSprite(ART + "Icons/UL2_icon_s3_gl.png");
         so.ApplyModifiedPropertiesWithoutUndo(); EditorUtility.SetDirty(m);
         return m;

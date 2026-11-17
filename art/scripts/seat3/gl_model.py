@@ -15,7 +15,8 @@ CY0, CY1 = 0.072, 0.212       # cylinder rear / front faces
 BORE = CZ + CPR               # barrel axis (top chamber)
 FP0, FP1 = 0.214, 0.232       # front frame plate
 HG0, HG1 = 0.240, 0.470       # handguard
-MUZ = 0.505
+MUZ0 = 0.505                  # original muzzle (end of the standard barrel)
+MUZ = 0.665                   # 0.15.89 (Nick 15:42): extended high velocity barrel
 GRIP_TOP, GRIP_BOT = Vector((0, 0.008, -0.012)), Vector((0, -0.032, -0.118))
 VG_Y = 0.255
 VG_TOP, VG_BOT = Vector((0, VG_Y, BORE - 0.044)), Vector((0, VG_Y, BORE - 0.174))
@@ -80,6 +81,15 @@ def build_gl(M):
     # ---- barrel with a quad-rail handguard (vented, rails on all four faces), muzzle ring
     tube('gl_barrel', (0, FP1, BORE), (0, MUZ, BORE), 0.0255, DARK, segs=24, M=M)
     tube('gl_bore', (0, MUZ - 0.004, BORE), (0, MUZ + 0.0005, BORE), 0.0205, SCREEN, segs=20, M=M)
+    # extension joint collar where the standard barrel ended, a thinner extended section, then a ported muzzle brake
+    revolve('gl_ext_collar', (0, MUZ0 - 0.012, BORE), (0, 1, 0), [(0, 0.0255), (0, 0.031), (0.004, 0.032), (0.022, 0.032), (0.026, 0.031), (0.026, 0.0255)], DARK, segs=24, M=M)
+    for k in range(6):
+        box(f'gl_ext_flat{k}', tuple(Vector((0, MUZ0 + 0.002, BORE)) + Vector((0.0318 * math.cos(math.radians(30 + k * 60)), 0, 0.0318 * math.sin(math.radians(30 + k * 60))))), (0.006, 0.016, 0.006), MECH, M=M)
+    for k in range(3):
+        box(f'gl_brake_port{k}', (0, MUZ - 0.012 - k * 0.013, BORE + 0.029), (0.024, 0.007, 0.004), SCREEN, M=M)
+        for sx in (-1, 1):
+            box(f'gl_brake_side{sx}_{k}', (sx * 0.029, MUZ - 0.012 - k * 0.013, BORE), (0.004, 0.007, 0.020), SCREEN, M=M)
+    tube('gl_brake', (0, MUZ - 0.048, BORE), (0, MUZ - 0.002, BORE), 0.0285, DARK, segs=24, M=M)
     revolve('gl_muzzle', (0, MUZ - 0.020, BORE), (0, 1, 0), [(0, 0.0255), (0, 0.030), (0.016, 0.030), (0.020, 0.027), (0.020, 0.0255)], DARK, segs=24, M=M)
     hgc = Vector((0, (HG0 + HG1) / 2, BORE)); L = HG1 - HG0
     for nm, off, sz in (('t', (0, 0, 0.029), (0.040, L, 0.010)), ('b', (0, 0, -0.029), (0.040, L, 0.010)),
