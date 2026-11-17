@@ -1,6 +1,9 @@
 UL-2 Airtrike changelog
 =======================
 
+Unreleased
+- 0.15.88: Special Operations Team grenades no longer burst in the air before reaching targets near the 3,300 m maximum range (fuse 18 s -> 25 s).
+
 1.1.0 (2026-11-16) - Special Operations Team update
 - 0.15.81: the seat 3 Machine Gunner and Grenadier can no longer shoot the crew: the gun stays on safety until the turret has swung onto its aim, so it cannot fire while the barrel is still passing the pilots (at spawn it rests pointing forward) or while the aim is held at the edge of the forward or aft no-fire zone.
 - 0.15.82: the IRM-S2 no longer breaks the main gear off in the aircraft select screen or at spawn (it sits 20 cm further forward, clear of the main wheel); the Expedient 1.5kt Bomb can is no longer see-through from the top and bottom; Racing Navy is taken back out of the mod and will be a separate Steam Workshop livery.

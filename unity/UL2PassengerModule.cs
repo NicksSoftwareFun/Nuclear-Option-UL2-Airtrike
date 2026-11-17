@@ -68,7 +68,8 @@ public static partial class UL2Builder
                 so.ApplyModifiedPropertiesWithoutUndo();
                 // seat 3 gun settings + 3 spare magazines (Nick 21:59), own infos with +50% range (Nick 21:56)
                 if (S.kind == "pmmg") { Set(gun, "fireRate", 650f); Set(gun, "magazineCapacity", 75); Set(gun, "magazines", 9); Set(gun, "reloadTime", 5f); Set(gun, "bulletSpread", 2.5f); Set(gun, "recoilImpulse", 25f); Set(gun, "info", PmMgInfo()); Set(gun, "tracerRatio", 3); Set(gun, "pitch", 0.72f); }
-                else { Set(gun, "fireRate", 113f); Set(gun, "magazineCapacity", 6); Set(gun, "magazines", 9); Set(gun, "reloadTime", 7f); Set(gun, "info", PmGlInfo()); }
+                else { Set(gun, "fireRate", 113f); Set(gun, "magazineCapacity", 6); Set(gun, "magazines", 9); Set(gun, "reloadTime", 7f); Set(gun, "info", PmGlInfo());
+                    Set(gun, "bulletSelfDestruct", 25f); }   // 0.15.88: a 3300 m shot takes up to 24 s; stock 18 s burst them in the air past ~3 km
                 S3Kit(st.gameObject, S.kind);
                 log.AppendLine("pm station " + S.name + " at " + S.pos + " centre " + S.centre + " cones " + S.cones.Length);
             }
