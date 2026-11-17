@@ -67,8 +67,12 @@ public static partial class UL2Builder
                 so.FindProperty("aimSafetyWeapon").objectReferenceValue = gun;   // no firing while the barrel slews (0.15.81)
                 // 0.15.89 (Nick 15:45, SOF only): lead spray 10% -> 5% and shot correction on (the turret watches where its
                 // rounds land and walks the aim onto the target)
-                so.FindProperty("aimSolver.rakeAmount").floatValue = 0.05f;   // Nick 15:58: 5% for now
-                so.FindProperty("aimSolver.correctShots").boolValue = true;
+                // 0.15.93 (Nick 21:40: machine gunners stopped engaging ground targets): grenadiers only. The machine gun aim
+                // is bent over the grenadier's head by the plugin, so shot correction read every burst as a miss and walked the
+                // aim off the target; the machine gunners keep the stock 10% spray with no correction, as in 1.1.0.
+                bool gl = S.kind != "pmmg";
+                so.FindProperty("aimSolver.rakeAmount").floatValue = gl ? 0.05f : 0.1f;   // Nick 15:58: 5% for now
+                so.FindProperty("aimSolver.correctShots").boolValue = gl;
                 so.ApplyModifiedPropertiesWithoutUndo();
                 // seat 3 gun settings + 3 spare magazines (Nick 21:59), own infos with +50% range (Nick 21:56)
                 if (S.kind == "pmmg") { Set(gun, "fireRate", 650f); Set(gun, "magazineCapacity", 75); Set(gun, "magazines", 9); Set(gun, "reloadTime", 5f); Set(gun, "bulletSpread", 2.5f); Set(gun, "recoilImpulse", 25f); Set(gun, "info", PmMgInfo()); Set(gun, "tracerRatio", 3); Set(gun, "pitch", 0.72f); }

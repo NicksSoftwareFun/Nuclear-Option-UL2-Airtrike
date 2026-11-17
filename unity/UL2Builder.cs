@@ -1455,7 +1455,7 @@ public static partial class UL2Builder
         while (sets.arraySize > 3) sets.DeleteArrayElementAtIndex(sets.arraySize - 1);
         // Nick 2026-11-12 20:42: under stations removed completely, Kingpin (Rocket2_4Pod) removed from the top stations
         // 0.15.61 (Nick 02:19): the mission editor fills a new unit with the FIRST option of each station, so AT-145 x4 goes first
-        string[] topOpts = { "ATGM1_quad", "RocketPod1_single", "AGM1_single", "AGM1_double_compact", "AAM3_single", "ECMPod1" };   // 0.15.58: AGM-48 x2 (Nick 23:25)
+        string[] topOpts = { "ATGM1_quad", "RocketPod1_single", "AGM1_single", "AGM1_double_compact", "AGM_scanner1_double_compact", "AAM3_single", "ECMPod1" };   // 0.15.58: AGM-48 x2 (Nick 23:25); 0.15.92: Eyeball Mk.II x2 (Nick 21:34)
         string[] underOpts = { "gun_12.7mm_pod", "gun_20mm_pod", "bomb_125_single" };
         var defs = new[] {
             new { name = "Left Stub", hp = "pylon_fuselage_L", sym = false, symName = "Stub Pylons (top)", opts = topOpts, pre = 3 },
@@ -1475,7 +1475,7 @@ public static partial class UL2Builder
             var op = p.FindPropertyRelative("weaponOptions"); op.arraySize = d.opts.Length + 1; op.GetArrayElementAtIndex(0).objectReferenceValue = null;
             for (int k = 0; k < d.opts.Length; k++)
             {
-                var m = d.opts[k] == "AGM1_single" ? Mount("UL2_AGM1_rail") : d.opts[k] == "AGM1_double_compact" ? Mount("UL2_AGM1_double") : d.opts[k] == "AAM3_single" ? Mount("UL2_AAM3_rail") : AssetDatabase.LoadMainAssetAtPath(Placeholder(d.opts[k], "WeaponMount"));
+                var m = d.opts[k] == "AGM1_single" ? Mount("UL2_AGM1_rail") : d.opts[k] == "AGM1_double_compact" ? Mount("UL2_AGM1_double") : d.opts[k] == "AGM_scanner1_double_compact" ? Mount("UL2_EYE_double") : d.opts[k] == "AAM3_single" ? Mount("UL2_AAM3_rail") : AssetDatabase.LoadMainAssetAtPath(Placeholder(d.opts[k], "WeaponMount"));
                 if (m == null) log.AppendLine("MISSING mount " + d.opts[k]);
                 op.GetArrayElementAtIndex(k + 1).objectReferenceValue = m;
             }
@@ -1547,6 +1547,9 @@ public static partial class UL2Builder
         // 0.15.64 (Nick 03:08: the pair looked like it floated over the stub): the stock twin rack is kept between the stub and
         // the two missiles, and the missiles stay at their stock height on it
         RailMount("AGM1_double_compact", "UL2_AGM1_double", float.NaN);
+        // 0.15.92 (Nick 2026-11-17 21:34): twin Eyeball Mk.II the same way (stock twin rack kept, same layout and colliders as
+        // the AGM-48 pair). The plugin adds the Hangball Mk.II twin rack after it when that mod is installed.
+        RailMount("AGM_scanner1_double_compact", "UL2_EYE_double", float.NaN);
         // 0.15.82 (Nick 2026-11-16: IRM-S2 broke the main gear off in the select screen and at spawn): the missile's stock
         // collider (capsule 2.71 m) reached back over the main wheel, and LandingGear's suspension linecast from the bump stop
         // (+-0.81, -0.32, -0.67) hit it, read full compression and broke the wheel. Slid 0.20 m forward: capsule ends at z -0.49.
@@ -1838,17 +1841,19 @@ public static partial class UL2Builder
             new[] { "Survivor", "UL2_sidegun", "ATGM1_quad", "ECMPod1", "UL2_s3_gl" },
             new[] { "Frontliner", "UL2_sidegun", "ATGM1_quad", "RocketPod1_single", "UL2_s3_mg" },
             new[] { "Broker", "UL2_sidegun", "ECMPod1", "UL2_AGM1_double", "UL2_s3_gl" },
-            new[] { "Decoy", "UL2_sidegun", "ECMPod1", "ECMPod1", "UL2_s3_spot" } };
+            new[] { "Decoy", "UL2_sidegun", "ECMPod1", "ECMPod1", "UL2_s3_spot" },
+            // 0.15.92 (Nick 21:34): the AI can fly the Special Operations Team (stubs and Third Seat empty: the module takes them)
+            new[] { "Special Operations", "UL2_sidegun", "", "", "", "UL2_pm" } };
         // 0.15.63 (Nick 02:55, a triple ECM UL-2 spawned): the AI deploys from StandardLoadouts (stock
         // AircraftParameters.GetRandomStandardLoadout) and makes up a random loadout when that list is empty; "loadouts" is
         // only the stock pair (0 empty, 1 the default). Like the stock helicopters: loadouts = empty + Standard, the seven
         // AI loadouts in StandardLoadouts.
         System.Action<SerializedProperty, string[]> Fill = (w, row) =>
         {
-            w.arraySize = 4;
-            for (int k = 0; k < 4; k++)
+            w.arraySize = 5;   // forward gun, left stub, right stub, third seat, passenger module
+            for (int k = 0; k < 5; k++)
             {
-                string id = row == null ? "" : row[k + 1];
+                string id = row == null || row.Length <= k + 1 ? "" : row[k + 1];
                 var m = id == "" ? null : Mount(id);
                 if (id != "" && m == null) log.AppendLine("loadout " + row[0] + ": MISSING mount " + id);
                 w.GetArrayElementAtIndex(k).objectReferenceValue = m;

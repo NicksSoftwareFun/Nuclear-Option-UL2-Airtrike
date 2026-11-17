@@ -76,6 +76,8 @@ namespace UL2Airtrike
                 TakeoffFix.Patch(h);
                 // 0.15.64 (Nick 03:07, Lynchpins all missing): only fire laser-guided rockets once the nose laser is on the target
                 LaserFix.Patch(h);
+                // 0.15.92 (Nick 21:34): Hangball Mk.II x2 on the stub pylons, only when the Hangball mod is installed
+                StartCoroutine(HangballLink.Run());
                 // passenger module (Nick 2026-11-16 21:39): one mount with four turrets. Stock SpawnMount attaches only the first
                 // turret of a turret mount to the weapon manager; attach the rest. The weapon manager groups them by weapon info,
                 // so the two machine guns fire as one weapon and the two grenade launchers as another.
@@ -1906,6 +1908,56 @@ namespace UL2Airtrike
     // leaves before its target is lased starts with no target and never picks one up again (LaserSeeker.Initialize), so it
     // flies straight. For the UL-2 AI only, the target is put in the list first and the shot is held until the laser is on
     // it (at most 3 s, then the stock shot goes anyway). Every UL-2 laser rocket logs whether it had the laser at launch.
+    // 0.15.92 (Nick 2026-11-17 21:34): the stubs take a twin Eyeball Mk.II (built into the mod like the twin AGM-48) and,
+    // only when Nick's Hangball Mk.II mod is installed, its twin Hangball rack too. The UL-2 does not depend on that mod: the
+    // rack is looked up by its key in the game's weapon list and added to both stub stations' options after the Eyeball x2.
+    // Loadouts save mounts by key, so a saved Hangball loadout simply drops it when the mod is missing.
+    internal static class HangballLink
+    {
+        const string KEY = "AGM_scanner1_hangball_double_compact", AFTER = "UL2_EYE_double";
+        static readonly string[] STATIONS = { "Left Stub", "Right Stub" };
+        internal static System.Collections.IEnumerator Run()
+        {
+            var wait = new WaitForSeconds(3f);
+            System.Type tEnc = null; bool logged = false;
+            while (true)
+            {
+                yield return wait;
+                try
+                {
+                    tEnc = tEnc ?? AccessTools.TypeByName("Encyclopedia");
+                    if (tEnc == null) continue;
+                    var units = AccessTools.Field(tEnc, "Lookup")?.GetValue(null) as System.Collections.IDictionary;
+                    var mounts = AccessTools.Field(tEnc, "WeaponLookup")?.GetValue(null) as System.Collections.IDictionary;
+                    if (units == null || mounts == null || !units.Contains("UL2Airtrike") || !mounts.Contains(KEY)) continue;
+                    var hb = mounts[KEY]; var def = units["UL2Airtrike"];
+                    var prefab = AccessTools.Field(def.GetType(), "unitPrefab")?.GetValue(def) as GameObject;
+                    if (prefab == null) continue;
+                    var wm = prefab.GetComponentsInChildren<MonoBehaviour>(true).FirstOrDefault(c => c != null && c.GetType().Name == "WeaponManager");
+                    var sets = wm == null ? null : AccessTools.Field(wm.GetType(), "hardpointSets")?.GetValue(wm) as System.Array;
+                    if (sets == null) continue;
+                    int added = 0;
+                    foreach (var set in sets)
+                    {
+                        var nm = AccessTools.Field(set.GetType(), "name")?.GetValue(set) as string;
+                        if (System.Array.IndexOf(STATIONS, nm) < 0) continue;
+                        var opts = AccessTools.Field(set.GetType(), "weaponOptions")?.GetValue(set) as System.Collections.IList;
+                        if (opts == null || opts.Contains(hb)) continue;
+                        int at = opts.Count;
+                        for (int i = 0; i < opts.Count; i++)
+                        {
+                            var o = opts[i] as ScriptableObject;
+                            if (o != null && (AccessTools.Field(o.GetType(), "jsonKey")?.GetValue(o) as string) == AFTER) { at = i + 1; break; }
+                        }
+                        opts.Insert(at, hb); added++;
+                    }
+                    if (added > 0 || !logged) { Plugin.Log.LogInfo("UL-2: Hangball Mk.II x2 added to " + added + " stub station(s)"); logged = true; }
+                }
+                catch (System.Exception e) { Plugin.Log.LogWarning("UL-2 Hangball link: " + e.Message); wait = new WaitForSeconds(30f); }
+            }
+        }
+    }
+
     internal static class LaserFix
     {
         const BindingFlags F = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
