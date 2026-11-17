@@ -79,9 +79,10 @@ def build_gl(M):
     box('gl_hinge_lug', (-0.012, FP0 + 0.004, CZ - CR + 0.004), (0.024, 0.020, 0.030), DARK, bevel=0.004, M=M)
     box('gl_latch', (-0.029, 0.046, 0.024), (0.010, 0.030, 0.012), MECH, bevel=0.003, M=M)
     # ---- barrel with a quad-rail handguard (vented, rails on all four faces), muzzle ring
-    tube('gl_barrel', (0, FP1, BORE), (0, MUZ, BORE), 0.0255, DARK, segs=24, M=M)
-    tube('gl_bore', (0, MUZ - 0.004, BORE), (0, MUZ + 0.0005, BORE), 0.0205, SCREEN, segs=20, M=M)
-    revolve('gl_muzzle', (0, MUZ - 0.020, BORE), (0, 1, 0), [(0, 0.0255), (0, 0.030), (0.016, 0.030), (0.020, 0.027), (0.020, 0.0255)], DARK, segs=24, M=M)
+    # barrel: plain tube with an open bored muzzle (no muzzle device, Nick 16:05); the last 8 cm are one closed revolve
+    # (outer wall, muzzle face, bore wall, bore bottom) so the bore reads as a hole
+    tube('gl_barrel', (0, FP1, BORE), (0, MUZ - 0.080, BORE), 0.0255, DARK, segs=24, M=M)
+    revolve('gl_muzzle_bore', (0, MUZ - 0.080, BORE), (0, 1, 0), [(0, 0.0255), (0.080, 0.0255), (0.080, 0.0205), (0.002, 0.0205), (0.002, 0)], DARK, segs=24, M=M)
     hgc = Vector((0, (HG0 + HG1) / 2, BORE)); L = HG1 - HG0
     for nm, off, sz in (('t', (0, 0, 0.029), (0.040, L, 0.010)), ('b', (0, 0, -0.029), (0.040, L, 0.010)),
                         ('l', (-0.029, 0, 0), (0.010, L, 0.040)), ('r', (0.029, 0, 0), (0.010, L, 0.040))):
