@@ -65,9 +65,9 @@ public static partial class UL2Builder
                     e.FindPropertyRelative("exclusion").boolValue = true;
                 }
                 so.FindProperty("aimSafetyWeapon").objectReferenceValue = gun;   // no firing while the barrel slews (0.15.81)
-                // 0.15.89 (Nick 15:45, SOF only): lead spray 10% -> 3% and shot correction on (the turret watches where its
+                // 0.15.89 (Nick 15:45, SOF only): lead spray 10% -> 5% and shot correction on (the turret watches where its
                 // rounds land and walks the aim onto the target)
-                so.FindProperty("aimSolver.rakeAmount").floatValue = 0.03f;
+                so.FindProperty("aimSolver.rakeAmount").floatValue = 0.05f;   // Nick 15:58: 5% for now
                 so.FindProperty("aimSolver.correctShots").boolValue = true;
                 so.ApplyModifiedPropertiesWithoutUndo();
                 // seat 3 gun settings + 3 spare magazines (Nick 21:59), own infos with +50% range (Nick 21:56)
