@@ -122,6 +122,9 @@ namespace UL2Airtrike
         // team's empty mass moves to the rear cockpit part (z +0.23), so the module's mass centre sits near its real one (z -0.08);
         // the ammo stays on the seat part. Put back when the mount is removed.
         const float PM_FWD = 0.6f;
+        // 0.15.95 (Nick 23:16: still tips onto its tail with the team aboard): the shifted share goes to the front cockpit part
+        // (z +1.08) instead of the rear one (z +0.23), about 16 cm further forward for the whole aircraft's centre of mass
+        const string PM_PART = "cockpit_F";
         static readonly Dictionary<object, KeyValuePair<Component, float>> pmShift = new Dictionary<object, KeyValuePair<Component, float>>();
         static FieldInfo fHpPart, fHpMount, fMountEmpty; static MethodInfo mPartMass, mAllParts;
         static void PmMass(object hp, object aircraft, bool on)
@@ -145,8 +148,8 @@ namespace UL2Airtrike
                 float m = (float)fMountEmpty.GetValue(mount) * PM_FWD;
                 mAllParts = mAllParts ?? AccessTools.Method(aircraft.GetType(), "GetAllParts");
                 Component fwd = null;
-                if (mAllParts.Invoke(aircraft, null) is System.Collections.IEnumerable all) foreach (var o in all) if (o is Component c && c != null && c.name == "cockpit_R") { fwd = c; break; }
-                if (fwd == null) { Log.LogWarning("UL-2 passenger module: no cockpit_R part, mass left on " + part.name); return; }
+                if (mAllParts.Invoke(aircraft, null) is System.Collections.IEnumerable all) foreach (var o in all) if (o is Component c && c != null && c.name == PM_PART) { fwd = c; break; }
+                if (fwd == null) { Log.LogWarning("UL-2 passenger module: no " + PM_PART + " part, mass left on " + part.name); return; }
                 mPartMass.Invoke(part, new object[] { -m }); mPartMass.Invoke(fwd, new object[] { m });
                 pmShift[id] = new KeyValuePair<Component, float>(fwd, m);
                 Log.LogInfo("UL-2 passenger module: " + m.ToString("0") + " kg moved from " + part.name + " to " + fwd.name);
