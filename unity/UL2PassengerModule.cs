@@ -131,6 +131,8 @@ public static partial class UL2Builder
         var m = PmInfoCopy(MNT + "UL2_pm_mg_info.asset", MgInfo());
         var so = new SerializedObject(m);
         so.FindProperty("targetRequirements.maxRange").floatValue = 3150f;   // seat 3 MG 2100 m +50%
+        // 0.15.94 (Nick 22:48): pierce 150 -> 355 so the team can kill MRAPs/LCVs out at 3 km (about 4 typical hits there)
+        so.FindProperty("pierceDamage").floatValue = 355f;
         so.FindProperty("weaponName").stringValue = ".338 LM Machine Gunners";
         so.FindProperty("shortName").stringValue = "MG-338 x2";
         so.FindProperty("description").stringValue = "Two outward facing machine gunners in the third row with belt-fed .338 Lapua Magnum machine guns. They fire together.";
